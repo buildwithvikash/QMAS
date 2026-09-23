@@ -1,0 +1,942 @@
+<title>QMAS IMI &amp; DN Design</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f5f7fa; --surface:#ffffff; --sunk:#eef1f5; --ink:#18212d; --muted:#5a6676; --line:#dde3ea;
+  --accent:#2256d6; --accent-soft:#e7eefc;
+  --p1:#3b6fd4; --p1s:#e8f0fe; --p2:#1b8a5e; --p2s:#e6f5ee; --p3:#c8641c; --p3s:#fcefe4;
+  --must:#b42318; --must-s:#fde8e6; --later:#5a6676; --later-s:#eef1f5;
+  --ok:#1b8a5e; --warn:#a15c07; --warn-s:#fdf3e1;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --sans:"Outfit","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0e131a; --surface:#151c26; --sunk:#1b2330; --ink:#e4e9f0; --muted:#98a3b3; --line:#2a3443;
+    --accent:#7aa2ff; --accent-soft:#1c2a47;
+    --p1:#86a8f0; --p1s:#1a2640; --p2:#5cc99a; --p2s:#15302a; --p3:#f0a060; --p3s:#35251a;
+    --must:#ff8a80; --must-s:#3a1c1b; --later:#98a3b3; --later-s:#1f2733;
+    --ok:#5cc99a; --warn:#f2b35c; --warn-s:#342816;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0e131a; --surface:#151c26; --sunk:#1b2330; --ink:#e4e9f0; --muted:#98a3b3; --line:#2a3443;
+  --accent:#7aa2ff; --accent-soft:#1c2a47;
+  --p1:#86a8f0; --p1s:#1a2640; --p2:#5cc99a; --p2s:#15302a; --p3:#f0a060; --p3s:#35251a;
+  --must:#ff8a80; --must-s:#3a1c1b; --later:#98a3b3; --later-s:#1f2733;
+  --ok:#5cc99a; --warn:#f2b35c; --warn-s:#342816;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.6;padding-inline:16px}
+.shell{max-width:1240px;margin:0 auto;display:grid;grid-template-columns:230px minmax(0,1fr);gap:40px;padding-block:32px 80px}
+nav.toc{position:sticky;top:calc(env(safe-area-inset-top,0px) + 20px);align-self:start;max-height:calc(100vh - 40px);overflow:auto;font-size:13px}
+nav.toc .brand{font-weight:700;font-size:14px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+nav.toc .brand i{width:22px;height:22px;border-radius:6px;background:var(--accent);display:inline-block}
+nav.toc ol{list-style:none;margin:0;padding:0;display:grid;gap:2px;counter-reset:t}
+nav.toc a{display:flex;gap:8px;padding:5px 8px;border-radius:7px;color:var(--muted);text-decoration:none}
+nav.toc a:hover,nav.toc a:focus-visible{background:var(--surface);color:var(--ink);outline:none}
+nav.toc a span{font-family:var(--mono);font-size:11px;color:var(--accent);min-width:18px;padding-top:2px}
+main{min-width:0}
+header.doc{padding-bottom:20px;border-bottom:1px solid var(--line);margin-bottom:8px}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+h1{font-size:32px;line-height:1.2;margin:6px 0 8px;text-wrap:balance;font-weight:700}
+header.doc p{margin:0;color:var(--muted);max-width:72ch}
+.meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+.chip{font-size:12px;padding:3px 10px;border-radius:999px;background:var(--surface);border:1px solid var(--line);color:var(--muted)}
+section{padding-top:36px;scroll-margin-top:12px}
+h2{font-size:22px;margin:0 0 12px;display:flex;align-items:baseline;gap:10px;text-wrap:balance}
+h2 .n{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:500}
+h3{font-size:16px;margin:22px 0 8px}
+p{margin:0 0 10px;max-width:78ch}
+ul,ol{margin:0 0 10px;padding-left:20px}
+li{margin:2px 0}
+code,.mono{font-family:var(--mono);font-size:12.5px}
+code{background:var(--sunk);padding:1px 5px;border-radius:4px}
+.muted{color:var(--muted)}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface);margin:10px 0 14px}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{text-align:left;vertical-align:top;padding:8px 12px;border-bottom:1px solid var(--line)}
+th{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--sunk);white-space:nowrap}
+tr:last-child td{border-bottom:none}
+td.k{font-weight:600;white-space:nowrap}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+.panel h4{margin:0 0 6px;font-size:14px}
+.panel p,.panel ul{font-size:13.5px}
+.panel ul{margin:0}
+.ph1{border-top:3px solid var(--p1)} .ph2{border-top:3px solid var(--p2)} .ph3{border-top:3px solid var(--p3)}
+.pill{display:inline-block;font-size:11px;font-weight:600;padding:1px 8px;border-radius:999px;letter-spacing:.02em;white-space:nowrap}
+.pill.must{background:var(--must-s);color:var(--must)}
+.pill.later{background:var(--later-s);color:var(--later)}
+.pill.p1{background:var(--p1s);color:var(--p1)} .pill.p2{background:var(--p2s);color:var(--p2)} .pill.p3{background:var(--p3s);color:var(--p3)}
+.pill.acc{background:var(--accent-soft);color:var(--accent)}
+.callout{border-left:3px solid var(--warn);background:var(--warn-s);padding:10px 14px;border-radius:0 8px 8px 0;margin:12px 0;font-size:14px}
+.callout.info{border-color:var(--accent);background:var(--accent-soft)}
+figure{margin:12px 0 18px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px}
+figure .scroll{overflow-x:auto}
+figcaption{font-size:13px;color:var(--muted);margin-top:8px}
+pre.mermaid{margin:0;background:transparent;text-align:center}
+pre.code{background:var(--sunk);border-radius:8px;padding:12px 14px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.55;margin:8px 0 14px}
+svg.arch{width:100%;max-width:100%;height:auto;color:var(--ink);min-width:640px}
+.qgroup{margin-top:18px}
+.qgroup h3{display:flex;align-items:center;gap:8px}
+.q{display:grid;grid-template-columns:52px minmax(0,1fr);gap:10px;padding:9px 0;border-bottom:1px dashed var(--line)}
+.q:last-child{border-bottom:none}
+.q .id{font-family:var(--mono);font-size:12px;color:var(--muted);padding-top:3px}
+.q .t{font-size:14px}
+.q .t small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin:6px 0}
+@media (max-width:900px){
+  .shell{grid-template-columns:1fr;gap:12px;padding-block:20px 60px}
+  nav.toc{position:static;max-height:none}
+  nav.toc ol{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid2,.grid3{grid-template-columns:1fr}
+  h1{font-size:26px}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<div class="shell">
+<nav class="toc" aria-label="Contents">
+  <div class="brand"><i></i>QMAS · IMI &amp; DN</div>
+  <ol>
+    <li><a href="#s0"><span>✓</span>Decisions (rev 4)</a></li>
+    <li><a href="#s1"><span>01</span>Project understanding</a></li>
+    <li><a href="#s2"><span>02</span>Architecture</a></li>
+    <li><a href="#s3"><span>03</span>Technology stack</a></li>
+    <li><a href="#s4"><span>04</span>Modules</a></li>
+    <li><a href="#s5"><span>05</span>User roles</a></li>
+    <li><a href="#s6"><span>06</span>Screens</a></li>
+    <li><a href="#s7"><span>07</span>Business workflow</a></li>
+    <li><a href="#s8"><span>08</span>Database approach</a></li>
+    <li><a href="#s9"><span>09</span>Initial ER structure</a></li>
+    <li><a href="#s10"><span>10</span>API structure</a></li>
+    <li><a href="#s11"><span>11</span>UI/UX approach</a></li>
+    <li><a href="#s12"><span>12</span>Development phases</a></li>
+    <li><a href="#s13"><span>13</span>Risks &amp; ambiguities</a></li>
+    <li><a href="#s14"><span>14</span>Open questions</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="doc">
+  <div class="eyebrow">Phase 1 &amp; 2 · Requirement analysis and system design · Rev 4</div>
+  <h1>Incoming Material Inspection &amp; Defect Notification (QMAS)</h1>
+  <p>Analysis of <em>IQC_IMIR_Blueprint v2.pptx</em> (13 slides plus 4 embedded files: IMIR/DN numbering options, JIR format samples, SAP field list, DN format) and <em>IQC_inspection_flowchart_Final.html</em>, mapped onto the WRL Tool Report codebase conventions. No application code is written yet; this is the basis for sign-off.</p>
+  <div class="meta">
+    <span class="chip">Blueprint v2.0 · 10 Aug 2026</span>
+    <span class="chip">7 plants</span>
+    <span class="chip">15 business roles + Admin</span>
+    <span class="chip">~6,000–7,000 formats to migrate</span>
+    <span class="chip">PostgreSQL</span>
+    <span class="chip">AWS</span>
+    <span class="chip">Offline tablet inspection</span>
+    <span class="chip">Rev 4 · 23 Sep 2026</span>
+  </div>
+</header>
+
+<!-- 0 -->
+<section id="s0">
+<h2><span class="n">✓</span>Decisions confirmed</h2>
+<h3>Round 3 (rev 4)</h3>
+<div class="tw"><table>
+<tr><th>ID</th><th>Decision</th><th>Design consequence</th></tr>
+<tr><td class="k">S-2, S-3</td><td>Sample size capped at <strong>8</strong>: 2–8 → 2, 9–15 → 3, 16–25 → 5, every lot above 25 → 8</td><td>Sampling master updated (the review workbook's 10,000 → 8 now matches). The inspection grid needs at most 8 sample columns, so it stays a compact grid on the tablet; no paging.</td></tr>
+<tr><td class="k">B-20</td><td>Sub-Head approval replaces the SCM/VD Head; the approval-level setting decides the chain</td><td>Default chain per department = <strong>Initiator → Sub-Head</strong>. The Head is a level only where the setting adds it. If a plant has no active Sub-Head, the task goes to the Head so it is never stuck.</td></tr>
+<tr><td class="k">B-8</td><td>24-hour Ops Head limit in <strong>calendar hours</strong>; CQA added automatically on expiry</td><td>Timer = received_at + 24 h (UTC), checked by the worker every minute; on expiry Ops step → TIMED_OUT and a CQA step is created if missing.</td></tr>
+<tr><td class="k">B-10</td><td>"Once in six months" reliability tests only <strong>when due</strong></td><td>Reliability schedule per checkpoint: due if never done, or last OK test older than the frequency. Not due → the row is shown grey (optional) with the last test date and IMIR number.</td></tr>
+<tr><td class="k">I-1, I-3, I-7</td><td>SAP, Windchill and SAN/SIR start as <strong>mock APIs</strong></td><td>Each adapter has a mock implementation selected by environment variable, with seed data from the review workbooks; the real client is added when specifications arrive, without changing the modules that use it.</td></tr>
+</table></div>
+<h3>Round 2 (rev 3)</h3>
+<div class="tw"><table>
+<tr><th>Area</th><th>Decision</th><th>Design consequence</th></tr>
+<tr><td class="k">Sampling</td><td>Use the Sampling Inspection Procedure table; nothing hard-coded</td><td>Seeded into the sampling master (§01). The table covers lots of 2–10,000 only and has no NOK/acceptance rule, so S-1 to S-3 stay open.</td></tr>
+<tr><td class="k">Hold routing</td><td>IQC Head sends the deviation to <strong>either</strong> SCM <strong>or</strong> VD</td><td><strong>Replaces round-1 decision 3.</strong> One department track per hold; the Head picks it in the hold dialog. Parallel SCM + VD tracks removed.</td></tr>
+<tr><td class="k">Deviation Form</td><td>Selected SCM/VD initiator fills all values, incl. OK/Not-OK qty, Correction, Corrective action</td><td>One owner for the form. Closes B-6.</td></tr>
+<tr><td class="k">Sub-Heads</td><td>SCM/VD Sub-Head approves the deviation raised by their initiator</td><td>Department approval chain is a configurable list of levels. Default Initiator → Sub-Head → Head; whether the Head still reviews is question B-20.</td></tr>
+<tr><td class="k">Major / Minor / Critical</td><td>To follow the form/process rules</td><td>The documents do not say who selects it or whether it affects routing. Default: the initiator selects it on the form; no routing effect; shown in reports. Confirm in B-18.</td></tr>
+<tr><td class="k">Senior escalation</td><td>Parallel; ends when the highest-ranked selected authority decides; all decisions kept</td><td>As designed in §07. Closes B-17.</td></tr>
+<tr><td class="k">Operations Head</td><td>Central Operations Head</td><td>Rank 5 in the matrix. Plant Operations Head has no workflow step (view only).</td></tr>
+<tr><td class="k">DN</td><td>Line/Lab/Field DN not in Release 1</td><td>Release 1 builds the Incoming variant only; the <code>variant</code> column stays for later.</td></tr>
+<tr><td class="k">Model</td><td>Captured by the inspector during inspection</td><td>Model field on the inspection screen (typeahead from earlier entries for that item); copied into DN and Deviation Form.</td></tr>
+<tr><td class="k">Integrations / network</td><td>SAP and Windchill teams provide APIs; SAN/SIR is a separate app; existing plant ↔ AWS VPN</td><td>Adapters built against mocks until specs arrive (I-1, I-3, I-7).</td></tr>
+<tr><td class="k">Tablets</td><td>Android; no fixed offline time limit</td><td>Tablet app packaged with <strong>Capacitor</strong> (same React code) using on-device SQLite, not browser storage. No shift-end expiry for offline work (§07).</td></tr>
+<tr><td class="k">AWS</td><td>Existing Mumbai environment; start in dev</td><td>Region <code>ap-south-1</code>; Phase 4 deploys to the existing dev environment.</td></tr>
+</table></div>
+<h3>Round 1 (rev 2)</h3>
+<p>Your first answers and what each one changed. Sections below are updated to match.</p>
+<div class="tw"><table>
+<tr><th>#</th><th>Decision</th><th>Design consequence</th></tr>
+<tr><td>1</td><td class="k">One format per Item Code</td><td>Unique key <code>(item_id)</code> for the approved version; vendor is not part of the format key. SAN/SIR vendor data is only a <em>source</em> when creating.</td></tr>
+<tr><td>2</td><td class="k">Git-style concurrent drafts</td><td>Each draft branches from a base approved version. Approval of a draft whose base is no longer current triggers a checkpoint-level three-way merge; clashes go to a conflict-resolution screen (see §07, §09).</td></tr>
+<tr><td>3</td><td class="k"><s>Hold → both SCM and VD</s></td><td><em>Superseded in round 2:</em> the IQC Head picks SCM or VD.</td></tr>
+<tr><td>4</td><td class="k">Deviation Form fields from attachment</td><td>Received (<em>Deviation Form Format - Review.xlsx</em>). Fields mapped in §01; stored as typed columns, with every revision kept.</td></tr>
+<tr><td>5</td><td class="k">Parallel senior decisions, higher overrides, all kept</td><td>All selected authorities are notified together. Every individual decision is stored immutably; the <em>effective</em> decision is recomputed by rank on each new decision. Route order is no longer needed — only selection.</td></tr>
+<tr><td>6</td><td class="k">SAP read-only via API</td><td>Inbound pull only. No write-back, no usage decision posting. Removes I-2 scope.</td></tr>
+<tr><td>7</td><td class="k">SAN/SIR is a separate application</td><td>Adapter module <code>integration-san</code> calling its API (vendor + item) with timeout, cache and a clear "SAN unavailable — create new" fallback.</td></tr>
+<tr><td>8</td><td class="k">Own QMAS user accounts</td><td>Local users with argon2id hashing, password policy, lockout, admin reset. Identity layer kept pluggable for later SSO.</td></tr>
+<tr><td>9</td><td class="k">Configurable numbering</td><td>Number-series master with token patterns and reset scope, per document type and plant (see §08).</td></tr>
+<tr><td>10</td><td class="k">AWS hosting</td><td>ECS Fargate, RDS for PostgreSQL Multi-AZ, S3 for files, SES for mail, Secrets Manager, CloudWatch; site-to-site VPN to reach SAP (see §02, Phase 7).</td></tr>
+<tr><td>11–12</td><td class="k">Tablets, offline with sync</td><td>Offline-capable tablet app with a check-out/sync protocol and server-side conflict rules (see §07, §11). Packaging refined in round 2 (Capacitor, Android).</td></tr>
+<tr><td>R</td><td class="k">Review workbooks (IMIR, DN, Deviation)</td><td>Format 2 is the target IMIR layout: nominal + LSL/USL (no limit-symbol logic), photo/PDF per visual sample, separate Inspector and Incharge remarks. Drawing No. and Revision come from <strong>Windchill</strong> (new integration). DN has two variants: Incoming and Line/Lab/Field. Details in §01.</td></tr>
+<tr><td>13</td><td class="k">Common format structure</td><td>One fixed format schema (header + three sections + checkpoint columns); only values vary per item. Bulk import uses a single template; no sample set needed now.</td></tr>
+</table></div>
+</section>
+
+<!-- 1 -->
+<section id="s1">
+<h2><span class="n">01</span>Understanding of the project</h2>
+<p>QMAS IMI &amp; DN digitises the Incoming Quality Control (IQC) lifecycle for purchased material across the plants: from the moment an inward lot is posted in SAP (inspection lot under <code>QA32</code>) to the final usage decision on that lot, including deviation handling with Supply Chain (SCM) / Vendor Development (VD), a seniority-based escalation matrix, and a supplier Defect Notification (DN) with CAPA closure.</p>
+<div class="grid3">
+  <div class="panel ph1"><h4><span class="pill p1">Phase 1</span> Format creation</h4>
+    <p>Every item code needs an approved inspection format (the "JIR" — Product Inspection Test Standard cum Joint Inspection Report) with Dimensional, Visual and Reliability checkpoints. Source: pre-fed migration, SAN/SIR fetch, or built new. IQC Head approves; every revision is versioned.</p></div>
+  <div class="panel ph2"><h4><span class="pill p2">Phase 2</span> Physical inspection</h4>
+    <p>Lot fetched from SAP opens an IMIR (number generated, status <code>OPEN</code>). Sampling per IS 2500 S1 / AQL 2.5 decides which sample boxes are mandatory. Inspector records observations; dimensional and visual results are auto-judged; reliability is manual. Submission locks data.</p></div>
+  <div class="panel ph3"><h4><span class="pill p3">Phase 3</span> Review &amp; closure</h4>
+    <p>IQC Incharge approves, reverts or escalates. IQC Head approves or puts on hold with deviation types (UAI / Segregation / Rework). SCM/VD raise a deviation, their head reviews, IQC Head accepts or escalates to senior authority. Quantity verification, 14-day auto-closure, and DN/CAPA run alongside.</p></div>
+</div>
+<h3>Facts pinned from the embedded files</h3>
+<div class="tw"><table>
+<tr><th>Item</th><th>What the documents say</th></tr>
+<tr><td class="k">SAP fields (QA32)</td><td>GRN No, GRN Date, Plant Code, Inward Qty, Vendor Code, Vendor Name, Invoice No, Item Code, Item Description, Item Category, UOM.</td></tr>
+<tr><td class="k">JIR header</td><td>Format No, Common Format No, Ref. Std. IS 2500, Sampling Level (printed "S1 / 2.5 AQL" — to be replaced by the procedure table), JIR No, Inspection Date, Drawing No, Dwg Revision No, Model, Sample Qty.</td></tr>
+<tr><td class="k">Checkpoint columns</td><td>SR No, Check Point, Specification (or LSL/USL), Spec UOM, Instrument/Method, X1…X5, OK/NOK, Remark. Reliability adds <em>Frequency</em> (e.g. "Once in six months") and a single X1.</td></tr>
+<tr><td class="k">Spec notation (rev 2)</td><td>Format 2 is the target: Specification (nominal) + <strong>LSL</strong> + <strong>USL</strong>, per the review comment "removes any limit logic". Older notations (<code>57 ± 0.3</code>, <code>337 +1/-2</code>, <code>&lt;2</code>, <code>&gt;0.05</code>) are only converted during migration.</td></tr>
+<tr><td class="k">IMIR number</td><td><code>IMIR + plant + YY MM DD + 3-digit serial</code>, serial resets per plant per day. Option 1 uses the SAP plant code (<code>IMIR1115260701001</code>), Option 2 a 2-digit code (<code>IMIR03260701001</code>).</td></tr>
+<tr><td class="k">DN number</td><td><code>DN + plant + source (IL/LN/RL/FD) + YY MM + serial</code>, resets per plant per month.</td></tr>
+<tr><td class="k">Plants</td><td>1111 Silvassa · 1115 Sanjan · 1125 Tadgam · 1120 Shahpur · 1191 Tumb · 1130 Malav · 1179 Tumb FG 1.</td></tr>
+<tr><td class="k">DN format (review)</td><td>Two variants. <em>Incoming</em>: IMIR/CCF No., inspection date and "Final Decision on JIR" auto from IMIR; received qty (as per sampling plan), checked qty, defective qty. <em>Line/Lab/Field</em>: adds LAB Test Plan No., only defective qty. Both: DN No. and date auto; item/vendor/GRN/invoice from SAP; Model <em>to be discussed</em>; CAPA Applicable YES/NO manual; parameter/spec/defect table; 4 images; Defect, Correction, Root cause, Corrective action with target date, closing date, responsibility. Vendor to share CAPA within 3 days.</td></tr>
+<tr><td class="k">IMIR format (review)</td><td>Title "IMIR – Incoming Material Inspection Report". JIR No., inspection date and sample qty auto-generated; SAP fields fetched; <strong>Drawing No. and Dwg Revision from Windchill</strong>; Model manual-or-not <em>to be discussed</em>; <strong>Common Format No. shared across all plants</strong>. Visual cells X1–X5 each allow an <strong>image/PDF upload</strong>. Remarks split into <strong>Inspector</strong> and <strong>Incharge</strong> columns.</td></tr>
+<tr><td class="k">Deviation form (review)</td><td>Deviation Form No. and date auto; JIR No. and inspection date auto; GRN, vendor, item, plant, invoice, inward qty, UOM from SAP; Model <em>to be discussed</em>. Entered: Deviation initiator and department, Deviation qty, <strong>Type of deviation: Major / Minor / Critical</strong>, <strong>Action: Use As Is / Segregation / Rework</strong>, Specification, Observation by IQC Incharge &amp; Head, Correction, Corrective action, <strong>OK qty / Not-OK qty</strong>, Approval.</td></tr>
+</table></div>
+<div class="callout info"><strong>Sampling (rev 3; superseded in round 3: capped at 8 samples, see the decisions table).</strong> The Sampling Inspection Procedure table is seeded into the sampling master exactly as given: 2–8 → 2 · 9–15 → 3 · 16–25 → 5 · 26–50 → 8 · 51–90 → 13 · 91–150 → 20 · 151–280 → 32 · 281–500 → 50 · 501–1,200 → 80 · 1,201–3,200 → 125 · 3,201–10,000 → 200. These are the IS 2500 <em>General Inspection Level II</em> sample sizes (code letters A–L), not S1, so the earlier S1 / AQL 2.5 assumption is dropped. The table is master data with columns for acceptance (Ac) and rejection (Re) numbers, so QA can change it without a release. Three gaps remain:
+<ul style="margin:6px 0 0">
+<li><strong>No NOK rule in the image</strong> — it gives sample sizes but no Ac/Re numbers. Until you share that part of the procedure, the lot is NOK on any single NOK (Ac 0).</li>
+<li><strong>Lots above 10,000 are not covered</strong> — IS 2500 Level II continues 10,001–35,000 → 315, 35,001–150,000 → 500, 150,001–500,000 → 800, above → 1,250; I won't add these without your confirmation. A lot of 1 is inspected 100%.</li>
+<li><strong>Size of the grid</strong> — a lot of 10,000 now needs 200 samples, while the JIR has 5 columns (X1–X5) and the review workbook's example shows 10,000 → 8. If every dimensional checkpoint needs 200 readings, the inspection screen becomes sample-by-sample entry with paging rather than a 5-column grid.</li>
+</ul></div>
+</section>
+
+<!-- 2 -->
+<section id="s2">
+<h2><span class="n">02</span>Proposed application architecture</h2>
+<p>A modular monolith: one Node.js service with strict module boundaries (formats, IMIR, deviation, escalation, DN, masters, integration), one PostgreSQL database, and a background worker process running from the same codebase. It keeps the WRL Tool Report code shape (Express API, React build) while fixing the parts that don't scale well there, and runs on AWS managed services so the team does not operate servers or database replicas. Microservices would add operational cost with no benefit at this user volume.</p>
+<figure>
+<div class="scroll">
+<svg class="arch" viewBox="0 0 940 420" role="img" aria-label="Tablets and desktops reach CloudFront with WAF over HTTPS; CloudFront serves the React build from S3 and forwards /api to the API on ECS Fargate; the API and a worker share RDS PostgreSQL; files go to S3; the worker pulls SAP over a site-to-site VPN and sends mail through SES; the API looks up formats in the SAN/SIR application.">
+  <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="currentColor"/></marker></defs>
+  <g font-family="Outfit, sans-serif" font-size="13" fill="currentColor">
+    <rect x="20" y="70" width="150" height="60" rx="8" fill="none" stroke="#1b8a5e" stroke-width="2"/>
+    <text x="95" y="96" text-anchor="middle" font-weight="600">Android tablet app</text>
+    <text x="95" y="114" text-anchor="middle" font-size="11.5" opacity=".75">offline store + sync queue</text>
+    <rect x="20" y="170" width="150" height="60" rx="8" fill="none" stroke="currentColor"/>
+    <text x="95" y="196" text-anchor="middle" font-weight="600">Desktop browser</text>
+    <text x="95" y="214" text-anchor="middle" font-size="11.5" opacity=".75">IQC, SCM, VD, heads</text>
+
+    <rect x="220" y="110" width="160" height="80" rx="8" fill="none" stroke="currentColor"/>
+    <text x="300" y="142" text-anchor="middle" font-weight="600">CloudFront + WAF</text>
+    <text x="300" y="160" text-anchor="middle" font-size="11.5" opacity=".75">TLS · caching · rate rules</text>
+
+    <rect x="440" y="20" width="190" height="50" rx="8" fill="none" stroke="currentColor"/>
+    <text x="535" y="50" text-anchor="middle" font-weight="600">S3 · React build</text>
+
+    <rect x="440" y="110" width="190" height="110" rx="8" fill="none" stroke="#2256d6" stroke-width="2"/>
+    <text x="535" y="134" text-anchor="middle" font-weight="700">QMAS API</text>
+    <text x="535" y="154" text-anchor="middle" font-size="11.5" opacity=".75">ECS Fargate behind ALB, 2+ tasks</text>
+    <text x="535" y="172" text-anchor="middle" font-size="11.5" opacity=".75">services + workflow engine</text>
+    <text x="535" y="190" text-anchor="middle" font-size="11.5" opacity=".75">JWT · RBAC · zod · sync API</text>
+    <text x="535" y="208" text-anchor="middle" font-size="11.5" opacity=".75">private subnets</text>
+
+    <rect x="440" y="270" width="190" height="90" rx="8" fill="none" stroke="currentColor"/>
+    <text x="535" y="296" text-anchor="middle" font-weight="600">Worker · ECS Fargate</text>
+    <text x="535" y="316" text-anchor="middle" font-size="11.5" opacity=".75">SAP pull · TAT timers</text>
+    <text x="535" y="334" text-anchor="middle" font-size="11.5" opacity=".75">14-day auto-close · mail</text>
+
+    <rect x="710" y="20" width="200" height="60" rx="8" fill="none" stroke="currentColor"/>
+    <text x="810" y="46" text-anchor="middle" font-weight="600">S3 · attachments</text>
+    <text x="810" y="64" text-anchor="middle" font-size="11.5" opacity=".75">presigned upload/download</text>
+
+    <rect x="710" y="130" width="200" height="80" rx="8" fill="none" stroke="currentColor"/>
+    <text x="810" y="160" text-anchor="middle" font-weight="600">RDS for PostgreSQL</text>
+    <text x="810" y="180" text-anchor="middle" font-size="11.5" opacity=".75">Multi-AZ · data · audit · jobs</text>
+
+    <rect x="710" y="240" width="200" height="40" rx="8" fill="none" stroke="currentColor"/>
+    <text x="810" y="265" text-anchor="middle" font-weight="600">Amazon SES</text>
+    <rect x="710" y="300" width="200" height="44" rx="8" fill="none" stroke="currentColor" stroke-dasharray="4 3"/>
+    <text x="810" y="327" text-anchor="middle" font-weight="600">SAP API (on-prem)</text>
+    <rect x="710" y="360" width="200" height="44" rx="8" fill="none" stroke="currentColor" stroke-dasharray="4 3"/>
+    <text x="810" y="387" text-anchor="middle" font-weight="600">SAN/SIR application API</text>
+
+    <line x1="170" y1="100" x2="218" y2="136" stroke="currentColor" marker-end="url(#ar)"/>
+    <line x1="170" y1="200" x2="218" y2="168" stroke="currentColor" marker-end="url(#ar)"/>
+    <text x="196" y="156" text-anchor="middle" font-size="11" opacity=".7">HTTPS</text>
+    <line x1="380" y1="124" x2="438" y2="52" stroke="currentColor" marker-end="url(#ar)"/>
+    <text x="398" y="80" text-anchor="middle" font-size="11" opacity=".7">static</text>
+    <line x1="380" y1="160" x2="438" y2="162" stroke="currentColor" marker-end="url(#ar)"/>
+    <text x="410" y="152" text-anchor="middle" font-size="11" opacity=".7">/api</text>
+    <line x1="630" y1="168" x2="708" y2="170" stroke="currentColor" marker-end="url(#ar)"/>
+    <text x="668" y="162" text-anchor="middle" font-size="11" opacity=".7">SQL</text>
+    <line x1="630" y1="126" x2="708" y2="60" stroke="currentColor" marker-end="url(#ar)"/>
+    <text x="662" y="84" text-anchor="middle" font-size="11" opacity=".7">presign</text>
+    <line x1="630" y1="286" x2="708" y2="202" stroke="currentColor" marker-end="url(#ar)"/>
+    <text x="684" y="232" text-anchor="middle" font-size="11" opacity=".7">jobs</text>
+    <line x1="630" y1="306" x2="708" y2="264" stroke="currentColor" marker-end="url(#ar)"/>
+    <line x1="630" y1="336" x2="708" y2="322" stroke="currentColor" marker-end="url(#ar)"/>
+    <text x="668" y="348" text-anchor="middle" font-size="11" opacity=".7">VPN pull</text>
+    <path d="M630,214 C680,240 660,370 708,380" fill="none" stroke="currentColor" marker-end="url(#ar)"/>
+    <text x="690" y="396" text-anchor="middle" font-size="11" opacity=".7">lookup</text>
+  </g>
+</svg>
+</div>
+<figcaption>AWS runtime topology (rev 2). API, worker and RDS sit in private subnets; only CloudFront/ALB is public. The worker is the same codebase with a different entry point, so SAP sync, escalation timers and mail never block API requests and survive restarts (jobs are stored in PostgreSQL). SAP is reached only from the worker, over a site-to-site VPN; nothing is written back.</figcaption>
+</figure>
+
+<h3>Backend layering (keeps WRL's folder names, adds two layers)</h3>
+<pre class="code">backend/src/
+  config/          env schema (zod), db pool, mail, logger
+  middlewares/     authenticate, authorize(permission), plantScope, validate(schema), errorHandler, requestId
+  modules/
+    imir/          imir.routes.js  imir.controller.js  imir.service.js  imir.repo.js  imir.schema.js  imir.policy.js
+    format/  deviation/  escalation/  dn/  masters/  users/  reports/  notifications/
+    integration-sap/   integration-san/   offline-sync/   numbering/
+  workflow/        state machines (IMIR, Format, Deviation, DN) — transitions, guards, side-effects
+  jobs/            sap-sync, escalation-tat, qty-auto-close, capa-reminder, mail-outbox
+  db/migrations/   versioned SQL (node-pg-migrate)
+  shared/          AppError, tryCatch, pagination, docNumber, audit, fileStore
+server.js · worker.js</pre>
+<ul>
+  <li><strong>Controllers</strong> only parse the request and shape the response. <strong>Services</strong> own business rules and open the transaction. <strong>Repositories</strong> hold parameterised SQL. <strong>Policies</strong> answer "may this user act on this record" (role + plant + current stage).</li>
+  <li><strong>Workflow engine:</strong> each document type has a declarative transition table <code>{from, action, to, roles, guard, effects}</code>. One endpoint executes any action; the engine validates, writes the new state and a history row in the same transaction, then queues notifications. No status changes happen outside it.</li>
+  <li><strong>Concurrency:</strong> every workflow table carries <code>row_version</code>; a stale update returns <code>409 Conflict</code> (two heads acting on one IMIR at once).</li>
+  <li><strong>Integration adapters</strong> (SAP, SAN/SIR) sit behind interfaces with timeouts, retries and a circuit breaker, and have a mock implementation so development and tests don't need the real systems.</li>
+</ul>
+</section>
+
+<!-- 3 -->
+<section id="s3">
+<h2><span class="n">03</span>Proposed technology stack</h2>
+<div class="tw"><table>
+<tr><th>Layer</th><th>Choice</th><th>Same as WRL?</th><th>Reason</th></tr>
+<tr><td class="k">Frontend</td><td>React 19, Vite 6, Tailwind CSS 4, React Router 7</td><td><span class="pill acc">Same</span></td><td>Team familiarity, identical build pipeline.</td></tr>
+<tr><td class="k">State / data</td><td>Redux Toolkit + RTK Query (one <code>baseApi</code> with injected endpoints), redux-persist for auth only</td><td><span class="pill acc">Same, consolidated</span></td><td>WRL has one <code>createApi</code> per module; one base API gives shared 401 handling and cache tags.</td></tr>
+<tr><td class="k">UI kit</td><td>WRL <code>components/ui</code> (Button, InputField, SelectField, PopupModal, Pagination, Badge, EmptyState, Loader, ExportButton) + lucide-react + react-hot-toast</td><td><span class="pill acc">Same</span></td><td>Reuse directly; add DataTable, ConfirmDialog, StatusPill, Stepper, FileDrop.</td></tr>
+<tr><td class="k">Forms</td><td>react-hook-form + zod (schemas shared with backend)</td><td>New</td><td>Large observation grids need uncontrolled inputs for tablet performance; one schema validates both sides.</td></tr>
+<tr><td class="k">Charts / export</td><td>Recharts, ExcelJS, jsPDF (client) · PDFKit (server, official IMIR/DN PDFs)</td><td><span class="pill acc">Same</span></td><td>Already in WRL.</td></tr>
+<tr><td class="k">API</td><td>Node.js 22 LTS, Express 5, ES modules</td><td><span class="pill acc">Same</span></td><td>WRL uses Express 5 ESM.</td></tr>
+<tr><td class="k">DB access</td><td><code>pg</code> (node-postgres) + repositories; <code>node-pg-migrate</code> SQL migrations</td><td>New (replaces mssql)</td><td>Explicit SQL (as in WRL) but with a real migration history instead of startup <code>runMigrations</code>.</td></tr>
+<tr><td class="k">Validation</td><td>zod</td><td>New</td><td>Consistent 422 errors with field paths.</td></tr>
+<tr><td class="k">Auth</td><td>Own QMAS accounts. JWT access token (15 min) in httpOnly cookie + rotating refresh token stored hashed in DB; argon2id password hashing; per-device offline grant for tablets</td><td>Improved</td><td>WRL compares plain-text passwords in SQL and has no revocation.</td></tr>
+<tr><td class="k">Jobs</td><td>pg-boss (queue in PostgreSQL)</td><td>Replaces node-cron</td><td>24-hour TAT and 14-day timers must survive restarts and not double-fire across cluster instances.</td></tr>
+<tr><td class="k">Logging</td><td>pino (JSON) + pino-http with request ID; log rotation</td><td>New</td><td>WRL uses <code>console.log</code>.</td></tr>
+<tr><td class="k">Security middleware</td><td>helmet, CORS from env, express-rate-limit on auth, multer with MIME/size allow-list</td><td>Improved</td><td>WRL hard-codes the CORS origin.</td></tr>
+<tr><td class="k">Mail</td><td>nodemailer over Amazon SES (SMTP interface) + HTML templates, via DB outbox</td><td><span class="pill acc">Same, made reliable</span></td><td>Mail is sent after commit; failures retried.</td></tr>
+<tr><td class="k">Database</td><td>Amazon RDS for PostgreSQL 16/17 (Multi-AZ), extensions <code>pgcrypto</code>, <code>pg_trgm</code>, <code>citext</code></td><td>New</td><td>Managed backups, PITR, patching, failover.</td></tr>
+<tr><td class="k">Offline tablet app</td><td>Capacitor Android shell around the same React code; on-device SQLite (Capacitor SQLite) for lots, entries and photos; Android Keystore for the device credential; distributed through the company MDM or as a signed APK</td><td>New</td><td>No offline time limit means data may sit on the tablet for days, and browser storage can be cleared by Android when space runs low. Native storage avoids that. Desktop users keep the normal web app.</td></tr>
+<tr><td class="k">Files</td><td>Amazon S3 with presigned URLs, SSE-KMS, versioning</td><td>Replaces local <code>uploads/</code></td><td>Stateless API containers; files survive redeploys.</td></tr>
+<tr><td class="k">Testing</td><td>Vitest, Supertest, Testcontainers (real PostgreSQL), Playwright, k6</td><td>New</td><td>WRL has no automated tests.</td></tr>
+<tr><td class="k">Runtime</td><td>Docker images on ECS Fargate behind an ALB; CloudFront + WAF in front; secrets in AWS Secrets Manager; logs/metrics in CloudWatch</td><td>Docker (as WRL)</td><td>AWS confirmed. Infrastructure as code with Terraform or AWS CDK.</td></tr>
+<tr><td class="k">CI/CD</td><td>GitHub Actions (or CodePipeline) → ECR → ECS rolling deploy; migrations run as a one-off task before deploy</td><td>New</td><td>Repeatable, auditable releases.</td></tr>
+</table></div>
+</section>
+
+<!-- 4 -->
+<section id="s4">
+<h2><span class="n">04</span>Complete module list</h2>
+<div class="tw"><table>
+<tr><th>#</th><th>Module</th><th>Scope</th><th>Source</th></tr>
+<tr><td>M1</td><td class="k">Authentication &amp; Users</td><td>Login, sessions, password policy, users, role assignment per plant, permission matrix (WRL <code>RolePermissions</code> model)</td><td>Implied</td></tr>
+<tr><td>M2</td><td class="k">Masters</td><td>Plants, vendors, items, item categories, UOM, instruments, sampling plans &amp; tables, deviation types, limit symbols, escalation matrix config, tablet devices</td><td>Slides 3, 6, 11</td></tr>
+<tr><td>M2b</td><td class="k">Numbering Master</td><td>Configurable number series per document type / plant: token pattern, reset scope, padding, preview, effective date</td><td>Embedded PPTs · Decision 9</td></tr>
+<tr><td>M3</td><td class="k">SAP Integration</td><td>QA32 lot pull over API (read-only, no write-back), raw payload store, de-duplication, sync monitor, retry</td><td>Slides 3, 5 · Decision 6</td></tr>
+<tr><td>M3b</td><td class="k">SAN/SIR Integration</td><td>API client for the SAN/SIR application: look up checkpoints by vendor + item, map to QMAS format structure, cache, fallback</td><td>Slide 3 · Decision 7</td></tr>
+<tr><td>M3c</td><td class="k">Windchill Integration</td><td>Fetch Drawing No. and Drawing Revision for the item code; show the revision on the IMIR; flag when the drawing revision changed after the format was approved</td><td>Review workbook</td></tr>
+<tr><td>M4</td><td class="k">Inspection Formats</td><td>One format per item code; pre-fed bulk import (common template), SAN/SIR fetch, create new; Git-style branching, three-way merge and conflict resolution; approval queue (timestamp-ordered); compare revisions</td><td>Slides 3, 4 · Decisions 1, 2, 13</td></tr>
+<tr><td>M5</td><td class="k">Incoming Lots &amp; IMIR</td><td>Lot list, IMIR generation, numbering, sampling calculation, format binding</td><td>Slide 5</td></tr>
+<tr><td>M6</td><td class="k">Inspection Entry (offline tablet)</td><td>Observation grid (Dimensional / Visual / Reliability), auto-decision, mandatory highlight, photo/PDF per visual sample (camera works offline, uploads on sync), Inspector remark per checkpoint, local draft, offline submit queued, sync with conflict handling, device registration</td><td>Slides 5, 6 · Decisions 11, 12</td></tr>
+<tr><td>M7</td><td class="k">IMIR Review</td><td>Incharge remark per checkpoint (separate column); Incharge approve / revert / escalate; IQC Head approve / on-hold with multi-select deviation types</td><td>Slides 7, 8</td></tr>
+<tr><td>M8</td><td class="k">Deviation (SCM or VD)</td><td>IQC Head picks the department on hold; initiator decision (recommend rejection / raise deviation), Deviation Form incl. Major/Minor/Critical and OK/Not-OK qty, department approval chain (Sub-Head → Head, configurable), IQC Head final decision</td><td>Slide 9 · Round 2</td></tr>
+<tr><td>M9</td><td class="k">Escalation Matrix (parallel)</td><td>IQC Head selects authorities; all decide in parallel; immutable individual decisions; effective decision by rank; Rules 1–4 (hierarchy, CQA+PDC, 24 h TAT, override)</td><td>Slides 10, 11 · Decision 5</td></tr>
+<tr><td>M10</td><td class="k">Final Judgement &amp; Quantity</td><td>Activity tracking (Segregation/Rework), quantity entry, IQC Head verification, 14-day auto-closure</td><td>Slide 12</td></tr>
+<tr><td>M11</td><td class="k">Defect Notification &amp; CAPA</td><td>Two variants: Incoming (from IMIR) and Line/Lab/Field (from item + GRN, with Lab Test Plan No.); auto-fetch, images, Send-mail-to-self, CAPA upload, IQC Head approve / resubmit, closure broadcast</td><td>Slide 13</td></tr>
+<tr><td>M12</td><td class="k">Notifications</td><td>In-app bell + email for every hand-off, TAT reminders, closure mails</td><td>Slides 9, 11, 13</td></tr>
+<tr><td>M13</td><td class="k">Dashboard &amp; Reports</td><td>Role dashboards, registers, ageing, vendor quality, exports, printable IMIR/DN</td><td>Not in blueprint (proposed)</td></tr>
+<tr><td>M14</td><td class="k">Audit &amp; Admin</td><td>Field-level audit trail, workflow history, override console, job monitor</td><td>Slides 4, 11 (Rule 4)</td></tr>
+</table></div>
+</section>
+
+<!-- 5 -->
+<section id="s5">
+<h2><span class="n">05</span>User roles</h2>
+<p>Roles marked <span class="pill must">Plant</span> can act only on their assigned plant(s). IQC Inspector and SCM/VD Requestors can also <em>see</em> only their plant; every other role sees all plants read-only (slide 2).</p>
+<div class="tw"><table>
+<tr><th>#</th><th>Role</th><th>Dept</th><th>Scope</th><th>Actions in the workflow</th></tr>
+<tr><td>1</td><td class="k">IQC Inspector</td><td>IQC</td><td><span class="pill must">Plant</span> own-plant view</td><td>Fill observations, save, submit IMIR, re-submit after revert. <em>Possibly</em> "IQC Initiator" for formats (Q B-3).</td></tr>
+<tr><td>2</td><td class="k">IQC Incharge</td><td>IQC</td><td><span class="pill must">Plant</span></td><td>Approve / revert / escalate IMIR (NC remark mandatory); raise DN; upload CAPA; enter final quantity (slide 10).</td></tr>
+<tr><td>3</td><td class="k">Plant IQC Head</td><td>IQC</td><td><span class="pill must">Plant</span></td><td>Approve formats and resolve merge conflicts; approve / hold IMIR with deviation types; final decision after the SCM or VD review; select senior authorities; verify qty; approve CAPA.</td></tr>
+<tr><td>4</td><td class="k">SCM Requestor (initiator)</td><td>SCM</td><td><span class="pill must">Plant</span> own-plant view</td><td>When the IQC Head routes a hold to SCM: recommend rejection or fill the whole Deviation Form, including OK/Not-OK qty, Correction and Corrective action.</td></tr>
+<tr><td>5</td><td class="k">VD Requestor (initiator)</td><td>VD</td><td>Own-plant view (no *)</td><td>Same as SCM Requestor when the hold is routed to VD.</td></tr>
+<tr><td>6</td><td class="k">SCM Head</td><td>SCM</td><td><span class="pill must">Plant</span></td><td>Approves deviations only where the approval-level setting includes the Head, or when no Sub-Head is assigned.</td></tr>
+<tr><td>7</td><td class="k">VD Head</td><td>VD</td><td>All plants</td><td>Same as SCM Head, for VD.</td></tr>
+<tr><td>8</td><td class="k">Plant Head</td><td>Plant</td><td><span class="pill must">Plant</span></td><td>Senior authority, rank 1.</td></tr>
+<tr><td>9</td><td class="k">Plant QA Head</td><td>Quality</td><td><span class="pill must">Plant</span></td><td>Senior authority, rank 2.</td></tr>
+<tr><td>10</td><td class="k">PDC Head</td><td>PDC</td><td>All plants</td><td>Senior authority, rank 3; mandatory record decision when paired with CQA (Rule 2).</td></tr>
+<tr><td>11</td><td class="k">CQA Head</td><td>Central Quality</td><td>All plants</td><td>Senior authority, rank 4; final over PDC; receives Ops Head's decision after 24 h; override right (Rule 4).</td></tr>
+<tr><td>12</td><td class="k">Central Operations Head</td><td>Operations</td><td>All plants</td><td>Senior authority, rank 5 (highest); override right.</td></tr>
+<tr><td>13</td><td class="k">SCM Sub-Head</td><td>SCM</td><td><span class="pill must">Plant</span></td><td>Approves (or sends back) the Deviation Form raised by the SCM initiator.</td></tr>
+<tr><td>14</td><td class="k">VD Sub-Head</td><td>VD</td><td>All plants</td><td>Approves (or sends back) the Deviation Form raised by the VD initiator.</td></tr>
+<tr><td>15</td><td class="k">Plant Operations Head</td><td>Operations</td><td>All plants (no *)</td><td>View only; the escalation matrix uses the Central Operations Head.</td></tr>
+<tr><td>+</td><td class="k">System Admin</td><td>IT</td><td>All</td><td>Users, masters, permissions, job monitor; post-closure override (Rule 4). Referenced but not listed.</td></tr>
+<tr><td>+</td><td class="k">Viewer / Auditor</td><td>—</td><td>All, read-only</td><td>Proposed for management and audits.</td></tr>
+</table></div>
+<p class="muted">Accounts are QMAS-owned (Decision 8). Model: a user holds one or more <em>role assignments</em>, each optionally bound to a plant (<code>user_role(user_id, role_id, plant_id NULL)</code>). This lets one person be IQC Head of two plants, or hold a delegation while someone is on leave.</p>
+</section>
+
+<!-- 6 -->
+<section id="s6">
+<h2><span class="n">06</span>Screen / page list</h2>
+<div class="tw"><table>
+<tr><th>Sidebar section</th><th>Screen</th><th>Primary users</th><th>Type</th></tr>
+<tr><td class="k" rowspan="2">Home</td><td>Role dashboard (my pending actions, KPIs, plant tiles, TAT breaches)</td><td>All</td><td>Dashboard</td></tr>
+<tr><td>My Tasks (unified inbox across IMIR, formats, deviations, DN)</td><td>All actors</td><td>List</td></tr>
+<tr><td class="k" rowspan="4">Incoming Inspection</td><td>Incoming Lot List (from QA32, status filters, plant filter, search)</td><td>IQC</td><td>List</td></tr>
+<tr><td>IMIR Detail — tabs: Lot · Inspection · Review trail · Deviation · Escalation · DN · Attachments · Audit</td><td>All</td><td>Detail</td></tr>
+<tr><td>Tablet app: My checked-out lots · Inspection Entry (offline grid) · Sync status &amp; Needs attention</td><td>Inspector</td><td>Tablet app</td></tr>
+<tr><td>IMIR Review (Incharge / Head action panel with remark and deviation-type multi-select)</td><td>Incharge, IQC Head</td><td>Form + modal</td></tr>
+<tr><td class="k" rowspan="6">Inspection Formats</td><td>Format Library (item, version, status, source)</td><td>IQC</td><td>List</td></tr>
+<tr><td>Format Editor (source picker: SAN/SIR · clone · new; section grids; limit builder)</td><td>Initiator, IQC Head</td><td>Form</td></tr>
+<tr><td>Format Approval Queue (ordered by creation timestamp)</td><td>IQC Head</td><td>List</td></tr>
+<tr><td>Format Version History &amp; Compare (side-by-side diff, version tree)</td><td>IQC</td><td>Detail</td></tr>
+<tr><td>Merge Conflict Resolution (base / approved / draft per clashing field; keep approved, keep draft, or edit)</td><td>Draft owner, IQC Head</td><td>Form</td></tr>
+<tr><td>Bulk Format Import (Excel template, dry-run validation report)</td><td>Admin, IQC Head</td><td>Wizard</td></tr>
+<tr><td class="k" rowspan="6">Deviation</td><td>Deviation Register</td><td>SCM, VD, IQC Head</td><td>List</td></tr>
+<tr><td>Deviation Form (initiator of the department the IQC Head chose)</td><td>SCM/VD Requestor</td><td>Form</td></tr>
+<tr><td>Deviation Approval (Sub-Head, then Head if configured)</td><td>SCM/VD Sub-Head, Head</td><td>Form</td></tr>
+<tr><td>IQC Head Final Decision (department outcome, Deviation Form, IMIR results in one view)</td><td>IQC Head</td><td>Form</td></tr>
+<tr><td>Senior Authority Selection (multi-select; parallel, so no ordering)</td><td>IQC Head</td><td>Modal</td></tr>
+<tr><td>Senior Decision (approve / reject / change type), decision board showing every authority, and Quantity Entry &amp; Verification</td><td>Seniors, SCM, IQC</td><td>Form</td></tr>
+<tr><td class="k" rowspan="3">Defect Notification</td><td>DN Register (status, ageing, vendor)</td><td>IQC</td><td>List</td></tr>
+<tr><td>DN Form (auto-filled header, defect lines, 4 images, CAPA sections, Send mail to myself)</td><td>IQC Incharge</td><td>Form</td></tr>
+<tr><td>CAPA Review (approve / resubmit)</td><td>IQC Head</td><td>Form</td></tr>
+<tr><td class="k" rowspan="2">Reports</td><td>IMIR register · pending ageing by stage · vendor rejection % / PPM · deviation register · DN/CAPA ageing · format coverage · TAT compliance · escalation outcomes</td><td>All (scoped)</td><td>Report</td></tr>
+<tr><td>Printable IMIR (JIR layout) and DN PDF</td><td>All</td><td>PDF</td></tr>
+<tr><td class="k" rowspan="5">Master Config</td><td>Plants · Vendors · Items · Categories · UOM · Instruments · Sampling table (lot range → sample size, Ac/Re) · Department approval chains · Deviation types · Escalation matrix · Mail config</td><td>Admin</td><td>CRUD</td></tr>
+<tr><td>Number Series (pattern builder with tokens, reset scope, live preview, effective date)</td><td>Admin</td><td>Form</td></tr>
+<tr><td>Tablet Devices (register, assign plant, revoke, view last sync, release locks)</td><td>Admin, IQC Incharge</td><td>CRUD</td></tr>
+<tr><td>Users &amp; role assignments · Role permissions (WRL matrix screen)</td><td>Admin</td><td>CRUD</td></tr>
+<tr><td>Integration Monitor: SAP pulls and SAN/SIR calls (last run, counts, errors, manual re-sync)</td><td>Admin</td><td>Monitor</td></tr>
+<tr><td class="k" rowspan="2">Admin</td><td>Audit Trail (WRL <code>AuditTrail.jsx</code> pattern)</td><td>Admin, Auditor</td><td>List</td></tr>
+<tr><td>Override Console (Rule 4, reason mandatory)</td><td>Admin, CQA, Ops Head</td><td>Form</td></tr>
+<tr><td class="k">Auth</td><td>Login · Change password · Forbidden · Not found</td><td>All</td><td>—</td></tr>
+</table></div>
+</section>
+
+<!-- 7 -->
+<section id="s7">
+<h2><span class="n">07</span>Complete business workflow</h2>
+<h3>IMIR lifecycle (state machine)</h3>
+<figure>
+<div class="scroll">
+<pre class="mermaid">
+stateDiagram-v2
+    direction TB
+    [*] --> AWAITING_FORMAT : SAP lot synced, no approved format
+    [*] --> OPEN : approved format found, IMIR no. generated
+    AWAITING_FORMAT --> OPEN : format approved by IQC Head
+    OPEN --> IN_INSPECTION : checked out to tablet or first entry
+    IN_INSPECTION --> SUBMITTED : all mandatory filled and synced, data locked
+    SUBMITTED --> IN_INSPECTION : Incharge reverts (minor correction)
+    SUBMITTED --> CLOSED_ACCEPTED : Incharge approves
+    SUBMITTED --> WITH_IQC_HEAD : Incharge escalates, NC remark
+    WITH_IQC_HEAD --> CLOSED_ACCEPTED : Head approves 100 pct
+    WITH_IQC_HEAD --> DEPT_REVIEW : Head holds, picks types, routes to SCM or VD
+    state DEPT_REVIEW {
+        [*] --> INITIATOR
+        INITIATOR --> SUB_HEAD : deviation form submitted
+        SUB_HEAD --> INITIATOR : sends back
+        SUB_HEAD --> DEPT_DONE : approves (Head skipped)
+        SUB_HEAD --> DEPT_HEAD : approves, Head level configured
+        DEPT_HEAD --> INITIATOR : re-review
+        DEPT_HEAD --> DEPT_DONE : approve or reject
+        INITIATOR --> DEPT_DONE : recommends rejection
+    }
+    DEPT_REVIEW --> IQC_HEAD_FINAL : department outcome
+    IQC_HEAD_FINAL --> CLOSED_REJECTED : Head rejects lot
+    IQC_HEAD_FINAL --> SENIOR_ESCALATION : Head escalates, selects authorities
+    SENIOR_ESCALATION --> IQC_HEAD_FINAL : effective decision returned
+    SENIOR_ESCALATION --> DEPT_REVIEW : effective decision is change type
+    IQC_HEAD_FINAL --> UNDER_DEVIATION : Head approves deviation
+    UNDER_DEVIATION --> CLOSED_UNDER_DEVIATION : UAI (100 pct auto)
+    UNDER_DEVIATION --> QTY_VERIFICATION : quantities entered after activity
+    QTY_VERIFICATION --> CLOSED_UNDER_DEVIATION : IQC Head verifies
+    UNDER_DEVIATION --> AUTO_CLOSED : 14 days without quantity
+</pre>
+</div>
+<figcaption>Rev 3. On hold, the IQC Head sends the case to <em>one</em> department, SCM or VD. There it goes initiator → Sub-Head; the Sub-Head's approval replaces the Head's unless the approval-level setting adds the Head. The department cannot close the lot; its outcome goes to the IQC Head, who makes the final decision. Senior authorities decide in parallel; the escalation ends when the highest-ranked selected authority decides. The 14-day rule counts from the IQC Head's final decision and applies only when quantities are missing.</figcaption>
+</figure>
+
+<h3>Step-by-step, with the rule that governs each step</h3>
+<div class="tw"><table>
+<tr><th>#</th><th>Step</th><th>Actor</th><th>Rules &amp; validations</th></tr>
+<tr><td>1</td><td>Lot arrives; QA32 inspection lot pulled by API</td><td>System</td><td>Read-only pull; idempotent on SAP lot key; raw payload stored in JSONB; plant must exist in master.</td></tr>
+<tr><td>2</td><td>Format check</td><td>System</td><td>Exact item-code match to an <code>APPROVED</code> format version. None → <code>AWAITING_FORMAT</code> and a task to IQC.</td></tr>
+<tr><td>3</td><td>Format creation (pre-fed / SAN-SIR / new)</td><td>Initiator or IQC Head</td><td>SAN/SIR looked up live through its API; optional even when available. Initiator cannot self-approve. Concurrent drafts handled by the Git model below. IMIRs already open keep the version they were bound to.</td></tr>
+<tr><td>4</td><td>IMIR opened</td><td>System</td><td>Number from the configured series (§08); format version pinned; sample size looked up from inward qty in the sampling master; mandatory cells = first <em>n</em> samples.</td></tr>
+<tr><td>5</td><td>Check-out and observation entry (tablet, works offline)</td><td>Inspector</td><td>IMIR downloaded to the tablet and soft-locked to that device. Dimensional: numeric, 3 decimals, auto OK/NOK vs limits; Visual: OK/NOK per cell, any NOK ⇒ NOK; Reliability: free text + manual OK/NOK, mandatory only when the test is due (B-10). The same decision code runs on tablet and server.</td></tr>
+<tr><td>6</td><td>Submit</td><td>Inspector</td><td>Blocked until every mandatory cell is filled. An offline submit is queued; the IMIR becomes <code>SUBMITTED</code> only when the server accepts the sync and recomputes the result.</td></tr>
+<tr><td>7</td><td>Incharge review</td><td>IQC Incharge</td><td>Approve → <code>CLOSED_ACCEPTED</code>. Revert → back to inspector (remark mandatory, unlocks). Escalate → IQC Head, non-conformity remark mandatory. DN becomes available from escalation onwards.</td></tr>
+<tr><td>8</td><td>IQC Head decision</td><td>IQC Head</td><td>Approve (remark mandatory) → closed. On hold (remark mandatory) + one or more deviation types + <strong>department: SCM or VD</strong>.</td></tr>
+<tr><td>9</td><td>Department review</td><td>Initiator → Sub-Head (SCM or VD); Head only if configured</td><td>The initiator either recommends rejection or fills the Deviation Form: action (single: UAI / Segregation / Rework), Major / Minor / Critical, deviation qty, specification, correction, corrective action; qty blank for Segregation/Rework, UAI = 100%. Sub-Head approves (final for the department) or sends back. Every form revision is kept.</td></tr>
+<tr><td>10</td><td>IQC Head final decision</td><td>IQC Head</td><td>Sees the department outcome with the Deviation Form and IMIR results. Decides: reject lot (100%), approve the deviation, or escalate to senior authorities. Remark mandatory.</td></tr>
+<tr><td>11</td><td>Senior escalation (parallel)</td><td>Selected from Plant Head, Plant QA Head, PDC, CQA, Ops Head</td><td>All selected authorities are notified at once. Each records approve / reject / change type. Effective decision resolved by rank (rules below). Rule 4 overrides by Ops/CQA (until IQC Head closes) and Admin (even after) are recorded as separate decisions.</td></tr>
+<tr><td>12</td><td>Final judgement and activity</td><td>IQC Head + SCM/VD</td><td>Segregation/Rework carried out; the initiator enters OK / Not-OK quantities on the Deviation Form; IQC Head verifies and closes. No quantity within 14 days of the final decision → auto-closed without values.</td></tr>
+<tr><td>13</td><td>Defect Notification</td><td>IQC Incharge → IQC Head</td><td>DN number (configured series) and date stamped on first save (immutable, basis for CAPA ageing); status <code>OPEN</code>; CAPA upload → <code>CAPA_SUBMITTED</code>; Head approves → <code>CLOSED</code> (read-only, stakeholders mailed, IMIR updated) or asks resubmission → <code>OPEN</code>.</td></tr>
+</table></div>
+
+<h3>Format versioning: the Git model (Decision 2)</h3>
+<figure>
+<div class="scroll">
+<pre class="mermaid">
+gitGraph
+    commit id: "v3 approved"
+    branch initiator-draft
+    commit id: "Initiator edits Dim 2 and Dim 5"
+    checkout main
+    branch head-draft
+    commit id: "Head edits Dim 5, adds Visual 3"
+    checkout main
+    merge initiator-draft id: "v4 approved"
+    checkout head-draft
+    merge main id: "rebase onto v4, Dim 5 conflict"
+    commit id: "conflict resolved"
+    checkout main
+    merge head-draft id: "v5 approved"
+</pre>
+</div>
+<figcaption>Two drafts branch from v3. The Initiator's draft is approved first and becomes v4. The Head's draft now has an out-of-date base, so it is rebased onto v4: its Visual 3 addition merges cleanly, but Dim 5 was changed in both drafts, so that clash must be resolved before v5 can be approved.</figcaption>
+</figure>
+<ul>
+<li><strong>Stable identity:</strong> every checkpoint has a <code>checkpoint_uid</code> that survives across versions, so changes are compared per checkpoint and per field (spec, limits, instrument, UOM, frequency, sequence), not by row position.</li>
+<li><strong>Branch:</strong> a draft records <code>base_version_id</code>. Any number of drafts may exist; opening one shows "also being edited by <em>name</em>" as a warning, not a lock.</li>
+<li><strong>Fast-forward:</strong> if the draft's base is still the current approved version, approval simply creates the next version.</li>
+<li><strong>Three-way merge:</strong> otherwise the server compares base ↔ current approved ↔ draft. Changes to different checkpoints or different fields merge automatically. The same field changed to different values, or an edit against a delete, is a <em>conflict</em>.</li>
+<li><strong>Resolve:</strong> conflicts block approval. The draft owner or IQC Head chooses "keep approved", "keep draft" or types a new value; the draft is then based on the new version and goes back into the queue.</li>
+<li><strong>Queue order:</strong> by submission timestamp (Cases 3–4). The IQC Head may still reject any draft.</li>
+<li><strong>History:</strong> every version keeps its parent, author, approver and a stored diff, so any two versions can be compared.</li>
+</ul>
+
+<h3>Parallel senior decisions: resolving the effective decision (Decision 5)</h3>
+<pre class="code">rank: Plant Head 1 · Plant QA Head 2 · PDC Head 3 · CQA Head 4 · Operations Head 5
+
+on every new decision, override, or timer tick:
+  decided   = latest decision of each authority (earlier ones kept, never edited)
+  if Ops Head selected and undecided 24 calendar hours after receipt → mark TIMED_OUT, add CQA Head if not selected   (Rule 3)
+  top       = highest-ranked authority that has decided, ignoring TIMED_OUT
+  if top is CQA and PDC is selected and PDC has not decided → effective = PENDING_PDC_RECORD    (Rule 2)
+  else effective = top.decision                         (provisional, shown to IQC Head)
+  route is COMPLETE when the highest-ranked selected (not timed-out) authority has decided
+     → remaining lower authorities are marked NOT_REQUIRED
+     → effective decision goes to IQC Head (approve / reject) or back to the department initiator (change type)
+  override by Ops/CQA (Rule 4) or Admin → appended as OVERRIDE and becomes effective</pre>
+<p class="muted">Example: Plant Head approves at 10:00, CQA rejects at 14:00, PDC (also selected) records approve at 16:00. From 16:00 the effective decision is "reject" (CQA outranks, PDC's decision is on record). All three decisions stay visible in the audit trail. Confirmed in round 2: the escalation ends when the highest-ranked selected authority decides.</p>
+
+<h3>Offline tablet inspection and sync (Decisions 11–12)</h3>
+<figure>
+<div class="scroll">
+<pre class="mermaid">
+sequenceDiagram
+    participant T as Tablet app
+    participant A as QMAS API
+    participant D as PostgreSQL
+    T->>A: Check out IMIRs (online)
+    A->>D: soft-lock IMIR to device and user
+    A-->>T: IMIR, pinned format, sampling, masters
+    Note over T: Offline - entries saved in on-device SQLite, local auto-decision
+    T->>T: Submit queued with op id and rowVersion
+    T->>A: Push queued ops when connectivity returns
+    A->>D: check state, lock and version, recompute decisions
+    alt accepted
+        A-->>T: new status, lock released
+    else state changed meanwhile
+        A-->>T: 409, op kept under Needs attention
+    end
+</pre>
+</div>
+<figcaption>Only inspection works offline. Reviews, deviations, escalations and DN need a connection, because they depend on other people's decisions.</figcaption>
+</figure>
+<ul>
+<li><strong>Device trust:</strong> Admin registers each Android tablet (device ID, plant) and it receives a device key kept in the Android Keystore. The inspector signs in online on that tablet once; after that a PIN unlocks the app offline, with <strong>no time limit</strong>. At every sync the server re-checks the user and device: if either was deactivated meanwhile, the data is still received but held for the Incharge to accept.</li>
+<li><strong>Check-out:</strong> the inspector downloads the lots they will inspect. Each is soft-locked to that device so two tablets cannot inspect the same lot. Locks do not expire (offline has no limit); the Incharge sees locks older than a set number of days and can release one (e.g. a lost tablet).</li>
+<li><strong>Photos offline:</strong> visual-cell photos are taken with the tablet camera through the file input, compressed on the device (e.g. max 1600 px, JPEG), kept in on-device storage and uploaded to S3 by presigned URL during sync, before the submit operation is applied.</li>
+<li><strong>No numbers generated offline:</strong> IMIR numbers are created on the server when the SAP lot arrives, before check-out.</li>
+<li><strong>Idempotent sync:</strong> every queued operation carries a client UUID; replays are ignored. Client and server timestamps are both stored for audit.</li>
+<li><strong>Server is authoritative:</strong> OK/NOK is recomputed on the server with the same shared module the tablet uses; any mismatch is logged.</li>
+<li><strong>Storage safety:</strong> data lives in SQLite inside the app, which Android does not clear to free space; local data is removed only after a successful sync; unsynced data is never discarded silently, and logout is blocked while anything is unsynced.</li>
+</ul>
+
+<div class="grid2">
+<div class="panel"><h4>Inspection format lifecycle</h4><p class="mono" style="font-size:12.5px">DRAFT → PENDING_APPROVAL → APPROVED → SUPERSEDED<br>PENDING_APPROVAL → CONFLICT → (resolve) PENDING_APPROVAL<br>PENDING_APPROVAL → REJECTED → (edit) DRAFT</p><p>One approved version per item code at a time (partial unique index).</p></div>
+<div class="panel"><h4>DN lifecycle</h4><p class="mono" style="font-size:12.5px">OPEN → CAPA_SUBMITTED → CLOSED<br>CAPA_SUBMITTED → OPEN (resubmit)</p><p>CAPA due-date reminder after 3 days (from the DN note), subject to confirmation.</p></div>
+</div>
+</section>
+
+<!-- 8 -->
+<section id="s8">
+<h2><span class="n">08</span>PostgreSQL database design approach</h2>
+<div class="grid2">
+<div class="panel"><h4>Organisation</h4><ul>
+<li>Schemas by concern: <code>core</code> (users, roles, plants, permissions), <code>mst</code> (masters), <code>qms</code> (formats, IMIR, deviation, DN), <code>intg</code> (SAP staging), <code>audit</code>.</li>
+<li><code>uuid</code> primary keys (<code>gen_random_uuid()</code>) for documents exposed in URLs; <code>smallint</code>/<code>int</code> identity keys for small lookups.</li>
+<li>Human document numbers (<code>imir_no</code>, <code>dn_no</code>) are separate unique columns.</li>
+<li><code>timestamptz</code> everywhere, stored UTC, displayed IST.</li>
+<li><code>numeric(12,3)</code> for measurements (the 3-decimal rule), <code>numeric(14,3)</code> for quantities — never float.</li>
+</ul></div>
+<div class="panel"><h4>Types and constraints</h4><ul>
+<li>Workflow states as PostgreSQL <code>ENUM</code>s (tied to code, only ever appended). Business-configurable lists (deviation types, defect categories, instruments) as lookup tables.</li>
+<li>CHECK constraints: <code>lsl &lt;= usl</code>, quantities ≥ 0, <code>accepted + rejected &lt;= inward</code>, remark required when action is escalate/hold (in service <em>and</em> DB).</li>
+<li>Partial unique index: one <code>APPROVED</code> format per item; one active deviation per IMIR.</li>
+<li><code>row_version int</code> for optimistic locking on workflow rows.</li>
+</ul></div>
+<div class="panel"><h4>PostgreSQL features used where they pay off</h4><ul>
+<li><strong>JSONB:</strong> raw SAP payloads, deviation-form revisions, audit before/after images, notification payloads.</li>
+<li><strong>pg_trgm GIN</strong> indexes for item code / description / vendor name search (typeahead over tens of thousands of items).</li>
+<li><strong>Partial indexes</strong> on open work: <code>WHERE status NOT IN ('CLOSED_…')</code> keeps inbox queries small as history grows.</li>
+<li><strong>Composite indexes</strong> matching list filters: <code>(plant_id, status, created_at DESC)</code>.</li>
+<li><strong>Range partitioning</strong> of <code>audit.audit_log</code> and observations by month; <strong>BRIN</strong> on timestamps.</li>
+<li><strong>Window functions / CTEs</strong> for vendor trend and ageing reports; <strong>materialised views</strong> for vendor KPIs refreshed by the worker.</li>
+</ul></div>
+<div class="panel"><h4>Functions, triggers, transactions</h4><ul>
+<li><code>core.next_doc_no(doc_type, plant, period)</code>: <code>INSERT … ON CONFLICT DO UPDATE … RETURNING</code> on a sequence table — gap-free per plant/day, safe under concurrency.</li>
+<li>Generic audit trigger writing row diffs to <code>audit.audit_log</code> (actor passed via <code>SET LOCAL app.user_id</code>).</li>
+<li><code>updated_at</code> trigger; business logic stays in services, not in triggers.</li>
+<li>Each workflow action = one transaction: state update + history row + outbox row.</li>
+<li>Least-privilege DB roles: <code>qmas_owner</code> (migrations), <code>qmas_app</code> (DML only), <code>qmas_report</code> (read-only for BI).</li>
+</ul></div>
+</div>
+<div class="callout"><strong>Limits are just LSL and USL (rev 2).</strong> Following Format 2, a dimensional checkpoint stores <code>nominal</code>, <code>lsl</code>, <code>usl</code> (<code>numeric(12,3)</code>, either may be NULL for a one-sided limit, CHECK <code>lsl &lt;= usl</code>). Auto-decision is simply <code>lsl ≤ value ≤ usl</code> (inclusive boundaries to be confirmed, B-11); no limit-symbol parsing at run time. Because the format structure is common (Decision 13), the 6–7k migrated formats use one import template (the "For Data" sheet layout: Item Code, Panel, Check Point, Specification, LSL, USL, UOM, Instrument). Rows still in ± notation are converted once during import, with a manual-fix report for anything unreadable (e.g. <code>=R5</code>).</div>
+<h3>Configurable numbering (Decision 9)</h3>
+<div class="tw"><table>
+<tr><th>Column</th><th>Meaning</th></tr>
+<tr><td class="k"><code>doc_type</code></td><td>IMIR, DN, DEVIATION, FORMAT</td></tr>
+<tr><td class="k"><code>plant_id</code></td><td>NULL = default for all plants; a row per plant overrides it</td></tr>
+<tr><td class="k"><code>pattern</code></td><td>Tokens: <code>{PREFIX}</code> <code>{PLANT_SAP}</code> (1115) <code>{PLANT_SHORT}</code> (03) <code>{SRC}</code> (IL/LN/RL/FD) <code>{YY}</code> <code>{MM}</code> <code>{DD}</code> <code>{SEQ:n}</code> and literal text</td></tr>
+<tr><td class="k"><code>reset_scope</code></td><td>DAY · MONTH · YEAR · NEVER — decides the counter key</td></tr>
+<tr><td class="k"><code>effective_from</code></td><td>A change applies only to new numbers; issued numbers never change</td></tr>
+</table></div>
+<p>Seeded with both blueprint options, e.g. IMIR Option 1 <code>IMIR{PLANT_SAP}{YY}{MM}{DD}{SEQ:3}</code> → <code>IMIR1115260701001</code>, Option 2 <code>IMIR{PLANT_SHORT}{YY}{MM}{DD}{SEQ:3}</code> → <code>IMIR03260701001</code>; DN <code>DN{PLANT_SAP}{SRC}{YY}{MM}{SEQ:3}</code>. The admin screen validates that the pattern contains <code>{SEQ}</code> and enough date tokens for its reset scope (a daily reset without <code>{DD}</code> would repeat numbers), and shows a live preview. Counters live in <code>core.doc_counter(series_id, period_key, last_no)</code>, incremented with <code>INSERT … ON CONFLICT DO UPDATE … RETURNING</code> inside the business transaction, plus a unique index on the issued number as a final guard.</p>
+<h3>Tables added for rev 2</h3>
+<div class="tw"><table>
+<tr><th>Table</th><th>Purpose</th></tr>
+<tr><td class="k"><code>qms.format_version</code></td><td><code>base_version_id</code>, <code>parent_version_id</code>, <code>merged_from_id</code>, status incl. <code>CONFLICT</code>, stored diff (JSONB)</td></tr>
+<tr><td class="k"><code>qms.format_checkpoint</code></td><td>adds <code>checkpoint_uid</code> (stable across versions)</td></tr>
+<tr><td class="k"><code>qms.format_merge_conflict</code></td><td>per clashing field: base, approved and draft values, resolution, resolved_by/at</td></tr>
+<tr><td class="k"><code>qms.dept_review</code></td><td>one row per hold for the department the IQC Head chose (SCM or VD): initiator, Sub-Head and Head decisions, status</td></tr>
+<tr><td class="k"><code>qms.deviation_form_revision</code></td><td>immutable versions of each department's form (JSONB + key typed columns)</td></tr>
+<tr><td class="k"><code>qms.escalation_decision</code></td><td>append-only: authority, rank, decision, remark, kind (NORMAL / OVERRIDE / TIMEOUT), at</td></tr>
+<tr><td class="k"><code>core.number_series</code>, <code>core.doc_counter</code></td><td>configurable numbering</td></tr>
+<tr><td class="k"><code>core.device</code>, <code>qms.imir_checkout</code>, <code>sync.client_op</code></td><td>registered tablets, soft locks, idempotency log of every offline operation (op UUID unique)</td></tr>
+<tr><td class="k"><code>qms.reliability_test_log</code></td><td>last reliability result per item code + checkpoint_uid (+ vendor, see B-21): IMIR, date, result; drives the "due" check; indexed for the latest row per key</td></tr>
+<tr><td class="k"><code>qms.dept_approval_chain</code></td><td>per department (and optionally plant): ordered levels, e.g. [SUB_HEAD] or [SUB_HEAD, HEAD]; fallback to HEAD when no Sub-Head is assigned</td></tr>
+<tr><td class="k"><code>qms.imir_observation_attachment</code></td><td>photo/PDF per visual sample cell (S3 key, SHA-256, MIME, size, captured_at on device)</td></tr>
+<tr><td class="k"><code>qms.deviation_form</code></td><td>typed columns from the review workbook: severity (MAJOR/MINOR/CRITICAL), action (UAI/SEGREGATION/REWORK), deviation_qty, specification, iqc_observation, correction, corrective_action, ok_qty, not_ok_qty, initiator, initiator_dept</td></tr>
+<tr><td class="k"><code>qms.defect_notification</code></td><td>adds <code>variant</code> (INCOMING / LINE_LAB_FIELD), <code>lab_test_plan_no</code>, <code>ccf_no</code>, received/checked/defective qty with CHECK <code>defective ≤ checked ≤ received</code></td></tr>
+<tr><td class="k"><code>mst.item</code></td><td>adds <code>drawing_no</code>, <code>drawing_rev</code>, <code>windchill_synced_at</code></td></tr>
+<tr><td class="k"><code>intg.san_lookup_log</code></td><td>SAN/SIR calls and responses (JSONB) for traceability of formats built from SAN</td></tr>
+</table></div>
+</section>
+
+<!-- 9 -->
+<section id="s9">
+<h2><span class="n">09</span>Initial ER structure</h2>
+<figure>
+<div class="scroll">
+<pre class="mermaid">
+erDiagram
+    PLANT ||--o{ USER_ROLE : scopes
+    APP_USER ||--o{ USER_ROLE : holds
+    ROLE ||--o{ USER_ROLE : grants
+    ROLE ||--o{ ROLE_PERMISSION : has
+    VENDOR ||--o{ SAP_LOT : supplies
+    ITEM ||--o{ SAP_LOT : for
+    ITEM ||--o{ INSPECTION_FORMAT : "versions of"
+    INSPECTION_FORMAT ||--|{ FORMAT_CHECKPOINT : contains
+    SAP_LOT ||--|| IMIR : opens
+    INSPECTION_FORMAT ||--o{ IMIR : "pinned version"
+    SAMPLING_PLAN ||--o{ IMIR : sizes
+    IMIR ||--o{ IMIR_OBSERVATION : records
+    FORMAT_CHECKPOINT ||--o{ IMIR_OBSERVATION : "measured by"
+    IMIR ||--o{ IMIR_CHECKPOINT_RESULT : judges
+    IMIR ||--o{ WORKFLOW_ACTION : history
+    IMIR ||--o| DEVIATION : "may raise"
+    DEVIATION ||--|| DEPT_REVIEW : "SCM or VD"
+    DEPT_REVIEW ||--o{ DEVIATION_FORM_REVISION : revisions
+    DEVIATION ||--o{ ESCALATION_STEP : "routed to"
+    ESCALATION_STEP ||--o{ ESCALATION_DECISION : "all decisions kept"
+    INSPECTION_FORMAT ||--o{ INSPECTION_FORMAT : "base / parent"
+    DEVICE ||--o{ IMIR_CHECKOUT : holds
+    IMIR ||--o{ IMIR_CHECKOUT : "checked out"
+    NUMBER_SERIES ||--o{ DOC_COUNTER : counts
+    DEVIATION ||--o{ DEVIATION_QTY : quantities
+    IMIR ||--o{ DEFECT_NOTIFICATION : "may raise"
+    DEFECT_NOTIFICATION ||--|{ DN_DEFECT_LINE : lists
+    DEFECT_NOTIFICATION ||--o{ DN_CAPA : "CAPA cycles"
+    IMIR ||--o{ ATTACHMENT : files
+    DEFECT_NOTIFICATION ||--o{ ATTACHMENT : files
+
+    IMIR {
+        uuid id PK
+        text imir_no UK
+        int plant_id FK
+        uuid sap_lot_id FK
+        uuid format_id FK
+        text sampling_plan
+        numeric inward_qty
+        int sample_size
+        imir_status status
+        lot_result result
+        int row_version
+        timestamptz created_at
+    }
+    INSPECTION_FORMAT {
+        uuid id PK
+        int item_id FK
+        int version
+        uuid base_version_id FK
+        uuid parent_version_id FK
+        format_source source
+        format_status status
+        text format_no
+        text common_format_no
+        uuid created_by FK
+        timestamptz submitted_at
+        uuid approved_by FK
+    }
+    FORMAT_CHECKPOINT {
+        uuid id PK
+        uuid format_id FK
+        uuid checkpoint_uid
+        section section
+        int seq
+        text checkpoint
+        text spec_text
+        limit_type limit_type
+        numeric lsl
+        numeric usl
+        text uom
+        text instrument
+        text frequency
+    }
+    IMIR_OBSERVATION {
+        uuid imir_id FK
+        uuid checkpoint_id FK
+        int sample_no
+        numeric value_num
+        text value_text
+        ok_nok decision
+    }
+    DEVIATION {
+        uuid id PK
+        uuid imir_id FK
+        text_array suggested_types
+        text final_type
+        text final_department
+        deviation_status status
+        text effective_senior_decision
+        timestamptz final_decision_at
+        timestamptz qty_due_at
+    }
+    ESCALATION_STEP {
+        uuid id PK
+        uuid deviation_id FK
+        int role_id FK
+        int rank
+        step_status status
+        timestamptz due_at
+    }
+    DEFECT_NOTIFICATION {
+        uuid id PK
+        text dn_no UK
+        uuid imir_id FK
+        text source
+        numeric checked_qty
+        numeric defective_qty
+        bool capa_applicable
+        dn_status status
+        timestamptz dn_at
+    }
+</pre>
+</div>
+<figcaption>Core entities only. Supporting tables not drawn: <code>mst.uom</code>, <code>mst.instrument</code>, <code>mst.item_category</code>, <code>mst.deviation_type</code>, <code>mst.sampling_code_letter</code>, <code>mst.sampling_size</code>, <code>core.doc_sequence</code>, <code>core.refresh_token</code>, <code>core.notification</code>, <code>core.mail_outbox</code>, <code>intg.sap_sync_run</code>, <code>intg.sap_lot_raw</code>, <code>audit.audit_log</code> (partitioned).</figcaption>
+</figure>
+<p><code>WORKFLOW_ACTION</code> is one generic history table for all document types (<code>entity_type, entity_id, from_status, to_status, action, actor_id, acting_role, plant_id, remark, payload jsonb, at</code>). It drives the "Review trail" tab, TAT reports, and the timestamp-ordered format queue.</p>
+</section>
+
+<!-- 10 -->
+<section id="s10">
+<h2><span class="n">10</span>API structure</h2>
+<p>Base <code>/api/v1</code> (as WRL). Resource endpoints for data; one <strong>action endpoint per document</strong> for workflow moves, so the state machine is the single gate. Response envelope keeps WRL's <code>{ success, message, data }</code> and adds <code>meta</code> for pagination.</p>
+<div class="tw"><table>
+<tr><th>Area</th><th>Endpoints</th></tr>
+<tr><td class="k">Auth</td><td class="mono">POST /auth/login · POST /auth/refresh · POST /auth/logout · GET /auth/me · POST /auth/change-password</td></tr>
+<tr><td class="k">Users &amp; RBAC</td><td class="mono">GET|POST /users · PATCH /users/:id · PUT /users/:id/roles · GET /roles · GET /permissions/me · PUT /permissions/roles/:role</td></tr>
+<tr><td class="k">Masters</td><td class="mono">GET|POST|PATCH /masters/{plants|vendors|items|uoms|instruments|deviation-types|sampling-plans|escalation-matrix} · GET /masters/items/search?q=</td></tr>
+<tr><td class="k">SAP</td><td class="mono">POST /integration/sap/sync (admin, manual) · GET /integration/sap/runs · GET /integration/sap/runs/:id/errors</td></tr>
+<tr><td class="k">Formats</td><td class="mono">GET /formats?item=&amp;status= · GET /formats/:id · POST /formats (from: new|san|clone, baseVersionId) · PUT /formats/:id (draft only) · POST /formats/:id/actions {submit|approve|reject|rebase} · GET /formats/:id/merge-preview · GET|PUT /formats/:id/conflicts · GET /formats/:id/versions · GET /formats/compare?a=&amp;b= · POST /formats/import (dry-run|commit) · GET /integration/san/lookup?vendor=&amp;item=</td></tr>
+<tr><td class="k">IMIR</td><td class="mono">GET /imirs?plant=&amp;status=&amp;from=&amp;to=&amp;q=&amp;page= · GET /imirs/:id · PUT /imirs/:id/observations (draft save, row_version) · POST /imirs/:id/actions {submit|approve|revert|escalate|head_approve|hold} · GET /imirs/:id/history · GET /imirs/:id/pdf</td></tr>
+<tr><td class="k">Deviation</td><td class="mono">GET /deviations · GET /deviations/:id · PUT /deviations/:id/departments/:dept/form · POST /deviations/:id/departments/:dept/actions {recommend_reject|submit|head_approve|head_reject|re_review} · POST /deviations/:id/actions {iqc_reject|iqc_approve|escalate|verify_qty} · POST /deviations/:id/escalation {authorities[]} · POST /deviations/:id/escalation/decisions {approve|reject|change_type|override} · GET /deviations/:id/escalation/board · PUT /deviations/:id/quantities</td></tr>
+<tr><td class="k">DN</td><td class="mono">GET /dns · POST /dns (from IMIR) · GET|PUT /dns/:id · POST /dns/:id/attachments · POST /dns/:id/actions {submit_capa|approve_capa|resubmit} · POST /dns/:id/mail-self · GET /dns/:id/pdf</td></tr>
+<tr><td class="k">Offline sync</td><td class="mono">POST /devices/register (admin) · POST /auth/offline-grant · POST /sync/checkout {imirIds[]} · GET /sync/bundle (formats, masters, sampling delta since cursor) · POST /sync/push {ops[]} → per-op accepted|duplicate|conflict · POST /sync/release/:imirId</td></tr>
+<tr><td class="k">Numbering</td><td class="mono">GET|POST|PATCH /masters/number-series · POST /masters/number-series/preview</td></tr>
+<tr><td class="k">Tasks &amp; notifications</td><td class="mono">GET /tasks/me · GET /notifications · POST /notifications/:id/read</td></tr>
+<tr><td class="k">Dashboard &amp; reports</td><td class="mono">GET /dashboard/summary · GET /reports/{imir-register|pending-ageing|vendor-quality|deviation-register|dn-ageing|format-coverage|tat}?format=json|xlsx</td></tr>
+<tr><td class="k">Admin</td><td class="mono">GET /audit?entity=&amp;id= · GET /jobs · GET /health · GET /ready</td></tr>
+</table></div>
+<pre class="code">POST /api/v1/imirs/7d1c…/actions
+{ "action": "escalate", "remark": "Dim #3 out of USL on 2/5 samples — NC", "rowVersion": 4 }
+
+200 { "success": true, "data": { "status": "WITH_IQC_HEAD", "rowVersion": 5, "allowedActions": [] } }
+409 { "success": false, "message": "This IMIR was updated by another user. Reload and try again." }
+422 { "success": false, "message": "Validation failed", "errors": [{ "path": "remark", "message": "Remark is required to escalate" }] }</pre>
+<p>Status codes: 200/201 success · 400 malformed · 401 not signed in · 403 role/plant/stage not permitted · 404 · 409 stale version or invalid transition · 422 validation · 429 rate limit · 500 (logged with request ID, generic message to client). Every detail response returns <code>allowedActions</code> computed by the server, so the UI never guesses which buttons to show.</p>
+
+<h3>Authentication &amp; authorization design</h3>
+<ul>
+<li><strong>Login:</strong> employee code + password (argon2id). Access JWT 15 min + refresh token 8–12 h (one shift), both httpOnly, <code>Secure</code>, <code>SameSite=Strict</code> cookies; refresh rotated and stored hashed so logout and admin revoke work. Lockout after 5 failed attempts.</li>
+<li><strong>Three checks per request:</strong> (1) <em>permission</em> — role has <code>imir.review</code> etc.; (2) <em>plant scope</em> — the record's plant is in the user's assignments for that role (visibility rules from slide 2 applied in the repository <code>WHERE</code> clause, not in the UI); (3) <em>stage</em> — the workflow engine accepts this action from this role at the current status.</li>
+<li><strong>Menu permissions</strong> keep WRL's <code>{ sectionKey: { path: bool } }</code> contract and <code>useRoleAccess</code> hook, so the sidebar and route guard work the same way.</li>
+<li><strong>Segregation of duties:</strong> the creator of a format cannot approve it unless they are IQC Head (Case 2); an inspector cannot review their own IMIR.</li>
+</ul>
+</section>
+
+<!-- 11 -->
+<section id="s11">
+<h2><span class="n">11</span>UI/UX approach based on WRL Tool Report</h2>
+<p>I reviewed the WRL frontend (<code>Layout.jsx</code>, <code>Sidebar.jsx</code>, <code>routes.config.js</code>, <code>useRoleAccess.js</code>, <code>components/ui/*</code>, <code>index.css</code>). QMAS will reuse that shell and component set rather than re-invent it.</p>
+<div class="grid2">
+<div class="panel"><h4>Carried over as-is</h4><ul>
+<li>Top Navbar + collapsible left Sidebar (256 px / 56 px), auto-collapse under 768 px.</li>
+<li>Per-section colour palette in the sidebar (blue, violet, emerald, orange…) with dot-style items and sub-groups.</li>
+<li>Outfit typeface, slate neutrals, <code>bg-gray-50</code> canvas, white cards.</li>
+<li><code>ROUTE_CONFIG</code> with lazy-loaded pages and permission-filtered menu.</li>
+<li>Badge variants (success / warning / info / danger / neutral), PopupModal, Pagination, ExportButton, react-hot-toast.</li>
+</ul></div>
+<div class="panel"><h4>Added for this workflow</h4><ul>
+<li><strong>StatusPill</strong> mapping each IMIR/DN state to a Badge variant + icon, identical everywhere.</li>
+<li><strong>Stage stepper</strong> at the top of IMIR detail (Inspection → Incharge → IQC Head → SCM/VD → Senior → Closure) showing who holds it and for how long.</li>
+<li><strong>Action bar</strong> rendered from <code>allowedActions</code>; destructive/closing actions open a ConfirmDialog with mandatory remark field.</li>
+<li><strong>DataTable</strong>: server pagination, sortable columns, sticky header, column filters, saved filter per user.</li>
+<li><strong>TAT chips</strong> (green &lt; 50% of SLA, amber, red breached).</li>
+</ul></div>
+</div>
+<h3>Inspection Entry (the screen that matters most on the shop floor)</h3>
+<ul>
+<li>Full-width grid per section (Dimensional / Visual / Reliability) with sticky checkpoint column; sample columns X1…Xn generated from the computed sample size.</li>
+<li>Mandatory cells tinted light green, optional cells grey (as specified); a cell turns red with the limit shown when a value is out of spec, and the row's OK/NOK updates live.</li>
+<li>Numeric keypad input mode, 44 px touch targets, Enter/Tab moves down the sample column, autosave draft every 30 s and on blur; "n of m mandatory filled" counter; Submit disabled until complete, with a jump-to-first-missing link.</li>
+<li>Read-only rendering of the same grid after submission, so reviewers see exactly what the inspector saw.</li>
+<li><strong>Connectivity bar</strong> always visible on the tablet: Online / Offline, number of unsynced lots, last sync time. Queued submits show a "Waiting to sync" pill, not "Submitted".</li>
+<li><strong>Needs attention</strong> list for operations the server refused (e.g. lot released or reverted while offline), with the reason and the inspector's entries preserved.</li>
+</ul>
+<h3>Validation behaviour</h3>
+<ul>
+<li>Inline, on blur, from the shared zod schema; a summary banner on submit listing every failed field; server 422 errors mapped back onto the same fields.</li>
+<li>Remarks that the blueprint makes mandatory (escalate, hold, head approve, revert) are enforced in the dialog and again by the API.</li>
+<li>409 conflicts show a non-destructive banner: "Updated by <em>name</em> at <em>time</em> — reload to continue".</li>
+</ul>
+</section>
+
+<!-- 12 -->
+<section id="s12">
+<h2><span class="n">12</span>Development phases</h2>
+<div class="tw"><table>
+<tr><th>Phase</th><th>Deliverables</th><th>Exit criteria</th></tr>
+<tr><td class="k">1 · Requirements</td><td>This document; answers to mandatory questions; signed-off workflow and numbering</td><td>All <span class="pill must">Before dev</span> questions closed</td></tr>
+<tr><td class="k">2 · System design</td><td>Final ERD + DDL review, OpenAPI spec, permission matrix, state-transition tables, SAP interface spec</td><td>Reviewed by you and IT/SAP team</td></tr>
+<tr><td class="k">3 · UI/UX</td><td>Clickable mock-ups of dashboard, lot list, inspection entry (tablet), review, deviation, escalation, DN</td><td>Walk-through with an inspector, an IQC Head and SCM</td></tr>
+<tr><td class="k">4 · Backend &amp; DB</td><td>Sprint A: foundation (auth, RBAC, masters, numbering, audit, logging, migrations, AWS dev environment). Sprint B: formats, Git-style merge, import, SAN/SIR adapter. Sprint C: SAP sync, IMIR, inspection, offline sync API. Sprint D: review, SCM/VD department review, parallel escalation, jobs. Sprint E: DN/CAPA, reports, notifications</td><td>Unit + integration tests green per sprint</td></tr>
+<tr><td class="k">5 · Frontend</td><td>Runs in step with backend sprints on the WRL shell</td><td>Each flow demoable end-to-end on staging</td></tr>
+<tr><td class="k">6 · Testing</td><td>Workflow path matrix (every transition × role × plant), merge/conflict cases for formats, parallel-decision resolution cases (Rules 1–4 incl. 24 h timeout), offline scenarios (airplane mode, duplicate push, lock released while offline, grant expiry), API contract tests, DB constraint tests, permission tests, k6 load (e.g. 200 concurrent users, 1M IMIRs), tablet UAT, format-migration reconciliation</td><td>UAT sign-off at one pilot plant</td></tr>
+<tr><td class="k">7 · Deployment (AWS)</td><td>Terraform/CDK for VPC (public + private subnets), CloudFront + WAF, S3 (web + attachments), ALB, ECS Fargate (API, worker), RDS PostgreSQL Multi-AZ, Secrets Manager, SES, site-to-site VPN to SAP. Separate dev / UAT / prod accounts or environments. Backups: RDS automated backups with PITR (e.g. 35 days) + monthly snapshots copied to a second region; S3 versioning. Monitoring: CloudWatch logs, metrics, alarms (5xx, latency, sync failures, SAP pull lag, DB CPU/storage), Performance Insights. Runbook and rollout plant by plant</td><td>Pilot plant live 2 weeks, then remaining plants</td></tr>
+</table></div>
+</section>
+
+<!-- 13 -->
+<section id="s13">
+<h2><span class="n">13</span>Risks &amp; ambiguities identified</h2>
+<div class="tw"><table>
+<tr><th>#</th><th>Finding</th><th>Where</th><th>Impact</th></tr>
+<tr><td>A1</td><td>Flowchart shows 2 format paths (SAN, New); PPT shows 3 (Pre-fed, SAN/SIR, New).</td><td>Flow vs slide 3</td><td>Low — PPT taken as source of truth.</td></tr>
+<tr><td>A2</td><td>Slide 4 suggests removing IQC Head's create right, but the matrix and Cases 2 &amp; 4 keep it.</td><td>Slide 4</td><td>Medium — changes permissions and approval rules.</td></tr>
+<tr><td>A3</td><td>Cases 3–4: "timestamp determines priority" when Initiator and Head both create. Unclear whether two drafts for the same item may coexist, and what happens to the second.</td><td>Slide 4</td><td><span class="pill p2">Resolved: Git-style branching and merge.</span></td></tr>
+<tr><td>A4</td><td>Format keyed by item code only, but SAN fetch uses vendor + item. Same item from two vendors may need different formats.</td><td>Slides 3, 5</td><td><span class="pill p2">Resolved: one format per item code.</span></td></tr>
+<tr><td>A5</td><td>Flowchart lacks "Revert to inspector" and the requestor's reject/proceed step; PPT has them.</td><td>Flow vs slides 7, 9</td><td>Low — PPT used.</td></tr>
+<tr><td>A6</td><td>Who enters final quantity: "SCM requestor adds qty" (slide 12) vs "added by IQC Incharge" (slide 10).</td><td>Slides 10, 12</td><td>Medium.</td></tr>
+<tr><td>A7</td><td>Routing to SCM <em>or</em> VD after hold is not defined.</td><td>Slides 8, 9</td><td><span class="pill p2">Resolved: IQC Head picks SCM or VD.</span></td></tr>
+<tr><td>A8</td><td>Deviation form fields are not specified (only type and quantity).</td><td>Slide 9</td><td>High — cannot build the form.</td></tr>
+<tr><td>A9</td><td>Escalation: sequential vs parallel approval; "Operations Head" rank 5 vs two roles (Central Ops Head, Plant Operations Head).</td><td>Slides 2, 11</td><td><span class="pill p2">Partly resolved: parallel. Ops Head identity still open (R-3).</span></td></tr>
+<tr><td>A10</td><td>Rule 1 says a higher approval overrides lower ones — does it apply to rejections too? Does a higher reject override a lower approve?</td><td>Slide 11</td><td><span class="pill p2">Resolved: higher level overrides; all decisions kept.</span></td></tr>
+<tr><td>A11</td><td>Slide 13 says the Incharge raises the "Deviation Note"; context shows Defect Notification.</td><td>Slide 13</td><td>Low — read as DN.</td></tr>
+<tr><td>A12</td><td>DN number examples are prefixed <code>IMIR…</code> though the pattern is <code>DN…</code>; IMIR numbering has two options.</td><td>Embedded PPTs</td><td><span class="pill p2">Resolved: configurable numbering.</span></td></tr>
+<tr><td>A13</td><td>DN types LN/RL/FD (line, reliability, field) exist in the numbering and DN template but only the incoming path is described.</td><td>Embedded</td><td>Medium — scope.</td></tr>
+<tr><td>A14</td><td>Reliability tests carry a frequency ("once in six months") — unclear whether they are skipped on lots when not due.</td><td>JIR sample</td><td>Resolved: only when due.</td></tr>
+<tr><td>A15</td><td>Lot decision "any NOK ⇒ NOK" vs AQL Ac/Re; S2/S3 give Ac &gt; 0 at larger samples.</td><td>Slide 6</td><td>Medium.</td></tr>
+<tr><td>A16</td><td>Limit boundary semantics (is 57.3 inside <code>57 ± 0.3</code>?) and notations like <code>=R5</code>.</td><td>JIR sample</td><td><span class="pill p2">Mostly resolved: LSL/USL model. Boundary inclusion still open (B-11).</span></td></tr>
+<tr><td>R1</td><td>SAP interface is not yet specified (protocol, lot key, frequency, write-back). Longest lead-time dependency.</td><td>Slide 3</td><td>Mock API until the SAP team provides the specification.</td></tr>
+<tr><td>R2</td><td>Quality of 6–7k legacy formats (free-text specs) will decide go-live readiness.</td><td>Slide 3</td><td>High.</td></tr>
+<tr><td>R3</td><td>Shop-floor connectivity for tablets; offline entry is a large added scope.</td><td>Slide 5</td><td>Confirmed in scope: offline required. Biggest added complexity; see §07.</td></tr>
+<tr><td>R6</td><td>Browser storage can be cleared by the OS when data sits offline for a long time.</td><td>Round 2 (no offline limit)</td><td><span class="pill p2">Addressed: Capacitor app with SQLite on Android.</span></td></tr>
+<tr><td>R7</td><td>SAP (on-prem) and SAN/SIR must be reachable from AWS: needs site-to-site VPN or Direct Connect, firewall rules and API credentials from the respective owners.</td><td>Decisions 6, 7, 10</td><td>Existing plant ↔ AWS VPN confirmed; real endpoints still unknown, so the first integration test with real systems is a schedule risk.</td></tr>
+<tr><td>R8</td><td>Large samples (up to 200 per checkpoint) make on-tablet entry slow and raise sync payloads and photo volume.</td><td>Sampling table</td><td>High — depends on S-3 / S-4; needs a sample-wise entry screen.</td></tr>
+<tr><td>R9</td><td>Windchill is a third integration (with SAP and SAN/SIR) that must be reachable from AWS; no interface details yet.</td><td>Review workbook</td><td>Mock API until the Windchill team provides the specification.</td></tr>
+<tr><td>R10</td><td>The sampling table has no acceptance/rejection rule and stops at 10,000.</td><td>Round 2</td><td>High — decides lot disposition on every IMIR (S-1, S-2).</td></tr>
+<tr><td>R4</td><td>Reports and KPIs are not specified in the blueprint.</td><td>—</td><td>Medium — risk of late scope.</td></tr>
+<tr><td>R5</td><td>WRL patterns not to copy: plain-text password comparison, hard-coded CORS origin, one API slice per module, startup-time migrations, console logging.</td><td>WRL code</td><td>Addressed in this design.</td></tr>
+</table></div>
+</section>
+
+<!-- 14 -->
+<section id="s14">
+<h2><span class="n">14</span>Open questions (rev 4)</h2>
+<p><strong>Closed so far:</strong> format key, concurrent drafts, SCM/VD routing, Deviation Form fields and owner (B-6), parallel escalation and when it ends (B-17), numbering, SAP write-back, SAN/SIR, authentication, Line/Lab/Field DN (not in R1), Model source, Sub-Head role and approval chain (B-20), Operations Head and 24-hour rule (B-8), reliability frequency (B-10), integration mocks (I-1, I-3, I-7), network, tablets, offline limit, AWS region.</p>
+<div class="legend"><span><span class="pill must">Before dev</span> needed before the related sprint starts</span><span><span class="pill later">Can decide later</span> has a safe default</span></div>
+
+<div class="qgroup"><h3>Sampling (from the procedure you shared)</h3>
+<div class="q"><div class="id">S-1</div><div class="t"><span class="pill must">Before dev</span> The table gives sample sizes only. Please share the part of the Sampling Inspection Procedure that says how many NOK samples are allowed before the lot is NOK (acceptance / rejection numbers), or confirm that one NOK always fails the lot. <small>Default until then: any single NOK ⇒ lot NOK.</small></div></div>
+<div class="q"><div class="id">S-4</div><div class="t"><span class="pill must">Before dev</span> For visual checks on large samples, may the inspector mark all remaining samples OK in one action and then set the exceptions to NOK? <small>Default: allowed, recorded as a bulk action in the audit trail.</small></div></div>
+</div>
+
+<div class="qgroup"><h3>Business process</h3>
+<div class="q"><div class="id">B-21</div><div class="t"><span class="pill later">Can decide later</span> Is "due" for a reliability test tracked per item code, or per item code + vendor (a new vendor's part would then always be tested first)? And if the last test was NOK, is the next lot always due? <small>Default: per item + vendor; after a NOK the next lot is due.</small></div></div>
+<div class="q"><div class="id">I-8</div><div class="t"><span class="pill later">Can decide later</span> When the SAP, Windchill and SAN/SIR specifications arrive, please send them with a test endpoint and credentials handled through AWS Secrets Manager (not by mail).</div></div>
+<div class="q"><div class="id">B-18</div><div class="t"><span class="pill later">Can decide later</span> Major / Minor / Critical: the forms and slides don't say who selects it or whether it changes routing. <small>Default: the initiator selects it on the Deviation Form; no effect on routing; used in reports.</small></div></div>
+<div class="q"><div class="id">B-11</div><div class="t"><span class="pill later">Can decide later</span> Is a value exactly on LSL or USL a pass? <small>Default: yes (inclusive).</small></div></div>
+<div class="q"><div class="id">B-3</div><div class="t"><span class="pill later">Can decide later</span> Is the format "IQC Initiator" the Inspector, the Incharge, or both? <small>Default: Incharge; configurable.</small></div></div>
+<div class="q"><div class="id">B-14</div><div class="t"><span class="pill later">Can decide later</span> Re-inspection after vendor replacement or split GRNs: new IMIR or same? <small>Default: new IMIR linked to the original.</small></div></div>
+<div class="q"><div class="id">B-15</div><div class="t"><span class="pill later">Can decide later</span> CAPA reminders when the vendor misses 3 days? <small>Default: reminder on day 3, then every 2 days.</small></div></div>
+</div>
+
+<div class="qgroup"><h3>User roles</h3>
+<div class="q"><div class="id">R-1</div><div class="t"><span class="pill later">Can decide later</span> Users with roles at several plants, and leave delegation. <small>Default: both supported.</small></div></div>
+<div class="q"><div class="id">R-4</div><div class="t"><span class="pill later">Can decide later</span> Read-only Auditor/Management role. <small>Default: yes.</small></div></div>
+</div>
+
+<div class="qgroup"><h3>Integrations</h3>
+<div class="q"><div class="id">I-5</div><div class="t"><span class="pill later">Can decide later</span> SAP pull frequency. <small>Default: every 15 minutes plus a manual refresh.</small></div></div>
+<div class="q"><div class="id">I-6</div><div class="t"><span class="pill later">Can decide later</span> SES sender domain, and whether vendors get DN mails directly.</div></div>
+</div>
+
+<div class="qgroup"><h3>UI/UX, reports, deployment</h3>
+<div class="q"><div class="id">U-4</div><div class="t"><span class="pill later">Can decide later</span> Tablet app distribution: company MDM, or a signed APK installed manually?</div></div>
+<div class="q"><div class="id">U-2</div><div class="t"><span class="pill later">Can decide later</span> English only, or also Hindi/Gujarati on tablet screens?</div></div>
+<div class="q"><div class="id">RP-1</div><div class="t"><span class="pill later">Can decide later</span> Confirm the proposed report list (§06) and today's KPIs.</div></div>
+<div class="q"><div class="id">RP-2</div><div class="t"><span class="pill later">Can decide later</span> Must printed IMIR / DN / Deviation Form match the Excel layouts exactly?</div></div>
+<div class="q"><div class="id">DB-3</div><div class="t"><span class="pill later">Can decide later</span> Expected volumes: lots per plant per day, users, photos per IMIR.</div></div>
+<div class="q"><div class="id">D-3</div><div class="t"><span class="pill later">Can decide later</span> Rollout: one pilot plant first? <small>Default: one plant for 2 weeks.</small></div></div>
+</div>
+</section>
+</main>
+</div>

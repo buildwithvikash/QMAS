@@ -1,0 +1,19 @@
+{
+  "name": "@qmas/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Constants, validation schemas and pure business rules shared by the QMAS API, web app and tablet app",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "vitest": "^5.0.1"
+  }
+}
