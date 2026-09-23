@@ -16,6 +16,8 @@ import { apiError } from '../../utils/apiError.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { ImirResult, ImirStatus } from './imirUi.jsx';
 import InspectionSheet from './InspectionSheet.jsx';
+import ReviewPanel from './ReviewPanel.jsx';
+import { HistoryTimeline } from '../deviation/workflowUi.jsx';
 
 /** Combines two save patches: later cells/entries win. */
 function mergePatch(a, b) {
@@ -132,6 +134,16 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
           <InspectionSheet sheet={sheet} readOnly={readOnly} onPatch={onPatch} photosByCell={photosByCell}
             onAddPhoto={readOnly ? undefined : (cp) => setDialog({ type: 'photo', cp })}
             onOpenPhotos={(cp, s) => setDialog({ type: 'photos', cp, sampleNo: s })} />
+        )}
+
+        {mode !== 'tablet' && sheet.history?.length > 0 && (
+          <div className="grid gap-4 lg:grid-cols-2">
+            <ReviewPanel imir={sheet} />
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h2 className="text-sm font-bold text-slate-800 mb-3">History</h2>
+              <HistoryTimeline history={sheet.history} />
+            </section>
+          </div>
         )}
       </div>
 

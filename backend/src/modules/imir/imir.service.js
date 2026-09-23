@@ -5,6 +5,8 @@ import { AppError } from '../../shared/AppError.js';
 import { pageMeta } from '../../shared/sql.js';
 import { plantScope } from '../auth/access.service.js';
 import { issueNumber } from '../numbering/numbering.service.js';
+import { history, logAction } from '../workflow/history.js';
+import { imirReviewActions } from '../workflow/rules.js';
 import * as repo from './imir.repo.js';
 
 const EDITABLE = ['OPEN', 'IN_INSPECTION'];
@@ -108,13 +110,15 @@ export async function detail(id, user, db = getPool()) {
   const imir = await repo.get(db, id);
   if (!imir) throw AppError.notFound('IMIR');
   if (user) assertCanView(user, imir);
-  if (imir.status === 'AWAITING_FORMAT') return { ...imir, checkpoints: [], cells: [], attachments: [], allowedActions: [] };
+  if (imir.status === 'AWAITING_FORMAT') return { ...imir, checkpoints: [], cells: [], attachments: [], history: [], deviation: null, allowedActions: [] };
 
-  const [checkpoints, states, cells, attachments] = [
+  const [checkpoints, states, cells, attachments, steps, deviation] = [
     await repo.formatCheckpoints(db, imir.formatVersionId),
     await repo.checkpointStates(db, id),
     await repo.observations(db, id),
     await repo.attachments(db, id),
+    await history(db, id),
+    await repo.deviationSummary(db, id),
   ];
   const stateByUid = new Map(states.map((s) => [s.checkpointUid, s]));
   const merged = checkpoints.map((c) => ({ ...c, ...(stateByUid.get(c.uid) ?? {}), checkpointUid: undefined }));
@@ -125,7 +129,8 @@ export async function detail(id, user, db = getPool()) {
     allowedActions.push('inspect');
     if (!evaluation.missing.length && imir.model) allowedActions.push('submit');
   }
-  return { ...imir, checkpoints: merged, cells, attachments, evaluation, allowedActions };
+  if (user) allowedActions.push(...imirReviewActions(user, imir));
+  return { ...imir, checkpoints: merged, cells, attachments, evaluation, history: steps, deviation, allowedActions };
 }
 
 function evaluate(imir, checkpoints, cells) {
@@ -136,6 +141,11 @@ function evaluate(imir, checkpoints, cells) {
     entries: Object.fromEntries(checkpoints.map((c) => [c.uid, { manualResult: c.manualResult, textObservation: c.textObservation }])),
     sampling: { sampleSize: imir.sampleSize, acceptNo: imir.acceptNo, rejectNo: imir.rejectNo },
   });
+}
+
+function inspectingRole(user, imir) {
+  const a = user.assignments.find((x) => x.permissions.includes(PERMISSIONS.IMIR_INSPECT) && (x.actionScope === 'ALL' || x.plantId === null || x.plantId === imir.plantId));
+  return a?.roleCode ?? null;
 }
 
 // ── Inspection ────────────────────────────────────────────────────────────────
@@ -252,6 +262,7 @@ export async function submit(ctx, user, id, { rowVersion, deviceId }) {
       [id, result, defectiveSamples, user.id],
     );
     await db.query('DELETE FROM qms.imir_checkout WHERE imir_id = $1', [id]);
+    await logAction(db, { imirId: id, action: 'SUBMIT', fromStatus: imir.status, toStatus: 'SUBMITTED', actorId: user.id, actingRole: inspectingRole(user, imir), payload: { result, defectiveSamples } });
   });
   return detail(id, user);
 }

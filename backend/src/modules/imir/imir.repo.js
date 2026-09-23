@@ -9,7 +9,7 @@ export const IMIR_SELECT = `SELECT m.id, m.imir_no, m.status, m.awaiting_reason,
        l.sap_lot_no, m.format_version_id, fv.version_no AS format_version_no, fv.format_no, fv.common_format_no, fv.ref_standard,
        m.sampling_plan_id, m.lot_size, m.sample_size, m.accept_no, m.reject_no, m.sampling_basis,
        m.model, m.inspector_remark, m.result, m.defective_samples, m.opened_at, m.inspection_started_at,
-       m.inspected_by, iu.full_name AS inspected_by_name, m.submitted_at, m.submitted_by, su.full_name AS submitted_by_name,
+       m.inspected_by, iu.full_name AS inspected_by_name, m.submitted_at, m.submitted_by, su.full_name AS submitted_by_name, m.closed_at,
        m.created_at, m.updated_at, m.row_version,
        co.device_id AS checkout_device_id, d.device_code AS checkout_device_code, d.name AS checkout_device_name,
        co.user_id AS checkout_user_id, cu.full_name AS checkout_user_name, co.checked_out_at
@@ -101,4 +101,9 @@ export async function attachments(db, imirId) {
     [imirId],
   );
   return camelRows(rows);
+}
+
+export async function deviationSummary(db, imirId) {
+  const { rows } = await db.query('SELECT id, deviation_no, department, stage, outcome FROM qms.deviation WHERE imir_id = $1', [imirId]);
+  return camelRow(rows[0]) ?? null;
 }
