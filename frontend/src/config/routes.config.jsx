@@ -1,5 +1,5 @@
 import { PERMISSIONS as P } from '@qmas/shared';
-import { FileSpreadsheet, Home, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import { ClipboardCheck, FileSpreadsheet, Home, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import { lazy } from 'react';
 
 const HomePage = lazy(() => import('../pages/Home.jsx'));
@@ -16,6 +16,11 @@ const FormatEditorPage = lazy(() => import('../pages/formats/FormatEditorPage.js
 const FormatConflictsPage = lazy(() => import('../pages/formats/FormatConflictsPage.jsx'));
 const ApprovalQueuePage = lazy(() => import('../pages/formats/ApprovalQueuePage.jsx'));
 const FormatImportPage = lazy(() => import('../pages/formats/FormatImportPage.jsx'));
+const ImirListPage = lazy(() => import('../pages/imir/ImirListPage.jsx'));
+const ImirPage = lazy(() => import('../pages/imir/ImirPage.jsx'));
+const TabletPage = lazy(() => import('../pages/imir/TabletPage.jsx'));
+const DevicesPage = lazy(() => import('../pages/admin/DevicesPage.jsx'));
+const SapSyncPage = lazy(() => import('../pages/admin/SapSyncPage.jsx'));
 
 /**
  * Sidebar sections and routes, filtered by the user's permissions (same idea as WRL's
@@ -27,6 +32,17 @@ export const ROUTE_SECTIONS = [
     label: 'Home',
     icon: Home,
     items: [{ path: '/', label: 'Dashboard', permission: P.DASHBOARD_VIEW, element: <HomePage /> }],
+  },
+  {
+    key: 'incoming',
+    label: 'Incoming Inspection',
+    icon: ClipboardCheck,
+    activePrefix: '/imirs',
+    items: [
+      { path: '/imirs', label: 'Incoming Lots', permission: P.IMIR_VIEW, element: <ImirListPage /> },
+      { path: '/tablet', label: 'This Tablet', permission: P.IMIR_INSPECT, element: <TabletPage /> },
+      { path: '/imirs/:id', hidden: true, permission: P.IMIR_VIEW, element: <ImirPage /> },
+    ],
   },
   {
     key: 'formats',
@@ -70,6 +86,8 @@ export const ROUTE_SECTIONS = [
     items: [
       { path: '/admin/users', label: 'Users', permission: P.USERS_VIEW, element: <UsersPage /> },
       { path: '/admin/roles', label: 'Roles & Permissions', permission: P.USERS_VIEW, element: <RolesPage /> },
+      { path: '/admin/devices', label: 'Tablets', permission: P.DEVICES_MANAGE, element: <DevicesPage /> },
+      { path: '/admin/sap-sync', label: 'SAP Sync', permission: P.INTEGRATION_MONITOR, element: <SapSyncPage /> },
       { path: '/admin/audit', label: 'Audit Trail', permission: P.AUDIT_VIEW, element: <AuditTrailPage /> },
     ],
   },

@@ -19,3 +19,6 @@ export function formatRelative(v) {
 
 export const initials = (name = '') =>
   name.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0].toUpperCase()).join('') || 'U';
+
+/** Quantity with unit, Indian digit grouping, up to 3 decimals. */
+export const formatQty = (v, uom) => `${Number(v).toLocaleString('en-IN', { maximumFractionDigits: 3 })} ${uom ?? ''}`.trim();

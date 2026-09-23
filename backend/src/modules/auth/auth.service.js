@@ -17,12 +17,14 @@ export async function recordAuthEvent(db, event, { userId = null, employeeCode =
   );
 }
 
-async function createRefreshToken(db, userId, { familyId = randomUUID(), ip, userAgent }) {
+async function createRefreshToken(db, userId, { familyId = randomUUID(), ip, userAgent, client }) {
   const refreshToken = newRefreshToken();
+  const env = getEnv();
+  const ttlHours = client === 'tablet' ? env.REFRESH_TOKEN_TTL_TABLET_HOURS : env.REFRESH_TOKEN_TTL_HOURS;
   const { rows } = await db.query(
     `INSERT INTO core.refresh_token (user_id, family_id, token_hash, expires_at, ip, user_agent)
      VALUES ($1, $2, $3, now() + make_interval(hours => $4), $5, $6) RETURNING id`,
-    [userId, familyId, hashToken(refreshToken), getEnv().REFRESH_TOKEN_TTL_HOURS, ip, userAgent?.slice(0, 300) ?? null],
+    [userId, familyId, hashToken(refreshToken), ttlHours, ip, userAgent?.slice(0, 300) ?? null],
   );
   return { userId, refreshToken, refreshTokenId: rows[0].id };
 }

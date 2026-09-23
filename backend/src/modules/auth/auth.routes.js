@@ -8,7 +8,7 @@ import { toSessionUser } from './access.service.js';
 import * as auth from './auth.service.js';
 import { clearAuthCookies, REFRESH_COOKIE, setAuthCookies } from './tokens.js';
 
-const meta = (req) => ({ ip: req.ip, userAgent: req.get('user-agent'), requestId: req.id });
+const meta = (req) => ({ ip: req.ip, userAgent: req.get('user-agent'), requestId: req.id, client: req.get('x-client') === 'tablet' ? 'tablet' : 'web' });
 
 // Per-IP brake on password guessing; per-account lockout is handled in the service.
 const loginLimiter = rateLimit({
