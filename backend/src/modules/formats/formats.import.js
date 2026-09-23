@@ -4,6 +4,7 @@ import { checkpointSchema, parseSpec, renumber, SECTIONS, submitProblems } from 
 import { getPool } from '../../db/pool.js';
 import { withTransaction } from '../../db/tx.js';
 import { AppError } from '../../shared/AppError.js';
+import { openAwaitingForItem } from '../imir/imir.service.js';
 import * as repo from './formats.repo.js';
 
 /**
@@ -243,6 +244,7 @@ export async function commit(ctx, user, buffer, fileName) {
         await repo.replaceCheckpoints(db, id, item.checkpoints);
         await repo.updateVersion(db, id, null, { decidedAt: new Date(), decidedBy: user.id, decisionRemark: `Imported from ${fileName}` });
         await repo.setCurrent(db, format.id, id);
+        await openAwaitingForItem(db, rows[0].id, { userId: user.id });
       });
       item.status = 'IMPORTED';
     } catch (err) {

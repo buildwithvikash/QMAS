@@ -1,5 +1,6 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
+import * as engine from '../../offline/engine.js';
 import Loader from '../ui/Loader.jsx';
 import Navbar from './Navbar.jsx';
 import Sidebar from './Sidebar.jsx';
@@ -19,6 +20,13 @@ export default function Layout() {
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // On a registered tablet, keep sending queued inspection entries in the background.
+  useEffect(() => {
+    let stop;
+    engine.getDevice().then((d) => { if (d) stop = engine.startAutoSync(); }).catch(() => {});
+    return () => stop?.();
   }, []);
 
   const toggle = useCallback(() => setExpanded((e) => !e), []);

@@ -58,8 +58,8 @@ describe('migrations', () => {
     await seedReferenceData(pool);
     const { rows } = await pool.query("SELECT 1 FROM core.role_permission WHERE role_code = 'PLANT_OPS_HEAD' AND permission_key = 'reports.view'");
     expect(rows).toHaveLength(0);
-    const { rows: plants } = await pool.query('SELECT count(*)::int AS n FROM core.plant');
-    expect(plants[0].n).toBe(7);
+    const { rows: plants } = await pool.query("SELECT count(*)::int AS n FROM core.plant WHERE sap_code IN ('1111', '1115', '1120', '1125', '1130', '1179', '1191')");
+    expect(plants[0].n).toBe(7); // seeded once, not duplicated by re-seeding
   });
 
   it('refuse to run when an applied migration file was edited', async () => {

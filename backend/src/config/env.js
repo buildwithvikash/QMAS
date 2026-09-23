@@ -11,6 +11,9 @@ const schema = z.object({
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   ACCESS_TOKEN_TTL_MIN: z.coerce.number().int().min(1).max(120).default(15),
   REFRESH_TOKEN_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(12),
+  // Tablets work offline without a time limit; their session only has to last until they sync again.
+  REFRESH_TOKEN_TTL_TABLET_HOURS: z.coerce.number().int().min(1).max(24 * 90).default(24 * 30),
+  SAP_SYNC_INTERVAL_MIN: z.coerce.number().int().min(1).max(24 * 60).default(15),
   COOKIE_SECURE: bool.default(true),
   CORS_ORIGINS: z.string().default(''),
   TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
