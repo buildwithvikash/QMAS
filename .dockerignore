@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+backend/.pgdata
+backend/.pgdata.credentials
+backend/.pgtest*
+backend/tests
+docs
+.git
