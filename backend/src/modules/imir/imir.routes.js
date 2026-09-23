@@ -9,6 +9,7 @@ import { AppError } from '../../shared/AppError.js';
 import { body, created, noContent, ok, params, query } from '../../shared/http.js';
 import * as files from './attachments.service.js';
 import * as imir from './imir.service.js';
+import { review } from './review.service.js';
 
 const router = Router();
 const canView = requirePermission(PERMISSIONS.IMIR_VIEW);
@@ -38,8 +39,15 @@ router.get('/:id', canView, validate({ params: uuidParam }), async (req, res) =>
 router.put('/:id/inspection', canInspect, validate({ params: uuidParam, body: inspectionSaveSchema }), async (req, res) => {
   ok(res, await imir.saveProgress(txContext(req), req.user, params(req).id, body(req)));
 });
-router.post('/:id/actions', canInspect, validate({ params: uuidParam, body: imirActionSchema }), async (req, res) => {
-  ok(res, await imir.submit(txContext(req), req.user, params(req).id, body(req)));
+// submit is the inspector's; approve / revert / escalate / head_approve / hold are checked per action and plant.
+router.post('/:id/actions', canView, validate({ params: uuidParam, body: imirActionSchema }), async (req, res) => {
+  const b = body(req);
+  if (b.action === 'submit') {
+    if (!req.user.permissions.has(PERMISSIONS.IMIR_INSPECT)) throw AppError.forbidden();
+    return ok(res, await imir.submit(txContext(req), req.user, params(req).id, b));
+  }
+  await review(txContext(req), req.user, params(req).id, b);
+  ok(res, await imir.detail(params(req).id, req.user));
 });
 
 router.post('/:id/attachments', canInspect, validate({ params: uuidParam }), receiveFile, validate({ body: attachmentFields }), async (req, res) => {
