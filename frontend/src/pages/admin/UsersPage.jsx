@@ -23,7 +23,7 @@ const isLocked = (u) => u.lockedUntil && new Date(u.lockedUntil) > new Date();
 export default function UsersPage() {
   const { can } = useAccess();
   const canManage = can(PERMISSIONS.USERS_MANAGE);
-  const list = useListParams({ sort: 'employeeCode' });
+  const list = useListParams({ sort: 'employeeCode', storageKey: 'users' });
   const { data, isFetching, error } = useGetUsersQuery(list.params);
   const { data: lookups } = useGetLookupsQuery();
   const [modal, setModal] = useState(null); // { type: 'create' | 'edit' | 'reset' | 'unlock', user }
@@ -102,7 +102,7 @@ export default function UsersPage() {
           <Select className="w-56" aria-label="Role" placeholder="All roles" value={list.filters.roleCode ?? ''} onChange={(v) => list.setFilter('roleCode', v)} options={roleOptions} />
           <Select className="w-56" aria-label="Plant" placeholder="All plants" value={list.filters.plantId ?? ''} onChange={(v) => list.setFilter('plantId', v)} options={plantOptions} />
         </div>
-        <DataTable columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort} empty="No users match these filters." />
+        <DataTable tableId="users" columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort} empty="No users match these filters." />
         <Pagination meta={data?.meta} onPage={list.setPage} onPageSize={list.setPageSize} />
       </div>
 
@@ -129,7 +129,7 @@ function EditUser({ id, lookups, onClose }) {
   if (!data || isFetching) {
     return (
       <Modal title="Edit user" onClose={onClose} size="sm">
-        <Loader />
+        <Loader inline />
       </Modal>
     );
   }

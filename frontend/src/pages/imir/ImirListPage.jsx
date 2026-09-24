@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGetImirsQuery } from '../../api/imirApi.js';
 import { useGetLookupsQuery } from '../../api/mastersApi.js';
 import DataTable, { Pagination } from '../../components/ui/DataTable.jsx';
+import FilterChips from '../../components/ui/FilterChips.jsx';
 import { Select, TextInput } from '../../components/ui/fields.jsx';
 import PageHeader, { Tabs } from '../../components/ui/PageHeader.jsx';
 import { useListParams } from '../../hooks/useListParams.js';
@@ -19,7 +20,7 @@ const GROUPS = [
 
 /** Inward lots from SAP and their IMIRs. Inspectors and SCM/VD requestors see their own plant only. */
 export default function ImirListPage() {
-  const list = useListParams({ sort: 'createdAt', order: 'desc', filters: { statusGroup: 'TO_INSPECT' } });
+  const list = useListParams({ sort: 'createdAt', order: 'desc', filters: { statusGroup: 'TO_INSPECT' }, storageKey: 'imirs' });
   const { data, isFetching, error } = useGetImirsQuery(list.params, { pollingInterval: 60_000 });
   const { data: lookups } = useGetLookupsQuery();
   const navigate = useNavigate();
@@ -58,6 +59,14 @@ export default function ImirListPage() {
     { key: 'createdAt', header: 'Received', sortable: true, render: (r) => <span className="text-xs text-slate-400 whitespace-nowrap">{formatRelative(r.createdAt)}</span> },
   ];
 
+  const plant = (lookups?.plants ?? []).find((p) => String(p.id) === String(list.filters.plantId));
+  const chips = [
+    list.search && { key: 'q', label: 'Search', value: list.search, onRemove: () => list.setSearch('') },
+    list.filters.plantId && { key: 'plant', label: 'Plant', value: plant ? `${plant.sapCode} · ${plant.name}` : list.filters.plantId, onRemove: () => list.setFilter('plantId', undefined) },
+    list.filters.from && { key: 'from', label: 'GRN from', value: formatDate(list.filters.from), onRemove: () => list.setFilter('from', undefined) },
+    list.filters.to && { key: 'to', label: 'GRN to', value: formatDate(list.filters.to), onRemove: () => list.setFilter('to', undefined) },
+  ].filter(Boolean);
+
   return (
     <div>
       <PageHeader icon={PackageOpen} title="Incoming Lots" subtitle="Inward lots from SAP (QA32) and their inspection reports" search={list.search} onSearch={list.setSearch} searchPlaceholder="IMIR, GRN, item, vendor, SAP lot…" />
@@ -69,8 +78,9 @@ export default function ImirListPage() {
           <TextInput className="w-40" label="GRN from" type="date" value={list.filters.from ?? ''} onChange={(e) => list.setFilter('from', e.target.value || undefined)} />
           <TextInput className="w-40" label="GRN to" type="date" value={list.filters.to ?? ''} onChange={(e) => list.setFilter('to', e.target.value || undefined)} />
         </div>
-        <DataTable columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort}
-          onRowClick={(r) => navigate(`/imirs/${r.id}`)} empty="No lots in this list." />
+        <DataTable columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort} tableId="imirs"
+          toolbar={<FilterChips chips={chips} onClearAll={() => list.clearFilters({ statusGroup: list.filters.statusGroup })} />}
+          onRowClick={(r) => navigate(`/imirs/${r.id}`)} empty={chips.length ? 'No lots match these filters.' : 'No lots in this list.'} />
         <Pagination meta={data?.meta} onPage={list.setPage} onPageSize={list.setPageSize} />
       </div>
     </div>

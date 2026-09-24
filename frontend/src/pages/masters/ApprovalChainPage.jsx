@@ -36,7 +36,7 @@ export default function ApprovalChainPage() {
       <PageHeader icon={GitBranch} title="Deviation Approval Chain" subtitle="Who approves a Deviation Form in SCM and VD before the IQC Head decides" />
       <div className="p-5 grid gap-4 lg:grid-cols-2">
         {data.map((chain) => (
-          <section key={chain.department} className="rounded-xl border border-slate-200 bg-white p-4">
+          <section key={chain.department} className="card p-4">
             <h2 className="text-sm font-bold text-slate-800">{chain.department === 'SCM' ? 'Supply Chain (SCM)' : 'Vendor Development (VD)'}</h2>
             <p className="text-[11px] text-slate-400 mb-3">Last changed {formatDateTime(chain.updatedAt)}. Forms already in approval keep their chain.</p>
             <div className="space-y-2" role="radiogroup" aria-label={`${chain.department} approval chain`}>

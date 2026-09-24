@@ -19,7 +19,10 @@ function render(col, v) {
     case 'number': return Number(v).toLocaleString('en-IN', { maximumFractionDigits: 3 });
     case 'percent': return `${Number(v).toFixed(1)} %`;
     case 'bool': return v ? <span className="font-semibold text-rose-600">Yes</span> : 'No';
-    default: return typeof v === 'string' && /^[A-Z_]+$/.test(v) && v.includes('_') ? v.replaceAll('_', ' ').toLowerCase() : String(v);
+    default: {
+      const text = typeof v === 'string' && /^[A-Z_]+$/.test(v) && v.includes('_') ? v.replaceAll('_', ' ').toLowerCase() : String(v);
+      return <span className="block max-w-[16rem] truncate whitespace-nowrap" title={text}>{text}</span>;
+    }
   }
 }
 
@@ -57,7 +60,7 @@ export default function ReportsPage() {
             options={(lookups?.plants ?? []).map((p) => ({ value: String(p.id), label: `${p.sapCode} · ${p.name}` }))} />
           <span className="text-xs text-slate-500 pb-2">{data ? `${data.rows.length.toLocaleString('en-IN')} row${data.rows.length === 1 ? '' : 's'}${data.truncated ? ' (first 20,000 — narrow the period)' : ''}` : ''}</span>
         </div>
-        <DataTable columns={columns} rows={data?.rows?.map((r, i) => ({ ...r, _k: i }))} rowKey="_k" loading={isFetching} error={error} empty="Nothing in this period." />
+        <DataTable tableId={`report-${key}`} key={key} columns={columns} rows={data?.rows?.map((r, i) => ({ ...r, _k: i }))} rowKey="_k" loading={isFetching} error={error} empty="Nothing in this period." />
       </div>
     </div>
   );

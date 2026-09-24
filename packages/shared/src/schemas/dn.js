@@ -73,6 +73,8 @@ export const REPORTS = Object.freeze([
   { key: 'vendor-quality', name: 'Vendor quality', description: 'Lots, rejection % and rejected-quantity PPM per vendor.' },
   { key: 'deviation-register', name: 'Deviation register', description: 'Deviations raised in the period with department, action, senior and final decisions.' },
   { key: 'dn-register', name: 'DN / CAPA ageing', description: 'Defect notifications with CAPA status, due date and days open.' },
+  { key: 'format-coverage', name: 'Format coverage', description: 'Items received in the period: approved inspection format or not, drafts in progress, lots waiting.' },
+  { key: 'tat', name: 'Turnaround by stage', description: 'Hours each lot spent in each stage (lots received in the period), and what is still waiting.' },
 ]);
 
 export const reportQuery = z.object({

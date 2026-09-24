@@ -23,6 +23,7 @@ import numberingRoutes from './modules/numbering/numbering.routes.js';
 import reportsRoutes from './modules/reports/reports.routes.js';
 import rolesRoutes from './modules/roles/roles.routes.js';
 import samplingRoutes from './modules/sampling/sampling.routes.js';
+import searchRoutes from './modules/search/search.routes.js';
 import { devicesRouter, syncRouter } from './modules/sync/sync.routes.js';
 import tasksRoutes from './modules/tasks/tasks.routes.js';
 import usersRoutes from './modules/users/users.routes.js';
@@ -71,6 +72,7 @@ export function createApp({ logger = defaultLogger } = {}) {
   api.use('/imirs', imirRoutes);
   api.use('/deviations', deviationRoutes);
   api.use('/tasks', tasksRoutes);
+  api.use('/search', searchRoutes);
   api.use('/dns', dnRoutes);
   api.use('/notifications', notificationsRoutes);
   api.use(reportsRoutes);

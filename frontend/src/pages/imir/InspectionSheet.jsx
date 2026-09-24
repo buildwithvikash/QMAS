@@ -26,7 +26,7 @@ export default function InspectionSheet({ sheet, readOnly = false, onPatch, phot
   const rel = sheet.checkpoints.filter((c) => c.section === 'RELIABILITY');
 
   const header = (
-    <tr className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
+    <tr className="text-[11px] font-medium text-slate-500 text-slate-500">
       <th className="px-2 py-2 text-left min-w-44">Check point</th>
       {SAMPLES.map((s) => (
         <th key={s} className={`px-1 py-2 text-center w-20 ${s <= n ? 'text-emerald-700' : 'text-slate-400'}`} title={s <= n ? 'Required sample' : 'Optional sample'}>
@@ -128,7 +128,7 @@ export default function InspectionSheet({ sheet, readOnly = false, onPatch, phot
       )}
 
       {rel.length > 0 && (
-        <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+        <section className="card overflow-hidden">
           <h3 className="px-4 py-2.5 text-sm font-bold text-slate-700 bg-slate-50 border-b border-slate-200">{SECTION_LABELS.RELIABILITY} test</h3>
           <div className="divide-y divide-slate-100">
             {rel.map((cp) => <ReliabilityRow key={cp.uid} cp={cp} readOnly={readOnly} onPatch={onPatch} />)}
@@ -140,7 +140,7 @@ export default function InspectionSheet({ sheet, readOnly = false, onPatch, phot
 }
 
 const Section = ({ title, note, children }) => (
-  <section className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+  <section className="card overflow-hidden">
     <div className="flex flex-wrap items-baseline gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-200">
       <h3 className="text-sm font-bold text-slate-700">{title} test</h3>
       <span className="text-xs text-slate-400">{note}</span>

@@ -101,6 +101,63 @@ const DEFS = {
                    JOIN mst.item i ON i.id = n.item_id JOIN mst.vendor v ON v.id = n.vendor_id
                   WHERE ${LOCAL('n.dn_date')} BETWEEN $1 AND $2 ${w('n.plant_id')} ORDER BY n.dn_date`,
   },
+  'format-coverage': {
+    dated: 'GRN date',
+    columns: [
+      ['itemCode', 'Item'], ['itemDescription', 'Description'], ['category', 'Category'], ['coverage', 'Format'], ['versionNo', 'Version', 'number'],
+      ['approvedAt', 'Approved', 'datetime'], ['openDraft', 'Draft in progress'], ['lots', 'Lots', 'number'], ['waitingLots', 'Lots waiting for format', 'number'],
+      ['lastGrnDate', 'Last GRN', 'date'],
+    ],
+    sql: (w) => `SELECT i.item_code, i.description AS item_description, c.name AS category,
+                        CASE WHEN f.current_version_id IS NOT NULL THEN 'Approved' ELSE 'Missing' END AS coverage,
+                        cv.version_no, cv.decided_at AS approved_at,
+                        (SELECT string_agg(DISTINCT lower(replace(v.status, '_', ' ')), ', ') FROM qms.format_version v
+                          WHERE v.format_id = f.id AND v.status IN ('DRAFT', 'PENDING_APPROVAL', 'CONFLICT', 'REJECTED')) AS open_draft,
+                        count(*)::int AS lots, count(*) FILTER (WHERE m.status = 'AWAITING_FORMAT')::int AS waiting_lots, max(m.grn_date) AS last_grn_date
+                   FROM qms.imir m JOIN mst.item i ON i.id = m.item_id LEFT JOIN mst.item_category c ON c.id = i.category_id
+                   LEFT JOIN qms.format f ON f.item_id = i.id LEFT JOIN qms.format_version cv ON cv.id = f.current_version_id
+                  WHERE m.grn_date BETWEEN $1 AND $2 ${w('m.plant_id')}
+                  GROUP BY i.id, c.name, f.id, cv.version_no, cv.decided_at
+                  ORDER BY (f.current_version_id IS NOT NULL), waiting_lots DESC, lots DESC, i.item_code`,
+  },
+  tat: {
+    dated: 'Received',
+    columns: [
+      ['stage', 'Stage'], ['completed', 'Passed through', 'number'], ['avgHours', 'Average (h)', 'number'], ['medianHours', 'Median (h)', 'number'],
+      ['p90Hours', '90th percentile (h)', 'number'], ['maxHours', 'Longest (h)', 'number'], ['openNow', 'Waiting now', 'number'], ['oldestOpenHours', 'Oldest waiting (h)', 'number'],
+    ],
+    // Segments: before submission from the IMIR's own timestamps, afterwards from the workflow
+    // history (each status change lasts until the next one). DN steps are not lot stages.
+    sql: (w) => `WITH lots AS (
+                   SELECT m.* FROM qms.imir m WHERE ${LOCAL('m.created_at')} BETWEEN $1 AND $2 ${w('m.plant_id')}
+                 ), first_submit AS (
+                   SELECT a.imir_id, min(a.at) AS at FROM qms.imir_action a JOIN lots m ON m.id = a.imir_id WHERE a.action = 'SUBMIT' GROUP BY a.imir_id
+                 ), hist AS (
+                   SELECT a.to_status AS stage, a.at AS s, lead(a.at) OVER (PARTITION BY a.imir_id ORDER BY a.at, a.id) AS e
+                     FROM qms.imir_action a JOIN lots m ON m.id = a.imir_id WHERE a.to_status IS NOT NULL AND a.dn_id IS NULL
+                 ), seg AS (
+                   SELECT 'AWAITING_FORMAT' AS stage, m.created_at AS s, m.opened_at AS e FROM lots m
+                   UNION ALL SELECT 'OPEN', m.opened_at, m.inspection_started_at FROM lots m WHERE m.opened_at IS NOT NULL
+                   UNION ALL SELECT 'IN_INSPECTION', m.inspection_started_at, fs.at FROM lots m LEFT JOIN first_submit fs ON fs.imir_id = m.id WHERE m.inspection_started_at IS NOT NULL
+                   UNION ALL SELECT stage, s, e FROM hist WHERE stage NOT IN ('CLOSED_ACCEPTED', 'CLOSED_REJECTED', 'CLOSED_UNDER_DEVIATION', 'AUTO_CLOSED')
+                 ), h AS (
+                   SELECT stage, extract(epoch FROM e - s) / 3600 AS done_h, CASE WHEN e IS NULL THEN extract(epoch FROM now() - s) / 3600 END AS open_h FROM seg
+                 )
+                 SELECT stage, count(done_h)::int AS completed, round(avg(done_h)::numeric, 1) AS avg_hours,
+                        round((percentile_cont(0.5) WITHIN GROUP (ORDER BY done_h))::numeric, 1) AS median_hours,
+                        round((percentile_cont(0.9) WITHIN GROUP (ORDER BY done_h))::numeric, 1) AS p90_hours,
+                        round(max(done_h)::numeric, 1) AS max_hours, count(open_h)::int AS open_now, round(max(open_h)::numeric, 1) AS oldest_open_hours
+                   FROM h GROUP BY stage
+                  ORDER BY array_position(ARRAY['AWAITING_FORMAT', 'OPEN', 'IN_INSPECTION', 'SUBMITTED', 'WITH_IQC_HEAD', 'DEPT_REVIEW', 'IQC_HEAD_FINAL',
+                                                'SENIOR_ESCALATION', 'UNDER_DEVIATION', 'QTY_VERIFICATION'], stage)`,
+    map: (r) => ({ ...r, stage: STAGE_NAMES[r.stage] ?? r.stage }),
+  },
+};
+
+const STAGE_NAMES = {
+  AWAITING_FORMAT: 'Waiting for format', OPEN: 'Waiting for inspection', IN_INSPECTION: 'Inspection', SUBMITTED: 'Incharge review',
+  WITH_IQC_HEAD: 'IQC Head decision', DEPT_REVIEW: 'SCM / VD review', IQC_HEAD_FINAL: 'IQC Head final decision', SENIOR_ESCALATION: 'Senior escalation',
+  UNDER_DEVIATION: 'Awaiting quantities', QTY_VERIFICATION: 'Quantity verification',
 };
 
 const NUMERIC = new Set(['number', 'percent']);

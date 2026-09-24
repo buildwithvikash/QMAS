@@ -152,7 +152,7 @@ function NewSeriesModal({ onClose }) {
         <TextInput label="Remarks" className="sm:col-span-2" value={v.remarks} onChange={(e) => form.set('remarks', e.target.value)} />
       </div>
       <div className="mt-5 rounded-xl border border-blue-100 bg-blue-50/60 px-4 py-3">
-        <div className="text-[10px] font-semibold text-blue-600 uppercase tracking-widest">Next number would be</div>
+        <div className="text-[10px] font-semibold text-blue-600 font-medium">Next number would be</div>
         <div className="mt-1 font-mono text-lg text-slate-800">{problems.length ? '—' : (previewState.data?.docNo ?? '…')}</div>
         <div className="text-xs text-slate-500">
           {plants.find((p) => p.id === previewPlantId)?.name ?? ''}{v.docType === 'DN' ? ' · source IL' : ''} · today

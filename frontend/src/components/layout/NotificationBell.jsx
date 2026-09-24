@@ -29,7 +29,7 @@ export default function NotificationBell() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div role="menu" className="animate-fadeIn absolute right-0 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] z-50 rounded-xl border border-slate-200 bg-white shadow-xl">
+          <div role="menu" className="animate-fadeIn absolute right-0 mt-2 w-[22rem] max-w-[calc(100vw-2rem)] z-50 card shadow-xl">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100">
               <span className="text-sm font-bold text-slate-800">Notifications</span>
               {unread > 0 && (

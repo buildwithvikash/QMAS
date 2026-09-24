@@ -2,6 +2,7 @@ import { FileX2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useGetDnsQuery } from '../../api/dnApi.js';
 import DataTable, { Pagination } from '../../components/ui/DataTable.jsx';
+import FilterChips from '../../components/ui/FilterChips.jsx';
 import PageHeader, { Tabs } from '../../components/ui/PageHeader.jsx';
 import { useListParams } from '../../hooks/useListParams.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
@@ -17,7 +18,7 @@ const TABS = [
 
 /** DN register: supplier defect notifications and their CAPA status and ageing. */
 export default function DnListPage() {
-  const list = useListParams({ sort: 'dnDate', order: 'desc', filters: { tab: 'OPEN' } });
+  const list = useListParams({ sort: 'dnDate', order: 'desc', filters: { tab: 'OPEN' }, storageKey: 'dns' });
   const { tab, ...rest } = list.params;
   const params = { ...rest, ...(tab === 'OVERDUE' ? { overdue: 'true' } : tab && tab !== 'ALL' ? { status: tab } : {}) };
   const { data, isFetching, error } = useGetDnsQuery(params, { pollingInterval: 60_000 });
@@ -41,7 +42,8 @@ export default function DnListPage() {
       <PageHeader icon={FileX2} title="Defect Notifications" subtitle="Supplier DNs from escalated lots, with CAPA status and ageing" search={list.search} onSearch={list.setSearch} searchPlaceholder="DN, IMIR, item, vendor…" />
       <div className="p-5">
         <Tabs tabs={TABS} active={list.filters.tab ?? 'ALL'} onChange={(k) => list.setFilter('tab', k)} />
-        <DataTable columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort}
+        <DataTable columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort} tableId="dns"
+          toolbar={<FilterChips chips={list.search ? [{ key: 'q', label: 'Search', value: list.search, onRemove: () => list.setSearch('') }] : []} />}
           onRowClick={(r) => navigate(`/dns/${r.id}`)} empty="No defect notifications in this list." />
         <Pagination meta={data?.meta} onPage={list.setPage} onPageSize={list.setPageSize} />
       </div>

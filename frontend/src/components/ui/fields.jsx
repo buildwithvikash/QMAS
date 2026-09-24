@@ -1,16 +1,16 @@
 import { useId } from 'react';
 
 export const inputCls =
-  'w-full px-3 py-2 text-sm rounded-lg border bg-white text-slate-700 placeholder-slate-300 outline-none transition-all focus:ring-2 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed';
-const okCls = 'border-slate-200 focus:border-blue-400 focus:ring-blue-500/20';
-const errCls = 'border-rose-300 focus:border-rose-400 focus:ring-rose-500/20';
+  'w-full px-3 py-2.5 text-sm rounded-lg border bg-white text-slate-800 placeholder-slate-400 outline-none transition-colors focus:ring-4 disabled:bg-slate-50 disabled:text-slate-400 disabled:cursor-not-allowed';
+const okCls = 'border-slate-300 hover:border-slate-400 focus:border-blue-500 focus:ring-blue-500/10';
+const errCls = 'border-rose-300 bg-rose-50/30 focus:border-rose-400 focus:ring-rose-500/10';
 
 /** Label + control + help/error text, as in WRL Master Config forms. */
 export function Field({ label, required, error, hint, id, className = '', children }) {
   return (
     <div className={className}>
       {label && (
-        <label htmlFor={id} className="block text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1">
+        <label htmlFor={id} className="block text-[11px] font-semibold text-slate-600 mb-1.5">
           {label} {required && <span className="text-rose-500">*</span>}
         </label>
       )}
@@ -100,5 +100,5 @@ export function Toggle({ label, checked, onChange, disabled, description }) {
 /** Banner for form-level errors returned by the API. */
 export function FormError({ message }) {
   if (!message) return null;
-  return <div role="alert" className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{message}</div>;
+  return <div role="alert" className="animate-fadeIn mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-sm text-rose-700">{message}</div>;
 }
