@@ -102,7 +102,7 @@ export default function UserFormModal({ user, lookups, onClose }) {
         )}
       </div>
 
-      <h3 className="mt-6 mb-2 text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Roles</h3>
+      <h3 className="mt-6 mb-2 text-[11px] font-medium text-slate-500">Roles</h3>
       <RoleAssignmentsEditor value={roles} onChange={setRoles} roles={lookups?.roles} plants={lookups?.plants} errors={roleErrors} />
     </Modal>
   );

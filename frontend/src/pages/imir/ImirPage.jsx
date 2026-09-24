@@ -1,5 +1,5 @@
 import { MAX_SAMPLES } from '@qmas/shared';
-import { AlertTriangle, ArrowLeft, ClipboardCheck, CloudOff, FileText, Loader2, Send, Tablet, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ClipboardCheck, CloudOff, FileText, Loader2, Printer, Send, Tablet, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -16,6 +16,8 @@ import { apiError } from '../../utils/apiError.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { ImirResult, ImirStatus } from './imirUi.jsx';
 import InspectionSheet from './InspectionSheet.jsx';
+import { focusFirstMissing } from './sheetNav.js';
+import LotJourney from './LotJourney.jsx';
 import ReviewPanel from './ReviewPanel.jsx';
 import { HistoryTimeline } from '../deviation/workflowUi.jsx';
 
@@ -115,11 +117,12 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
 
   return (
     <div className="pb-24">
-      <PageHeader icon={ClipboardCheck} title={sheet.imirNo ?? 'IMIR (not opened)'} subtitle={`${sheet.itemCode} · ${sheet.itemDescription}`}>
+      <PageHeader icon={ClipboardCheck} title={sheet.imirNo ?? 'IMIR (not opened)'} copyTitle={!!sheet.imirNo} subtitle={`${sheet.itemCode} · ${sheet.itemDescription}`}>
         <Link to={mode === 'tablet' ? '/tablet' : '/imirs'} className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />{mode === 'tablet' ? 'This tablet' : 'Incoming lots'}</Link>
         <ImirStatus status={sheet.status} />
         {mode === 'tablet' && <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700"><Tablet className="w-3.5 h-3.5" />On this tablet</span>}
         {mode === 'online' && <span className="text-xs text-slate-400 w-16">{saving ? 'Saving…' : 'Saved'}</span>}
+        {mode === 'view' && sheet.imirNo && <a href={`/api/v1/imirs/${sheet.id}/pdf`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><Printer className="w-4 h-4" />PDF</a>}
       </PageHeader>
 
       <div className="p-5 space-y-4">
@@ -128,6 +131,8 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
         {mode === 'view' && sheet.checkoutDeviceCode && <Banner tone="info">This lot is on tablet {sheet.checkoutDeviceCode} ({sheet.checkoutUserName}) since {formatDateTime(sheet.checkedOutAt)}. Record it there.</Banner>}
         {sheet.status === 'AWAITING_FORMAT' && <Banner tone="warning">{sheet.awaitingReason} It opens automatically once that is fixed.</Banner>}
 
+        {mode !== 'tablet' && <ReviewPanel imir={sheet} />}
+        <LotJourney status={sheet.status} history={sheet.history ?? []} deviation={sheet.deviation} dn={sheet.dn} />
         <LotFacts sheet={sheet} readOnly={readOnly} onPatch={onPatch} />
 
         {sheet.checkpoints?.length > 0 && (
@@ -137,22 +142,23 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
         )}
 
         {mode !== 'tablet' && sheet.history?.length > 0 && (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ReviewPanel imir={sheet} />
-            <section className="rounded-xl border border-slate-200 bg-white p-4">
-              <h2 className="text-sm font-bold text-slate-800 mb-3">History</h2>
-              <HistoryTimeline history={sheet.history} />
-            </section>
-          </div>
+          <section className="card p-4">
+            <h2 className="section-title mb-3">History</h2>
+            <HistoryTimeline history={sheet.history} />
+          </section>
         )}
       </div>
 
       {ev && sheet.status !== 'AWAITING_FORMAT' && (
         <div className="fixed bottom-0 right-0 left-0 md:left-auto md:w-[calc(100%-16rem)] z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-5 py-3 flex flex-wrap items-center gap-3">
-          <span className="text-sm text-slate-600">Result so far:</span>
+          <span className="text-sm text-slate-600">{sheet.result ? "Result:" : "Result so far:"}</span>
           <ImirResult result={sheet.result ?? ev.result} />
           {ev.defectiveSamples.length > 0 && <span className="text-xs text-rose-600">NOK in sample {ev.defectiveSamples.join(', ')}</span>}
-          {!readOnly && (ev.missing.length > 0 ? <span className="text-xs text-amber-700">{ev.missing.length} required entr{ev.missing.length > 1 ? 'ies' : 'y'} still empty</span> : !sheet.model && <span className="text-xs text-amber-700">Enter the model</span>)}
+          {!readOnly && (ev.missing.length > 0 ? (
+            <button type="button" onClick={() => focusFirstMissing(ev.missing)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 cursor-pointer">
+              {ev.missing.length} empty: go to next
+            </button>
+          ) : !sheet.model && <span className="text-xs text-amber-700">Enter the model</span>)}
           {!readOnly && <Button className="ml-auto" size="lg" icon={Send} disabled={!canSubmit || saving} onClick={() => setDialog({ type: 'submit' })}>Submit IMIR</Button>}
         </div>
       )}
@@ -174,10 +180,10 @@ function LotFacts({ sheet, readOnly, onPatch }) {
   const [remark, setRemark] = useState(sheet.inspectorRemark ?? '');
   useEffect(() => setModel(sheet.model ?? ''), [sheet.model]);
   const fact = (label, value) => (
-    <div><dt className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{label}</dt><dd className="text-sm text-slate-800">{value ?? '—'}</dd></div>
+    <div><dt className="text-[11px] font-medium text-slate-400">{label}</dt><dd className="text-sm text-slate-800">{value ?? '—'}</dd></div>
   );
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
+    <section className="card p-4 space-y-4">
       <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
         {fact('GRN', `${sheet.grnNo} · ${formatDate(sheet.grnDate)}`)}
         {fact('Vendor', `${sheet.vendorName} (${sheet.vendorCode})`)}
@@ -270,7 +276,7 @@ function PhotoDialog({ sheet, cp, mode, onClose, onRefresh }) {
         <Select label="Sample" value={sampleNo} onChange={(v) => setSampleNo(v ?? '1')} placeholder="Choose…"
           options={Array.from({ length: MAX_SAMPLES }, (_, i) => ({ value: String(i + 1), label: `Sample ${i + 1}${i + 1 <= sheet.sampleSize ? '' : ' (optional)'}` }))} />
         <label className="block">
-          <span className="block text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1">Photo or PDF</span>
+          <span className="block text-[11px] font-medium text-slate-500 mb-1">Photo or PDF</span>
           <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" capture="environment" multiple
             onChange={(e) => setFiles([...e.target.files])} className="block w-full text-sm" />
         </label>

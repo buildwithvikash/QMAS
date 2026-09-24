@@ -75,7 +75,7 @@ export default function FormatConflictsPage() {
                 { choice: 'CUSTOM', label: 'Other value' },
               ];
           return (
-            <fieldset key={c.id} className="rounded-xl border border-slate-200 bg-white p-4">
+            <fieldset key={c.id} className="card p-4">
               <legend className="px-1 text-sm font-bold text-slate-800">
                 {i + 1}. {c.label ?? 'Header'} — {presence ? 'kept on one side, removed on the other' : fieldLabel(c.field)}
               </legend>

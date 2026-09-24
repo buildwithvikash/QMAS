@@ -25,14 +25,14 @@ export function FormatContent({ checkpoints, diff }) {
         if (!rows.length && !gone.length) return null;
         const cols = sectionColumns(section);
         return (
-          <section key={section} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+          <section key={section} className="card overflow-hidden">
             <h3 className="px-4 py-2.5 text-sm font-bold text-slate-700 bg-slate-50 border-b border-slate-200">
               {SECTION_LABELS[section]} test <span className="font-normal text-slate-400">· {rows.length}</span>
             </h3>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">
+                  <tr className="text-[11px] font-medium text-slate-500">
                     <th className="px-3 py-2 text-left w-10">#</th>
                     {cols.map((c) => <th key={c} className={`px-3 py-2 ${NUMERIC.has(c) ? 'text-right' : 'text-left'}`}>{fieldLabel(c)}</th>)}
                   </tr>

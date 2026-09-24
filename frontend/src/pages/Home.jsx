@@ -1,55 +1,38 @@
 import { PERMISSIONS } from '@qmas/shared';
-import { AlertTriangle, ArrowRight, CheckCircle2, LayoutDashboard } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, LayoutDashboard } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useGetNumberSeriesQuery, useGetSamplingPlansQuery } from '../api/mastersApi.js';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import { useAccess } from '../hooks/useAccess.js';
+import PlantStatus from './PlantStatus.jsx';
+import QualityPanel from './QualityPanel.jsx';
 import MyTasks from './MyTasks.jsx';
 
 /**
- * Dashboard: what is waiting for you, who you are, where you can go, and — for people who
+ * Home: the user's work queue first, the plant's open work beside it, and — for people who
  * maintain masters — whether the configuration the inspection flow depends on is complete.
+ * Pages are reached from the menu or Ctrl+K, so Home does not repeat them.
  */
 export default function Home() {
-  const { user, can, menu } = useAccess();
+  const { user, can } = useAccess();
   const canSeeSetup = can(PERMISSIONS.MASTERS_VIEW);
+  const roles = user.roles.length
+    ? user.roles.map((r) => `${r.roleName}${r.plantSapCode ? ` (${r.plantSapCode})` : ''}`).join(', ')
+    : 'No role yet: ask the administrator to assign one';
+  const today = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'long', day: 'numeric', month: 'long' }).format(new Date());
 
   return (
     <div>
-      <PageHeader icon={LayoutDashboard} title={`Good ${partOfDay()}, ${user.fullName.split(' ')[0]}`} subtitle="QMAS · Incoming Material Inspection & Defect Notification" />
-      <div className="p-5 grid gap-5 lg:grid-cols-3">
-        <section className="lg:col-span-2 space-y-5">
+      <PageHeader icon={LayoutDashboard} title={`Good ${partOfDay()}, ${user.fullName.split(' ')[0]}`} subtitle={`${today}. ${roles}`} />
+      <div className="p-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] items-start">
+        <div className="space-y-5 min-w-0">
           <MyTasks />
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="text-sm font-bold text-slate-800 mb-3">Your access</h2>
-            {user.roles.length === 0 ? (
-              <p className="text-sm text-slate-500">You have no role yet. Ask the administrator to assign one.</p>
-            ) : (
-              <ul className="flex flex-wrap gap-2">
-                {user.roles.map((r) => (
-                  <li key={`${r.roleCode}-${r.plantId}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm">
-                    <span className="font-semibold text-slate-700">{r.roleName}</span>
-                    <span className="text-slate-400"> · {r.plantName ? `${r.plantName} (${r.plantSapCode})` : 'All plants'}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <h2 className="text-sm font-bold text-slate-800 mb-3">Go to</h2>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {menu.flatMap((s) => s.items).filter((i) => i.path !== '/').map((i) => (
-                <Link key={i.path} to={i.path} className="group flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-700 hover:border-blue-300 hover:bg-blue-50/50">
-                  {i.label}
-                  <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-blue-500" />
-                </Link>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        {canSeeSetup && <SetupStatus />}
+          <QualityPanel />
+        </div>
+        <aside className="space-y-5">
+          <PlantStatus />
+          {canSeeSetup && <SetupStatus />}
+        </aside>
       </div>
     </div>
   );
@@ -78,7 +61,7 @@ function SetupStatus() {
   ];
 
   return (
-    <aside className="rounded-xl border border-slate-200 bg-white p-5 h-fit">
+    <aside className="card p-5 h-fit">
       <h2 className="text-sm font-bold text-slate-800">Configuration status</h2>
       <p className="text-xs text-slate-400 mb-3">Needed before IMIRs can be opened.</p>
       <ul className="space-y-3">

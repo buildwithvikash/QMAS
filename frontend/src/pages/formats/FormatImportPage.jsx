@@ -75,7 +75,7 @@ export default function FormatImportPage() {
         <Button size="sm" variant="secondary" icon={Download} onClick={() => downloadImportTemplate().catch((e) => toast.error(e.message))}>Download template</Button>
       </PageHeader>
       <div className="p-5 space-y-5">
-        <section className="rounded-xl border border-slate-200 bg-white p-5">
+        <section className="card p-5">
           <ol className="text-sm text-slate-600 list-decimal pl-5 space-y-1 mb-4">
             <li>Fill the template: one row per checkpoint, with the item code on every row (the "For Data" sheet layout works too).</li>
             <li>Check the file. Nothing is saved; every problem is listed with its row number.</li>
@@ -96,8 +96,8 @@ export default function FormatImportPage() {
           <>
             <dl className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[['Rows', s.rows], ['Items', s.items], ['Ready', s.ready], ['Skipped', s.skipped], ['Need fixing', s.errors]].map(([label, n]) => (
-                <div key={label} className="rounded-xl border border-slate-200 bg-white p-3">
-                  <dt className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{label}</dt>
+                <div key={label} className="card p-3">
+                  <dt className="text-[11px] font-medium text-slate-500 text-slate-400">{label}</dt>
                   <dd className="text-2xl font-bold text-slate-800 tabular">{n}</dd>
                 </div>
               ))}

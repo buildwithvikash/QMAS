@@ -188,7 +188,7 @@ describe('tablets and offline sync', () => {
     const { imirId } = await inwardLot({ itemCode, qty: 2 });
     const device = await tablet();
     const other = await tablet();
-    const { agent } = await inspector();
+    const { agent, user: me } = await inspector();
 
     expect((await agent.get(`/api/v1/devices/by-code/${device.deviceCode.toLowerCase()}`)).body.data.id).toBe(device.id);
     const co = (await agent.post('/api/v1/sync/checkout').send({ deviceId: device.id, imirIds: [imirId] })).body.data;
@@ -202,7 +202,11 @@ describe('tablets and offline sync', () => {
     expect((await agent.post('/api/v1/sync/checkout').send({ deviceId: other.id, imirIds: [imirId] })).body.data.refused[0].reason).toMatch(/Already on tablet/);
 
     const save = { opId: randomUUID(), type: 'SAVE', imirId, clientTime: '2026-09-23T10:15:00+05:30', payload: { model: 'M9', cells: [...cellsFor(bundle, 'DIMENSIONAL', [10, 10]), ...cellsFor(bundle, 'VISUAL', [true, false])] } };
-    const p1 = (await agent.post('/api/v1/sync/push').send({ deviceId: device.id, ops: [save] })).body.data;
+    // Entries recorded by another inspector on this tablet are not credited to whoever syncs.
+    const foreign = { ...save, recordedBy: randomUUID() };
+    const f1 = (await agent.post('/api/v1/sync/push').send({ deviceId: device.id, ops: [foreign] })).body.data;
+    expect(f1.results[0]).toMatchObject({ opId: save.opId, outcome: 'WRONG_USER' });
+    const p1 = (await agent.post('/api/v1/sync/push').send({ deviceId: device.id, ops: [{ ...save, recordedBy: me.id }] })).body.data;
     expect(p1.results).toEqual([{ opId: save.opId, outcome: 'ACCEPTED' }]);
     const replay = (await agent.post('/api/v1/sync/push').send({ deviceId: device.id, ops: [save] })).body.data;
     expect(replay.results[0]).toMatchObject({ outcome: 'ACCEPTED', duplicate: true });
