@@ -13,10 +13,13 @@ import auditRoutes from './modules/audit/audit.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import formatsRoutes from './modules/formats/formats.routes.js';
 import healthRoutes from './modules/health/health.routes.js';
+import imirRoutes, { filesRouter } from './modules/imir/imir.routes.js';
+import integrationRoutes from './modules/integration/integration.routes.js';
 import mastersRoutes from './modules/masters/masters.routes.js';
 import numberingRoutes from './modules/numbering/numbering.routes.js';
 import rolesRoutes from './modules/roles/roles.routes.js';
 import samplingRoutes from './modules/sampling/sampling.routes.js';
+import { devicesRouter, syncRouter } from './modules/sync/sync.routes.js';
 import usersRoutes from './modules/users/users.routes.js';
 
 export function createApp({ logger = defaultLogger } = {}) {
@@ -59,6 +62,11 @@ export function createApp({ logger = defaultLogger } = {}) {
   api.use('/masters/number-series', numberingRoutes);
   api.use('/masters', mastersRoutes);
   api.use('/formats', formatsRoutes);
+  api.use('/imirs', imirRoutes);
+  api.use('/files', filesRouter);
+  api.use('/devices', devicesRouter);
+  api.use('/sync', syncRouter);
+  api.use('/integration', integrationRoutes);
   api.use('/audit', auditRoutes);
 
   app.use('/api/v1', api);
@@ -67,8 +75,11 @@ export function createApp({ logger = defaultLogger } = {}) {
   // Single-container option (as in WRL Tool Report): serve the built web app from the API.
   if (env.SERVE_WEB_DIST) {
     const dist = path.resolve(env.SERVE_WEB_DIST);
-    app.use(express.static(dist, { index: false, maxAge: '1h' }));
-    app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+    // Hashed assets can be cached; the service worker, manifest and index.html must always be fresh
+    // so tablets pick up a new release.
+    const noCache = /(sw\.js|registerSW\.js|manifest\.webmanifest|index\.html)$/;
+    app.use(express.static(dist, { index: false, maxAge: '1h', setHeaders: (res, file) => noCache.test(file) && res.setHeader('Cache-Control', 'no-cache') }));
+    app.get(/^\/(?!api\/).*/, (_req, res) => res.set('Cache-Control', 'no-cache').sendFile(path.join(dist, 'index.html')));
   }
 
   app.use(errorHandler);

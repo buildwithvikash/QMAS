@@ -1,7 +1,7 @@
 {
   "name": "qmas",
   "private": true,
-  "description": "QMAS — Incoming Material Inspection (IMI) & Defect Notification (DN)",
+  "description": "QMAS \u2014 Incoming Material Inspection (IMI) & Defect Notification (DN)",
   "workspaces": [
     "packages/*",
     "backend",
@@ -16,7 +16,7 @@
     "db:migrate": "npm -w backend run db:migrate",
     "db:dev": "npm -w backend run db:dev",
     "create-admin": "npm -w backend run create-admin",
-    "test": "npm -w @qmas/shared test && npm -w backend test",
+    "test": "npm -w @qmas/shared test && npm -w @qmas/backend test && npm -w @qmas/frontend test",
     "build:web": "npm -w frontend run build",
     "lint": "npm -w frontend run lint"
   }

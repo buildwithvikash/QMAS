@@ -3,6 +3,7 @@ import { checkpointSchema, diffVersions, FIELD_LABELS, mergeVersions, PERMISSION
 import { getPool } from '../../db/pool.js';
 import { withTransaction } from '../../db/tx.js';
 import { lookupSan } from '../../integrations/san/index.js';
+import { openAwaitingForItem } from '../imir/imir.service.js';
 import { issuesToErrors } from '../../middlewares/validate.js';
 import { AppError } from '../../shared/AppError.js';
 import { camelRow, pageMeta } from '../../shared/sql.js';
@@ -213,6 +214,8 @@ async function fastForward(db, user, v, format, { remark, mergeNote = null }) {
     decisionRemark: remark ?? null, mergeNote,
   });
   await repo.setCurrent(db, v.formatId, v.id);
+  // Inward lots that were waiting for this item's format open now (number, sample, format pinned).
+  await openAwaitingForItem(db, v.itemId, { userId: user.id });
   return versionNo;
 }
 
