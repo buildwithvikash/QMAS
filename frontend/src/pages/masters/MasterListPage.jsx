@@ -21,7 +21,7 @@ export default function MasterListPage({ resource }) {
   const cfg = MASTER_CONFIGS[resource];
   const { can } = useAccess();
   const canManage = can(PERMISSIONS.MASTERS_MANAGE);
-  const list = useListParams({ sort: cfg.defaultSort });
+  const list = useListParams({ sort: cfg.defaultSort, storageKey: `masters-${resource}` });
   const { data, isFetching, error } = useGetMasterListQuery({ resource, ...list.params });
   const [editing, setEditing] = useState(null); // null | 'new' | row
 
@@ -59,7 +59,7 @@ export default function MasterListPage({ resource }) {
           <Select className="w-44" aria-label="Status" placeholder="All statuses" value={list.filters.isActive ?? ''} onChange={(v) => list.setFilter('isActive', v)}
             options={[{ value: 'true', label: 'Active' }, { value: 'false', label: 'Inactive' }]} />
         </div>
-        <DataTable columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort} empty={`No ${cfg.title.toLowerCase()} found.`} />
+        <DataTable tableId={`masters-${resource}`} columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort} empty={`No ${cfg.title.toLowerCase()} found.`} />
         <Pagination meta={data?.meta} onPage={list.setPage} onPageSize={list.setPageSize} />
       </div>
       {editing && <MasterFormModal cfg={cfg} resource={resource} row={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}

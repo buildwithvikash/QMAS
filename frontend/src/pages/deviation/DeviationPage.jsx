@@ -14,6 +14,7 @@ import { useZodForm } from '../../hooks/useZodForm.js';
 import { apiError } from '../../utils/apiError.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { ImirStatus } from '../imir/imirUi.jsx';
+import LotJourney from '../imir/LotJourney.jsx';
 import { ACTION_NAMES, DECISION_NAMES, ROLE_SHORT } from './workflowLabels.js';
 import { DeviationStage, HistoryTimeline } from './workflowUi.jsx';
 
@@ -43,13 +44,14 @@ export default function DeviationPage() {
 
   return (
     <div className="pb-10">
-      <PageHeader icon={FileWarning} title={d.deviationNo} subtitle={`${d.itemCode} · ${d.itemDescription}`}>
+      <PageHeader icon={FileWarning} title={d.deviationNo} copyTitle subtitle={`${d.itemCode} · ${d.itemDescription}`}>
         <Link to="/deviations" className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />Deviations</Link>
         <DeviationStage stage={d.stage} outcome={d.outcome} />
       </PageHeader>
 
       <div className="p-5 grid gap-4 xl:grid-cols-[1fr_24rem]">
         <div className="space-y-4 min-w-0">
+          <LotJourney status={d.imirStatus} history={d.history} deviation={d} />
           <Facts d={d} />
           {buttons.length > 0 && (
             <section className="rounded-xl border border-blue-200 bg-blue-50/40 p-4">
@@ -65,7 +67,7 @@ export default function DeviationPage() {
           {d.rounds.length > 0 && <EscalationBoard d={d} />}
         </div>
         <aside className="space-y-4">
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <section className="card p-4">
             <h2 className="text-sm font-bold text-slate-800 mb-3">History</h2>
             <HistoryTimeline history={d.history} />
           </section>
@@ -77,12 +79,12 @@ export default function DeviationPage() {
 }
 
 function fact(label, value) {
-  return <div><dt className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{label}</dt><dd className="text-sm text-slate-800">{value ?? '—'}</dd></div>;
+  return <div><dt className="text-[11px] font-medium text-slate-400">{label}</dt><dd className="text-sm text-slate-800">{value ?? '—'}</dd></div>;
 }
 
 function Facts({ d }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    <section className="card p-4 space-y-3">
       <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
         {fact('IMIR', <Link to={`/imirs/${d.imirId}`} className="font-mono text-blue-700 hover:underline">{d.imirNo}</Link>)}
         {fact('IMIR status', <ImirStatus status={d.imirStatus} />)}
@@ -147,7 +149,7 @@ function DeviationForm({ d, onRecommendReject }) {
   };
 
   return (
-    <section className="rounded-xl border border-blue-200 bg-white p-4 space-y-4">
+    <section className="card border-blue-200 p-4 space-y-4">
       <div>
         <h2 className="text-sm font-bold text-slate-800">Deviation Form</h2>
         <p className="text-xs text-slate-500">{d.seniorEffective === 'CHANGE_TYPE' ? 'Senior authorities asked for a different deviation type. Change the action and submit again.' : `Fill the form for ${d.department}; it goes to your approver, then to the IQC Head.`}</p>
@@ -178,10 +180,10 @@ function DeviationForm({ d, onRecommendReject }) {
 function FormView({ d }) {
   if (!d.formSubmittedAt) return null;
   const row = (label, value) => (
-    <div><dt className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{label}</dt><dd className="text-sm text-slate-800 whitespace-pre-line">{value || '—'}</dd></div>
+    <div><dt className="text-[11px] font-medium text-slate-400">{label}</dt><dd className="text-sm text-slate-800 whitespace-pre-line">{value || '—'}</dd></div>
   );
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    <section className="card p-4 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-bold text-slate-800">Deviation Form</h2>
         <Badge variant={d.severity === 'CRITICAL' ? 'danger' : d.severity === 'MAJOR' ? 'warning' : 'neutral'}>{d.severity?.toLowerCase()}</Badge>
@@ -216,7 +218,7 @@ function QuantityForm({ d }) {
     }
   };
   return (
-    <section className="rounded-xl border border-blue-200 bg-white p-4 space-y-3">
+    <section className="card border-blue-200 p-4 space-y-3">
       <div>
         <h2 className="text-sm font-bold text-slate-800">{ACTION_NAMES[d.action]} result</h2>
         <p className="text-xs text-slate-500">Enter the quantities after {ACTION_NAMES[d.action]?.toLowerCase()}, by {formatDateTime(d.qtyDueAt)}. Without them the deviation closes itself.</p>
@@ -238,7 +240,7 @@ const STEP_BADGE = { PENDING: ['Pending', 'warning'], DECIDED: ['Decided', 'succ
 function EscalationBoard({ d }) {
   const current = d.rounds.at(-1);
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
+    <section className="card p-4 space-y-4">
       <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Scale className="w-4 h-4 text-slate-500" />Senior escalation</h2>
       {[...d.rounds].reverse().map((r) => (
         <div key={r.id} className="rounded-lg border border-slate-200 p-3 space-y-3">
@@ -354,7 +356,7 @@ function DecisionDialog({ d, action, onClose }) {
       <div className="space-y-4">
         {action === 'escalate' && (
           <fieldset>
-            <legend className="block text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1">Authorities <span className="text-rose-500">*</span></legend>
+            <legend className="block text-[11px] font-medium text-slate-500 mb-1">Authorities <span className="text-rose-500">*</span></legend>
             <div className="grid gap-2 sm:grid-cols-2">
               {[...ESCALATION_RANKS].reverse().map(({ roleCode }) => (
                 <label key={roleCode} className={`cursor-pointer rounded-lg border px-3 py-2 text-sm ${authorities.includes(roleCode) ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-slate-200'}`}>

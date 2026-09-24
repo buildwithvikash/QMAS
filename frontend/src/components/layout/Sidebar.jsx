@@ -80,7 +80,7 @@ export default function Sidebar({ expanded, onToggle, isMobile }) {
         }`}
       >
         <div className={`flex items-center h-12 px-2.5 border-b border-slate-100 shrink-0 ${showLabels ? 'justify-between' : 'justify-center'}`}>
-          {showLabels && <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 px-1">Navigation</span>}
+          {showLabels && <span className="text-xs font-medium text-slate-500 px-1">Navigation</span>}
           <button
             type="button"
             onClick={onToggle}
@@ -127,7 +127,7 @@ export default function Sidebar({ expanded, onToggle, isMobile }) {
                     {subgroups.map((g) => (
                       <div key={g.key}>
                         <div className="flex items-center gap-2 px-1 pt-3 pb-1">
-                          <span className={`text-[9px] font-bold uppercase tracking-[0.18em] ${color.sub}`}>{g.label}</span>
+                          <span className={`text-[11px] font-medium text-slate-500 ${color.sub}`}>{g.label}</span>
                           <span className="flex-1 h-px bg-slate-100" />
                         </div>
                         {g.items.map((item) => <NavItem key={item.path} item={item} active={item.path === location.pathname} color={color} />)}

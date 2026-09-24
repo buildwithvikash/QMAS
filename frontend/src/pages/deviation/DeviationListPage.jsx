@@ -2,6 +2,7 @@ import { FileWarning } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useGetDeviationsQuery } from '../../api/workflowApi.js';
 import DataTable, { Pagination } from '../../components/ui/DataTable.jsx';
+import FilterChips from '../../components/ui/FilterChips.jsx';
 import { Select } from '../../components/ui/fields.jsx';
 import PageHeader, { Tabs } from '../../components/ui/PageHeader.jsx';
 import { useListParams } from '../../hooks/useListParams.js';
@@ -19,7 +20,7 @@ const TABS = [
 
 /** Deviations raised when the IQC Head holds a lot, across SCM / VD, IQC Head and senior stages. */
 export default function DeviationListPage() {
-  const list = useListParams({ sort: 'createdAt', order: 'desc', filters: { tab: 'OPEN' } });
+  const list = useListParams({ sort: 'createdAt', order: 'desc', filters: { tab: 'OPEN' }, storageKey: 'deviations' });
   const { tab, ...rest } = list.params;
   const params = { ...rest, ...tabFilter(tab) };
   const filters = list.filters;
@@ -38,6 +39,11 @@ export default function DeviationListPage() {
     { key: 'updatedAt', header: 'Updated', sortable: true, render: (r) => <span className="text-xs text-slate-400 whitespace-nowrap">{formatRelative(r.updatedAt)}</span> },
   ];
 
+  const chips = [
+    list.search && { key: 'q', label: 'Search', value: list.search, onRemove: () => list.setSearch('') },
+    filters.department && { key: 'dept', label: 'Department', value: filters.department, onRemove: () => list.setFilter('department', undefined) },
+  ].filter(Boolean);
+
   return (
     <div>
       <PageHeader icon={FileWarning} title="Deviations" subtitle="Held lots: department review, IQC Head decision, senior escalation and quantities" search={list.search} onSearch={list.setSearch} searchPlaceholder="Deviation, IMIR, item, vendor…" />
@@ -47,8 +53,9 @@ export default function DeviationListPage() {
           <Select className="w-44" label="Department" placeholder="SCM and VD" value={filters.department ?? ''} onChange={(v) => list.setFilter('department', v ?? undefined)}
             options={[{ value: 'SCM', label: 'SCM' }, { value: 'VD', label: 'VD' }]} />
         </div>
-        <DataTable columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort}
-          onRowClick={(r) => navigate(`/deviations/${r.id}`)} empty="No deviations in this list." />
+        <DataTable columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort} tableId="deviations"
+          toolbar={<FilterChips chips={chips} onClearAll={() => list.clearFilters({ tab: filters.tab })} />}
+          onRowClick={(r) => navigate(`/deviations/${r.id}`)} empty={chips.length ? 'No deviations match these filters.' : 'No deviations in this list.'} />
         <Pagination meta={data?.meta} onPage={list.setPage} onPageSize={list.setPageSize} />
       </div>
     </div>

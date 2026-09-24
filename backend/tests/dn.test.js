@@ -256,6 +256,15 @@ describe('reports and dashboard', () => {
     expect(xlsx.headers['content-disposition']).toMatch(/deviation-register_.*\.xlsx/);
     expect(xlsx.body.subarray(0, 2).toString()).toBe('PK');
 
+    const cov = ok(await A.head.get('/api/v1/reports/format-coverage').query({ from: '2026-09-01', to: '2026-12-31' }));
+    expect(cov.rows.find((r) => r.itemCode === m.itemCode)).toMatchObject({ coverage: 'Approved', versionNo: 1, lots: 1, waitingLots: 0, openDraft: null });
+
+    const tat = ok(await A.head.get('/api/v1/reports/tat'));
+    const stages = tat.rows.map((r) => r.stage);
+    expect(stages.indexOf('Inspection')).toBeLessThan(stages.indexOf('Incharge review'));
+    expect(tat.rows.find((r) => r.stage === 'Incharge review').completed).toBeGreaterThan(0);
+    expect(tat.rows.find((r) => r.stage === 'IQC Head decision').openNow).toBeGreaterThan(0);
+
     expect((await A.head.get('/api/v1/reports/nope')).status).toBe(404);
     expect((await A.head.get('/api/v1/reports/imir-register').query({ from: '2026-10-01', to: '2026-09-01' })).status).toBe(422);
     expect((await A.inspector.get('/api/v1/reports/imir-register')).status).toBe(403);
@@ -270,5 +279,23 @@ describe('reports and dashboard', () => {
     expect(s.lots30Days.received).toBeGreaterThan(0);
     expect(s.dn).toHaveProperty('capaOverdue');
     expect(typeof s.openDeviations).toBe('number');
+  });
+});
+
+describe('global search', () => {
+  it('finds documents and masters the user may see, within their plants', async () => {
+    const m = await escalatedLot();
+    const dn = ok(await A.incharge.post('/api/v1/dns').send({ imirId: m.id }));
+    const groups = ok(await A.head.get('/api/v1/search').query({ q: m.imirNo }));
+    expect(groups.find((g) => g.key === 'imir').items[0]).toMatchObject({ title: m.imirNo, link: `/imirs/${m.id}` });
+    const byDn = ok(await A.head.get('/api/v1/search').query({ q: dn.dnNo }));
+    expect(byDn.find((g) => g.key === 'dn').items[0].link).toBe(`/dns/${dn.id}`);
+    const byItem = ok(await A.head.get('/api/v1/search').query({ q: m.itemCode }));
+    expect(byItem.find((g) => g.key === 'item').items[0]).toMatchObject({ title: m.itemCode, meta: 'Format approved' });
+
+    const { agent: otherPlant } = await agentWithRoles([{ roleCode: 'IQC_INSPECTOR', plantId: await plantId('1111') }]);
+    const none = ok(await otherPlant.get('/api/v1/search').query({ q: m.imirNo }));
+    expect(none.find((g) => g.key === 'imir')).toBeUndefined();
+    expect((await A.head.get('/api/v1/search').query({ q: 'x' })).status).toBe(422);
   });
 });

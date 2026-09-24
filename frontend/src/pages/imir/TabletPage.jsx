@@ -193,7 +193,7 @@ function StorageSafety({ s }) {
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    <section className="card p-4 space-y-3">
       <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800"><HardDrive className="w-4 h-4 text-slate-500" />Keeping offline work safe</h2>
       <div className="flex flex-wrap items-center gap-2 text-sm">
         {s.storage.persisted
@@ -217,7 +217,7 @@ function StorageSafety({ s }) {
 
 const Stat = ({ label, value, hint, tone }) => (
   <div className={`rounded-xl border bg-white p-4 ${tone === 'warning' ? 'border-amber-300' : 'border-slate-200'}`}>
-    <div className="text-[10px] font-semibold uppercase tracking-widest text-slate-400">{label}</div>
+    <div className="text-[11px] font-medium text-slate-500 text-slate-400">{label}</div>
     <div className="text-2xl font-bold text-slate-800 tabular">{value}</div>
     {hint && <div className="text-xs text-slate-400">{hint}</div>}
   </div>
@@ -249,10 +249,10 @@ function TakeLots({ device, onTablet }) {
         <h2 className="text-sm font-bold text-slate-800">Lots to inspect at {device.plantName}</h2>
         <Button size="sm" icon={Download} disabled={!picked.size} loading={busy} onClick={take}>Take {picked.size || ''} onto this tablet</Button>
       </div>
-      {isFetching && !data ? <Loader /> : rows.length === 0 ? (
+      {isFetching && !data ? <Loader inline /> : rows.length === 0 ? (
         <p className="text-sm text-slate-400">Nothing waiting for inspection.</p>
       ) : (
-        <ul className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+        <ul className="divide-y divide-slate-100 card">
           {rows.map((r) => {
             const elsewhere = r.checkoutDeviceId && r.checkoutDeviceId !== device.id;
             return (

@@ -19,7 +19,7 @@ const FILTERS = [
 
 /** Every item and the state of its inspection format — also the format coverage view. */
 export default function FormatLibraryPage() {
-  const list = useListParams({ sort: 'itemCode' });
+  const list = useListParams({ sort: 'itemCode', storageKey: 'formats' });
   const { data, isFetching, error } = useGetFormatLibraryQuery(list.params);
   const navigate = useNavigate();
 
@@ -55,7 +55,7 @@ export default function FormatLibraryPage() {
             </button>
           ))}
         </div>
-        <DataTable rowKey="itemId" columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort}
+        <DataTable tableId="formats" rowKey="itemId" columns={columns} rows={data?.rows} loading={isFetching} error={error} sort={list.sort} onSort={list.toggleSort}
           onRowClick={(r) => navigate(`/formats/items/${r.itemId}`)} empty="No items match. Add items in Master Config → Items or import formats." />
         <Pagination meta={data?.meta} onPage={list.setPage} onPageSize={list.setPageSize} />
       </div>

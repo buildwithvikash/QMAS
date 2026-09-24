@@ -38,7 +38,7 @@ export default function ReviewPanel({ imir }) {
     }
   };
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    <section className="card p-4 space-y-3">
       <h2 className="text-sm font-bold text-slate-800">Review</h2>
       {imir.deviation && (
         <Link to={`/deviations/${imir.deviation.id}`} className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm hover:bg-amber-100">
@@ -107,7 +107,7 @@ function ActionDialog({ imir, action, onClose }) {
         {action === 'hold' && (
           <>
             <fieldset>
-              <legend className="block text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1">Department <span className="text-rose-500">*</span></legend>
+              <legend className="block text-[11px] font-medium text-slate-500 mb-1">Department <span className="text-rose-500">*</span></legend>
               <div className="flex gap-2">
                 {[['SCM', 'Supply Chain (SCM)'], ['VD', 'Vendor Development (VD)']].map(([v, l]) => (
                   <label key={v} className={`flex-1 cursor-pointer rounded-lg border px-3 py-2 text-sm ${department === v ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-slate-200'}`}>
@@ -117,7 +117,7 @@ function ActionDialog({ imir, action, onClose }) {
               </div>
             </fieldset>
             <fieldset>
-              <legend className="block text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1">Suggested action <span className="text-rose-500">*</span></legend>
+              <legend className="block text-[11px] font-medium text-slate-500 mb-1">Suggested action <span className="text-rose-500">*</span></legend>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(ACTION_NAMES).map(([v, l]) => (
                   <label key={v} className={`cursor-pointer rounded-lg border px-3 py-2 text-sm ${suggested.includes(v) ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-slate-200'}`}>
@@ -131,7 +131,7 @@ function ActionDialog({ imir, action, onClose }) {
         <TextArea label={c.remarkLabel ?? 'Remark'} required={remarkRequired} value={remark} onChange={(e) => setRemark(e.target.value)} maxLength={1000} />
         {c.checkpoints && failed.length > 0 && (
           <div className="space-y-2">
-            <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Remarks on failed checkpoints</p>
+            <p className="text-[11px] font-medium text-slate-500">Remarks on failed checkpoints</p>
             {failed.map((cp) => (
               <TextArea key={cp.uid} label={`${cp.checkpoint} · ${cp.specification}`} value={cpRemarks[cp.uid]} maxLength={500}
                 onChange={(e) => setCpRemarks((r) => ({ ...r, [cp.uid]: e.target.value }))} className="[&_textarea]:min-h-12" />

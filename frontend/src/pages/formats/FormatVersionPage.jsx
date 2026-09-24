@@ -45,7 +45,7 @@ export default function FormatVersionPage() {
       </PageHeader>
 
       <div className="p-5 space-y-4">
-        <dl className="grid gap-x-6 gap-y-2 rounded-xl border border-slate-200 bg-white p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="grid gap-x-6 gap-y-2 card p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <Meta label="Status"><StatusBadge status={v.status} /></Meta>
           <Meta label="Source">{SOURCE[v.source]}{v.sourceRef?.reference ? ` · ${v.sourceRef.reference}` : ''}{v.sourceRef?.itemCode ? ` · ${v.sourceRef.itemCode} v${v.sourceRef.versionNo}` : ''}</Meta>
           <Meta label="Based on">{v.baseVersionNo ? <VersionTag no={v.baseVersionNo} /> : 'Nothing (first format)'}</Meta>
@@ -89,7 +89,7 @@ export default function FormatVersionPage() {
 
 const Meta = ({ label, wide, children }) => (
   <div className={wide ? 'sm:col-span-2 lg:col-span-4' : ''}>
-    <dt className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{label}</dt>
+    <dt className="text-[11px] font-medium text-slate-400">{label}</dt>
     <dd className="text-slate-700">{children}</dd>
   </div>
 );
@@ -148,7 +148,7 @@ function ApproveDialog({ v, onClose }) {
       footer={<ModalFooter onCancel={onClose} onSave={approve} saving={isLoading} saveVariant={preview?.mode === 'UNRELATED' ? 'danger' : 'success'}
         saveLabel={preview?.mode === 'UNRELATED' ? `Replace v${preview.againstVersionNo}` : preview?.conflicts?.length ? 'Check and resolve' : 'Approve'} />}>
       <FormError message={error ? apiError(error).message : ''} />
-      <div className="text-sm text-slate-600 mb-4">{loading ? <Loader label="Checking against the approved version…" /> : explanation}</div>
+      <div className="text-sm text-slate-600 mb-4">{loading ? <Loader inline label="Checking against the approved version…" /> : explanation}</div>
       <TextArea label="Remark (optional)" value={remark} onChange={(e) => setRemark(e.target.value)} />
     </Modal>
   );

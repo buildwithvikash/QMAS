@@ -12,6 +12,7 @@ import { useZodForm } from '../../hooks/useZodForm.js';
 import { apiError } from '../../utils/apiError.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { DnStatus, HistoryTimeline } from '../deviation/workflowUi.jsx';
+import { Stepper } from '../imir/LotJourney.jsx';
 
 export default function DnPage() {
   const { id } = useParams();
@@ -32,7 +33,7 @@ export default function DnPage() {
 
   return (
     <div className="pb-10">
-      <PageHeader icon={FileX2} title={dn.dnNo} subtitle={`${dn.itemCode} · ${dn.itemDescription}`}>
+      <PageHeader icon={FileX2} title={dn.dnNo} copyTitle subtitle={`${dn.itemCode} · ${dn.itemDescription}`}>
         <Link to="/dns" className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />Defect notifications</Link>
         <DnStatus status={dn.status} overdue={dn.capaOverdue} />
         <a href={`/api/v1/dns/${dn.id}/pdf`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><Printer className="w-4 h-4" />PDF</a>
@@ -41,13 +42,14 @@ export default function DnPage() {
 
       <div className="p-5 grid gap-4 xl:grid-cols-[1fr_22rem]">
         <div className="space-y-4 min-w-0">
+          <Stepper title="DN route" steps={dnSteps(dn)} since={dn.history.at(-1)?.at} />
           <Facts dn={dn} />
           {editable ? <DnForm key={dn.rowVersion} dn={dn} /> : <DnView dn={dn} />}
           <Images dn={dn} editable={editable} />
           <CapaSection dn={dn} />
         </div>
         <aside>
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <section className="card p-4">
             <h2 className="text-sm font-bold text-slate-800 mb-3">History</h2>
             <HistoryTimeline history={dn.history} />
           </section>
@@ -57,11 +59,23 @@ export default function DnPage() {
   );
 }
 
-const fact = (label, value) => <div><dt className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{label}</dt><dd className="text-sm text-slate-800">{value ?? '—'}</dd></div>;
+/** Raised → CAPA from the vendor → IQC Head review → closed. */
+function dnSteps(dn) {
+  const at = { OPEN: 1, CAPA_SUBMITTED: 2, CLOSED: 4 }[dn.status];
+  const holder = { 1: dn.capaApplicable ? "IQC Incharge (enter the vendor's CAPA)" : 'IQC Incharge (send for closure)', 2: 'Plant IQC Head' };
+  return [
+    { key: 'raised', label: 'Raised' },
+    { key: 'capa', label: dn.capaApplicable ? 'Vendor CAPA' : 'Send for closure' },
+    { key: 'review', label: 'IQC Head review' },
+    { key: 'closed', label: 'Closed', tone: 'good' },
+  ].map((s, i) => ({ ...s, state: i < at ? 'done' : i === at ? 'current' : 'next', holder: i === at ? holder[i] : null }));
+}
+
+const fact = (label, value) => <div><dt className="text-[11px] font-medium text-slate-400">{label}</dt><dd className="text-sm text-slate-800">{value ?? '—'}</dd></div>;
 
 function Facts({ dn }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4">
+    <section className="card p-4">
       <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
         {fact('DN date', formatDateTime(dn.dnDate))}
         {fact('IMIR', <Link to={`/imirs/${dn.imirId}`} className="font-mono text-blue-700 hover:underline">{dn.imirNo}</Link>)}
@@ -112,7 +126,7 @@ function DnForm({ dn }) {
   };
 
   return (
-    <section className="rounded-xl border border-blue-200 bg-white p-4 space-y-4">
+    <section className="card border-blue-200 p-4 space-y-4">
       <h2 className="text-sm font-bold text-slate-800">Defect notification</h2>
       <FormError message={error} />
       <div className="grid gap-3 sm:grid-cols-4">
@@ -122,10 +136,10 @@ function DnForm({ dn }) {
         <TextInput label="Defective qty" type="number" min="0" step="any" value={v.defectiveQty} onChange={set('defectiveQty')} error={fieldErrors.defectiveQty} />
       </div>
       <div>
-        <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1">Defect details</p>
+        <p className="text-[11px] font-medium text-slate-500 mb-1">Defect details</p>
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500">
+            <thead className="bg-slate-50 text-[10px] font-medium text-slate-500">
               <tr><th className="px-2 py-2 text-left w-8">#</th><th className="px-2 py-2 text-left">Parameter</th><th className="px-2 py-2 text-left">Specification</th><th className="px-2 py-2 text-left">Defect observed</th><th className="w-10" /></tr>
             </thead>
             <tbody>
@@ -160,7 +174,7 @@ function DnForm({ dn }) {
 
 function DnView({ dn }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    <section className="card p-4 space-y-3">
       <h2 className="text-sm font-bold text-slate-800">Defect notification</h2>
       <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-4">
         {fact('Model', dn.model)}
@@ -169,7 +183,7 @@ function DnView({ dn }) {
         {fact('Defective', formatQty(dn.defectiveQty ?? 0, dn.uom))}
       </dl>
       <table className="w-full text-sm border border-slate-200 rounded-lg overflow-hidden">
-        <thead className="bg-slate-50 text-[10px] uppercase tracking-widest text-slate-500"><tr><th className="px-2 py-2 text-left">#</th><th className="px-2 py-2 text-left">Parameter</th><th className="px-2 py-2 text-left">Specification</th><th className="px-2 py-2 text-left">Defect observed</th></tr></thead>
+        <thead className="bg-slate-50 text-[10px] font-medium text-slate-500"><tr><th className="px-2 py-2 text-left">#</th><th className="px-2 py-2 text-left">Parameter</th><th className="px-2 py-2 text-left">Specification</th><th className="px-2 py-2 text-left">Defect observed</th></tr></thead>
         <tbody>{dn.lines.map((l) => <tr key={l.lineNo} className="border-t border-slate-100"><td className="px-2 py-1.5 text-slate-400">{l.lineNo}</td><td className="px-2">{l.parameter}</td><td className="px-2">{l.specification}</td><td className="px-2">{l.observation}</td></tr>)}</tbody>
       </table>
       <dl className="grid gap-3 sm:grid-cols-2">
@@ -232,7 +246,7 @@ function Images({ dn, editable }) {
   const up = useFileUpload(dn, 'IMAGE');
   if (!editable && !dn.images.length) return null;
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    <section className="card p-4 space-y-3">
       <div className="flex items-center gap-2">
         <h2 className="text-sm font-bold text-slate-800">Images</h2>
         <span className="text-xs text-slate-400">{dn.images.length} of {DN_MAX_IMAGES}</span>
@@ -250,7 +264,7 @@ function CapaSection({ dn }) {
   const canSubmit = dn.allowedActions.includes('submit_capa');
   const canReview = dn.allowedActions.includes('approve_capa');
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
+    <section className="card p-4 space-y-4">
       <h2 className="text-sm font-bold text-slate-800">CAPA</h2>
       {!dn.capaApplicable && <p className="text-sm text-slate-500">CAPA does not apply to this DN.</p>}
       {[...dn.capas].reverse().map((c) => <CapaCard key={c.id} c={c} files={dn.capaFiles.filter((f) => f.cycleNo === c.cycleNo)} dnId={dn.id} />)}
@@ -328,7 +342,7 @@ function CapaForm({ dn }) {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">Vendor CAPA document</span>
+              <span className="text-[11px] font-medium text-slate-500">Vendor CAPA document</span>
               <Button size="sm" variant="ghost" icon={Paperclip} loading={up.isLoading} onClick={up.pick}>Attach</Button>
               {up.inputEl}
             </div>
