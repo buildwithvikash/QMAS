@@ -60,7 +60,7 @@ export default function InspectionSheet({ sheet, readOnly = false, onPatch, phot
                   </td>
                 ))}
                 <td className="px-2 text-center"><ResultPill result={results[cp.uid]} /></td>
-                <td className="px-2"><RemarkInput value={cp.inspectorRemark} readOnly={readOnly} onCommit={(v) => onPatch({ entries: [{ checkpointUid: cp.uid, inspectorRemark: v }] })} /></td>
+                <td className="px-2"><RemarkInput value={cp.inspectorRemark} incharge={cp.inchargeRemark} readOnly={readOnly} onCommit={(v) => onPatch({ entries: [{ checkpointUid: cp.uid, inspectorRemark: v }] })} /></td>
               </tr>
             ))}
           </tbody>
@@ -119,7 +119,7 @@ export default function InspectionSheet({ sheet, readOnly = false, onPatch, phot
                     );
                   })}
                   <td className="px-2 text-center"><ResultPill result={results[cp.uid]} /></td>
-                  <td className="px-2"><RemarkInput value={cp.inspectorRemark} readOnly={readOnly} onCommit={(v) => onPatch({ entries: [{ checkpointUid: cp.uid, inspectorRemark: v }] })} /></td>
+                  <td className="px-2"><RemarkInput value={cp.inspectorRemark} incharge={cp.inchargeRemark} readOnly={readOnly} onCommit={(v) => onPatch({ entries: [{ checkpointUid: cp.uid, inspectorRemark: v }] })} /></td>
                 </tr>
               );
             })}
@@ -185,14 +185,19 @@ function DimCell({ cp, sampleNo, value, readOnly, onCommit }) {
   );
 }
 
-function RemarkInput({ value, readOnly, onCommit }) {
+/** Inspector's remark; the Incharge's remark (from a review) is shown under it. */
+function RemarkInput({ value, incharge, readOnly, onCommit }) {
   const [text, setText] = useState(value ?? '');
   useEffect(() => setText(value ?? ''), [value]);
-  if (readOnly) return <span className="text-xs text-slate-500">{value ?? ''}</span>;
+  const note = incharge && <div className="mt-0.5 text-[11px] text-amber-700">Incharge: {incharge}</div>;
+  if (readOnly) return <><span className="text-xs text-slate-500">{value ?? ''}</span>{note}</>;
   return (
-    <input value={text} onChange={(e) => setText(e.target.value)} onBlur={() => (text || null) !== (value ?? null) && onCommit(text || null)}
-      placeholder="Optional" aria-label="Remark"
-      className="w-full px-2 py-2 rounded-md border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+    <>
+      <input value={text} onChange={(e) => setText(e.target.value)} onBlur={() => (text || null) !== (value ?? null) && onCommit(text || null)}
+        placeholder="Optional" aria-label="Remark"
+        className="w-full px-2 py-2 rounded-md border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+      {note}
+    </>
   );
 }
 

@@ -35,12 +35,6 @@ export const inspectionSaveSchema = z.object({
   deviceId: z.uuid().optional(),
 });
 
-export const imirActionSchema = z.object({
-  action: z.enum(['submit']),
-  rowVersion,
-  deviceId: z.uuid().optional(),
-});
-
 export const IMIR_STATUSES = Object.freeze([
   'AWAITING_FORMAT', 'OPEN', 'IN_INSPECTION', 'SUBMITTED', 'WITH_IQC_HEAD', 'DEPT_REVIEW', 'IQC_HEAD_FINAL', 'SENIOR_ESCALATION',
   'UNDER_DEVIATION', 'QTY_VERIFICATION', 'CLOSED_ACCEPTED', 'CLOSED_REJECTED', 'CLOSED_UNDER_DEVIATION', 'AUTO_CLOSED',

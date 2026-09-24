@@ -11,6 +11,7 @@ import { authenticate, requirePasswordCurrent } from './middlewares/auth.js';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
 import auditRoutes from './modules/audit/audit.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
+import deviationRoutes, { chainRouter } from './modules/deviation/deviation.routes.js';
 import formatsRoutes from './modules/formats/formats.routes.js';
 import healthRoutes from './modules/health/health.routes.js';
 import imirRoutes, { filesRouter } from './modules/imir/imir.routes.js';
@@ -20,6 +21,7 @@ import numberingRoutes from './modules/numbering/numbering.routes.js';
 import rolesRoutes from './modules/roles/roles.routes.js';
 import samplingRoutes from './modules/sampling/sampling.routes.js';
 import { devicesRouter, syncRouter } from './modules/sync/sync.routes.js';
+import tasksRoutes from './modules/tasks/tasks.routes.js';
 import usersRoutes from './modules/users/users.routes.js';
 
 export function createApp({ logger = defaultLogger } = {}) {
@@ -60,9 +62,12 @@ export function createApp({ logger = defaultLogger } = {}) {
   api.use(rolesRoutes);
   api.use('/masters/sampling-plans', samplingRoutes);
   api.use('/masters/number-series', numberingRoutes);
+  api.use('/masters/dept-approval-chains', chainRouter);
   api.use('/masters', mastersRoutes);
   api.use('/formats', formatsRoutes);
   api.use('/imirs', imirRoutes);
+  api.use('/deviations', deviationRoutes);
+  api.use('/tasks', tasksRoutes);
   api.use('/files', filesRouter);
   api.use('/devices', devicesRouter);
   api.use('/sync', syncRouter);
