@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { booleanQuery, listQuery, optionalTrimmed, rowVersion, trimmed } from './common.js';
+import { filterParam } from './listFilter.js';
 
 /** Sprint E: Defect Notification (Incoming variant), CAPA, reports and notifications. */
 
@@ -64,6 +65,7 @@ export const dnListQuery = listQuery.extend({
   overdue: booleanQuery.optional(),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
+  filter: filterParam.optional(),
 });
 
 // ── Reports ──────────────────────────────────────────────────────────────────

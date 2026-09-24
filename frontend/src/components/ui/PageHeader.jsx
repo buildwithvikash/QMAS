@@ -111,9 +111,9 @@ export default function PageHeader({ icon: Icon, title, subtitle, search, onSear
  * Segmented tabs under a page header; scrolls sideways when there are many.
  * tabs: [{ key, label, count? }]
  */
-export function Tabs({ tabs, active, onChange }) {
+export function Tabs({ tabs, active, onChange, className = '' }) {
   return (
-    <div role="tablist" className="no-scrollbar flex gap-1 overflow-x-auto mb-4 p-1 rounded-lg bg-slate-200/60 w-fit max-w-full">
+    <div role="tablist" className={`no-scrollbar flex gap-1 overflow-x-auto p-1 rounded-lg bg-slate-200/70 w-fit max-w-full ${className}`}>
       {tabs.map((t) => {
         const on = active === t.key;
         return (

@@ -8,6 +8,7 @@ import Button from '../../components/ui/Button.jsx';
 import { FormError, TextArea } from '../../components/ui/fields.jsx';
 import Modal, { ModalFooter } from '../../components/ui/Modal.jsx';
 import { apiError } from '../../utils/apiError.js';
+import { done } from '../../utils/notify.jsx';
 import { ACTION_NAMES } from '../deviation/workflowLabels.js';
 import { DeviationStage, DnStatus } from '../deviation/workflowUi.jsx';
 
@@ -19,41 +20,36 @@ const ACTIONS = {
   hold: { label: 'Hold for deviation', icon: PauseCircle, variant: 'danger', title: 'Hold lot for deviation', help: 'A deviation is raised and sent to the chosen department, whose initiator fills the Deviation Form.', remarkLabel: 'Hold remark' },
 };
 
-/** Incharge / IQC Head decisions on a submitted IMIR, plus links to its deviation and DN. */
+/** Incharge / IQC Head decisions on a submitted IMIR ("Your turn"), plus the link to its deviation. */
 export default function ReviewPanel({ imir }) {
   const [open, setOpen] = useState(null);
   const [createDn, { isLoading: raising }] = useCreateDnMutation();
   const navigate = useNavigate();
   const actions = imir.allowedActions.filter((a) => ACTIONS[a]);
   const canRaiseDn = imir.allowedActions.includes('raise_dn');
-  if (!actions.length && !imir.deviation && !imir.dn && !canRaiseDn) return null;
+  // The lot's DN is shown on the route bar; here only the deviation link and the decisions.
+  if (!actions.length && !imir.deviation && !canRaiseDn) return null;
 
   const raiseDn = async () => {
     try {
       const dn = await createDn({ imirId: imir.id }).unwrap();
-      toast.success(`DN ${dn.dnNo} raised`);
+      done(`DN ${dn.dnNo} raised. Add the photos and the vendor's CAPA here.`);
       navigate(`/dns/${dn.id}`);
     } catch (err) {
       toast.error(apiError(err).message);
     }
   };
+  const yourTurn = actions.length > 0 || canRaiseDn;
+  const ask = imir.status === 'SUBMITTED' ? 'review this inspection' : imir.status === 'WITH_IQC_HEAD' ? 'decide on this escalated lot' : 'raise a DN to the vendor if the defect needs one';
   return (
-    <section className="card p-4 space-y-3">
-      <h2 className="text-sm font-bold text-slate-800">Review</h2>
+    <section className={`card p-4 space-y-3 ${yourTurn ? 'border-blue-300 border-l-4 border-l-blue-600' : ''}`}>
+      <h2 className="text-sm font-semibold text-slate-900">{yourTurn ? <>Your turn: <span className="font-normal text-slate-700">{ask}</span></> : 'Linked records'}</h2>
       {imir.deviation && (
         <Link to={`/deviations/${imir.deviation.id}`} className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm hover:bg-amber-100">
           <FileWarning className="w-4 h-4 text-amber-600" />
           <span className="font-mono font-semibold">{imir.deviation.deviationNo}</span>
           <span className="text-slate-500">· {imir.deviation.department}</span>
           <span className="ml-auto"><DeviationStage stage={imir.deviation.stage} outcome={imir.deviation.outcome} /></span>
-        </Link>
-      )}
-      {imir.dn && (
-        <Link to={`/dns/${imir.dn.id}`} className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm hover:bg-rose-100">
-          <FileX2 className="w-4 h-4 text-rose-600" />
-          <span className="font-mono font-semibold">{imir.dn.dnNo}</span>
-          <span className="text-slate-500">· Defect notification</span>
-          <span className="ml-auto"><DnStatus status={imir.dn.status} /></span>
         </Link>
       )}
       {(actions.length > 0 || canRaiseDn) && (
@@ -79,6 +75,7 @@ function ActionDialog({ imir, action, onClose }) {
   const [suggested, setSuggested] = useState([]);
   const [error, setError] = useState(null);
   const [run, { isLoading }] = useImirActionMutation();
+  const navigate = useNavigate();
   const failed = imir.checkpoints.filter((cp) => imir.evaluation?.checkpointResults?.[cp.uid] === 'NOK' || cp.result === 'NOK');
   const remarkRequired = c.remarkRequired !== false;
 
@@ -90,8 +87,15 @@ function ActionDialog({ imir, action, onClose }) {
     if (c.checkpoints) body.checkpointRemarks = failed.map((cp) => ({ checkpointUid: cp.uid, remark: cpRemarks[cp.uid]?.trim() || null }));
     if (action === 'hold') Object.assign(body, { department, suggestedActions: suggested });
     try {
-      await run(body).unwrap();
-      toast.success(`${imir.imirNo}: ${c.title.toLowerCase()} done`);
+      const res = await run(body).unwrap();
+      const said = {
+        approve: `${imir.imirNo} accepted and closed.`,
+        head_approve: `${imir.imirNo} accepted and closed.`,
+        revert: `${imir.imirNo} sent back to the inspector.`,
+        escalate: `${imir.imirNo} sent to the IQC Head.`,
+        hold: `Deviation ${res.deviation?.deviationNo ?? ''} raised for ${department}.`,
+      }[action];
+      done(said, action === 'hold' && res.deviation ? { label: 'Open deviation', go: () => navigate(`/deviations/${res.deviation.id}`) } : { label: 'My tasks', go: () => navigate('/') });
       onClose();
     } catch (err) {
       setError(apiError(err).message);

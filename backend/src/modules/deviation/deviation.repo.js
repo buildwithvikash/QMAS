@@ -1,3 +1,5 @@
+import { LIST_FIELDS } from '@qmas/shared';
+import { buildDynamicFilter, listFieldMap } from '../../shared/dynamicFilter.js';
 import { camelRow, camelRows, likeContains, offsetOf, orderBy } from '../../shared/sql.js';
 
 const num = (v) => (v === null || v === undefined ? null : Number(v));
@@ -31,6 +33,12 @@ export async function listOpen(db, stages) {
   return camelRows(rows).map(fix);
 }
 
+const FILTER_FIELDS = listFieldMap(LIST_FIELDS.deviations, {
+  deviationNo: 'd.deviation_no', imirNo: 'm.imir_no', itemCode: 'i.item_code', itemDescription: 'i.description', vendorName: 'v.name', vendorCode: 'v.vendor_code',
+  plant: 'p.sap_code', department: 'd.department', stage: 'd.stage', severity: 'd.severity', action: 'd.action', seniorEffective: 'd.senior_effective',
+  outcome: 'd.outcome', deviationQty: 'd.deviation_qty', createdAt: { sql: 'd.created_at', tz: true }, closedAt: { sql: 'd.closed_at', tz: true },
+});
+
 const SORTABLE = { createdAt: 'd.created_at', updatedAt: 'd.updated_at', deviationNo: 'd.deviation_no', stage: 'd.stage', itemCode: 'i.item_code' };
 
 export async function list(db, f, scope) {
@@ -43,6 +51,8 @@ export async function list(db, f, scope) {
   if (f.open === true) where.push("d.stage <> 'CLOSED'");
   if (f.open === false) where.push("d.stage = 'CLOSED'");
   if (f.department) where.push(`d.department = ${arg(f.department)}`);
+  const dyn = buildDynamicFilter(f.filter, FILTER_FIELDS, arg);
+  if (dyn) where.push(dyn);
   if (f.q) {
     const p = arg(likeContains(f.q));
     where.push(`(d.deviation_no ILIKE ${p} OR m.imir_no ILIKE ${p} OR i.item_code ILIKE ${p} OR i.description ILIKE ${p} OR v.name ILIKE ${p})`);

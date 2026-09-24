@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Columns3, Inbox } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { loadPref, savePref } from '../../utils/prefs.js';
+import FilterBuilder from './FilterBuilder.jsx';
 
 /** Columns the viewer has hidden for a table, remembered on this device. */
 function useHiddenColumns(tableId) {
@@ -51,27 +52,32 @@ function ColumnPicker({ columns, hidden, onToggle }) {
  * Server-driven table: sticky header, sortable columns, skeleton loading, empty state, optional
  * column chooser (pass `tableId` to remember choices) and, on narrow screens, a card per row.
  * columns: [{ key, header, render?(row), sortable?, className?, align?, hideable? }]
- * `toolbar` renders left of the column chooser (e.g. filter chips).
+ * One control row above the table: `leading` (tabs, pills), `toolbar` (filter chips), then the
+ * Filter builder (pass `filter` = { fields, value, onChange, storageKey }) and the column chooser.
  */
-export default function DataTable({ columns, rows = [], loading, error, sort, onSort, rowKey = 'id', empty = 'No records found.', emptyAction, onRowClick, tableId, toolbar }) {
+export default function DataTable({ columns, rows = [], loading, error, sort, onSort, rowKey = 'id', empty = 'No records found.', emptyAction, onRowClick, tableId, toolbar, leading, filter }) {
   const [hidden, toggle] = useHiddenColumns(tableId);
   const cols = columns.filter((c, i) => i === 0 || !hidden.has(c.key));
   const firstLoad = loading && rows.length === 0;
-  const showToolbar = toolbar || tableId;
+  const showToolbar = leading || toolbar || tableId || filter;
 
   return (
     <div>
       {showToolbar && (
-        <div className="flex flex-wrap items-center gap-2 mb-2">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
+          {leading}
           <div className="flex-1 min-w-0">{toolbar}</div>
-          {tableId && <ColumnPicker columns={columns} hidden={hidden} onToggle={toggle} />}
+          <div className="flex items-center gap-2">
+            {filter && <FilterBuilder {...filter} />}
+            {tableId && <ColumnPicker columns={columns} hidden={hidden} onToggle={toggle} />}
+          </div>
         </div>
       )}
 
       {/* Table: tablets in landscape and desktops */}
       <div className={`relative overflow-x-auto card ${loading && !firstLoad ? 'opacity-70' : ''} transition-opacity hidden md:block`}>
         <table className="w-full text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-50">
+          <thead className="sticky top-0 z-10 bg-blue-50/70">
             <tr>
               {cols.map((c) => {
                 const active = sort?.sort === c.key;
@@ -81,7 +87,7 @@ export default function DataTable({ columns, rows = [], loading, error, sort, on
                     key={c.key}
                     scope="col"
                     aria-sort={active ? (sort.order === 'desc' ? 'descending' : 'ascending') : undefined}
-                    className={`px-3.5 py-2.5 text-xs font-semibold text-slate-500 border-b border-slate-200 whitespace-nowrap ${c.align === 'right' ? 'text-right' : 'text-left'} ${c.headerClassName ?? ''}`}
+                    className={`px-3.5 py-2 text-xs font-semibold text-slate-600 border-b border-slate-200 whitespace-nowrap ${c.align === 'right' ? 'text-right' : 'text-left'} ${c.headerClassName ?? ''}`}
                   >
                     {c.sortable && onSort ? (
                       <button type="button" onClick={() => onSort(c.key)} className={`inline-flex items-center gap-1 hover:text-slate-900 cursor-pointer ${active ? 'text-blue-700' : ''}`}>
@@ -110,10 +116,10 @@ export default function DataTable({ columns, rows = [], loading, error, sort, on
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
                 onKeyDown={onRowClick ? (e) => e.key === 'Enter' && onRowClick(row) : undefined}
                 tabIndex={onRowClick ? 0 : undefined}
-                className={`group transition-colors ${onRowClick ? 'cursor-pointer hover:bg-blue-50/50 focus:bg-blue-50/50 focus:outline-none' : 'hover:bg-slate-50/60'}`}
+                className={`group transition-colors ${onRowClick ? 'cursor-pointer hover:bg-blue-50 focus:bg-blue-50 focus:outline-none' : 'hover:bg-slate-50/60'}`}
               >
                 {cols.map((c, i) => (
-                  <td key={c.key} className={`px-3.5 py-3 text-slate-700 align-middle ${i === 0 && onRowClick ? 'relative' : ''} ${c.align === 'right' ? 'text-right tabular' : ''} ${c.className ?? ''}`}>
+                  <td key={c.key} className={`px-3.5 py-2.5 text-slate-800 align-middle ${i === 0 && onRowClick ? 'relative' : ''} ${c.align === 'right' ? 'text-right tabular' : ''} ${c.className ?? ''}`}>
                     {i === 0 && onRowClick && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-blue-500 opacity-0 group-hover:opacity-100 group-focus:opacity-100 transition-opacity" />}
                     {c.render ? c.render(row) : (row[c.key] ?? '—')}
                   </td>

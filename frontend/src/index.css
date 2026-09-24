@@ -4,21 +4,21 @@
 /* Same type as WRL Tool Report. */
 @theme {
   --font-sans: 'Outfit', 'Segoe UI', system-ui, sans-serif;
-  /* Frost-grey canvas and a refrigerant-line blue: the app's whole "blue" scale is this hue. */
-  --color-canvas: #eef2f5;
-  --color-blue-50: #eef7fb;
-  --color-blue-100: #d5ecf5;
-  --color-blue-200: #aad7ea;
-  --color-blue-300: #74bcda;
-  --color-blue-400: #3e9cc4;
-  --color-blue-500: #1b80ab;
-  --color-blue-600: #0b6e99;
-  --color-blue-700: #0a5a7e;
-  --color-blue-800: #0c4a67;
-  --color-blue-900: #0d3d55;
+  /* Light frost canvas and a clear refrigerant blue: the app's whole "blue" scale is this hue. */
+  --color-canvas: #f2f5f9;
+  --color-blue-50: #e8f4fd;
+  --color-blue-100: #cce7fb;
+  --color-blue-200: #99cef6;
+  --color-blue-300: #5eb0ef;
+  --color-blue-400: #2b93e3;
+  --color-blue-500: #0f7bd1;
+  --color-blue-600: #0067b8;
+  --color-blue-700: #005396;
+  --color-blue-800: #06457a;
+  --color-blue-900: #0b3a64;
   /* Western Refrigeration logo green, used once: the strip on top of the app bar. */
   --color-wrl: #3f8f3a;
-  --shadow-lift: 0 10px 30px -12px rgb(13 61 85 / 0.25);
+  --shadow-lift: 0 12px 32px -12px rgb(11 58 100 / 0.28);
 }
 
 html,
@@ -28,7 +28,7 @@ body,
 }
 
 body {
-  @apply bg-canvas text-slate-800 antialiased;
+  @apply bg-canvas text-slate-900 antialiased;
 }
 
 /* Thin scrollbars instead of WRL's hidden ones: shop-floor users need to see that a table scrolls. */
@@ -48,7 +48,7 @@ body {
 @layer components {
   /* Work panels: flat, steel border. Hierarchy comes from borders and background, not shadows. */
   .card {
-    @apply rounded-[10px] border border-slate-200 bg-white;
+    @apply rounded-[10px] border border-slate-200 bg-white shadow-[0_1px_2px_rgb(15_23_42/0.04)];
   }
   .card-hover {
     @apply transition-colors duration-150 hover:border-blue-300;

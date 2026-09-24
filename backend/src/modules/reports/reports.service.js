@@ -244,6 +244,38 @@ export async function dashboardSummary(user) {
        FROM qms.defect_notification n WHERE ${plant('n.plant_id')}`,
     args,
   );
+  // Charts: lots received per day (IST) with their result, the vendors with the highest Not-OK
+  // rate, open lots by stage and days waiting, and CAPA falling due.
+  const { rows: trend } = await pool.query(
+    `SELECT d::date AS day, count(m.id)::int AS received, count(m.id) FILTER (WHERE m.result = 'OK')::int AS ok,
+            count(m.id) FILTER (WHERE m.result = 'NOK')::int AS nok
+       FROM generate_series((now() AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date - 29, (now() AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date, interval '1 day') d
+       LEFT JOIN qms.imir m ON ${LOCAL('m.created_at')} = d::date AND ${plant('m.plant_id')}
+      GROUP BY d ORDER BY d`,
+    args,
+  );
+  const { rows: vendors } = await pool.query(
+    `SELECT v.vendor_code, v.name, count(*) FILTER (WHERE m.result IS NOT NULL)::int AS inspected, count(*) FILTER (WHERE m.result = 'NOK')::int AS nok
+       FROM qms.imir m JOIN mst.vendor v ON v.id = m.vendor_id
+      WHERE ${plant('m.plant_id')} AND m.created_at >= now() - interval '90 days'
+      GROUP BY v.id HAVING count(*) FILTER (WHERE m.result = 'NOK') > 0
+      ORDER BY count(*) FILTER (WHERE m.result = 'NOK')::numeric / nullif(count(*) FILTER (WHERE m.result IS NOT NULL), 0) DESC, nok DESC LIMIT 5`,
+    args,
+  );
+  const { rows: ageing } = await pool.query(
+    `SELECT m.status, count(*) FILTER (WHERE age < 1)::int AS d0, count(*) FILTER (WHERE age >= 1 AND age < 3)::int AS d1,
+            count(*) FILTER (WHERE age >= 3 AND age < 7)::int AS d3, count(*) FILTER (WHERE age >= 7)::int AS d7
+       FROM (SELECT m.status, extract(epoch FROM now() - coalesce((SELECT max(at) FROM qms.imir_action a WHERE a.imir_id = m.id), m.created_at)) / 86400 AS age
+               FROM qms.imir m WHERE ${plant('m.plant_id')} AND m.status NOT LIKE 'CLOSED%' AND m.status <> 'AUTO_CLOSED') m
+      GROUP BY m.status`,
+    args,
+  );
+  const { rows: capa } = await pool.query(
+    `SELECT n.id, n.dn_no, n.capa_due_at, v.name AS vendor_name, i.item_code
+       FROM qms.defect_notification n JOIN mst.vendor v ON v.id = n.vendor_id JOIN mst.item i ON i.id = n.item_id
+      WHERE ${plant('n.plant_id')} AND n.status = 'OPEN' AND n.capa_applicable ORDER BY n.capa_due_at LIMIT 5`,
+    args,
+  );
   const imirByStatus = Object.fromEntries(s.map((r) => [r.status, r.n]));
   const devByStage = Object.fromEntries(dv.map((r) => [r.stage, r.n]));
   return {
@@ -252,5 +284,9 @@ export async function dashboardSummary(user) {
     deviationsByStage: devByStage,
     openDeviations: dv.reduce((a, r) => a + r.n, 0),
     dn: camelRows(dn)[0],
+    trend: trend.map((r) => ({ day: r.day.toISOString().slice(0, 10), received: r.received, ok: r.ok, nok: r.nok })),
+    worstVendors: vendors.map((r) => ({ vendorCode: r.vendor_code, name: r.name, inspected: r.inspected, nok: r.nok, nokPct: Math.round((1000 * r.nok) / r.inspected) / 10 })),
+    ageing: camelRows(ageing),
+    capaDue: camelRows(capa),
   };
 }

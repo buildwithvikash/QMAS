@@ -1,7 +1,6 @@
 import { deviationFormSchema, ESCALATION_RANKS } from '@qmas/shared';
 import { ArrowLeft, CheckCircle2, CornerUpLeft, FileWarning, Gavel, Scale, Send, ShieldAlert, ThumbsDown, XCircle } from 'lucide-react';
 import { useState } from 'react';
-import toast from 'react-hot-toast';
 import { Link, useParams } from 'react-router-dom';
 import { useDeviationActionMutation, useGetDeviationQuery } from '../../api/workflowApi.js';
 import Badge from '../../components/ui/Badge.jsx';
@@ -12,6 +11,8 @@ import Modal, { ModalFooter } from '../../components/ui/Modal.jsx';
 import PageHeader from '../../components/ui/PageHeader.jsx';
 import { useZodForm } from '../../hooks/useZodForm.js';
 import { apiError } from '../../utils/apiError.js';
+import { done } from '../../utils/notify.jsx';
+import { useUnsavedWarning } from '../../hooks/useUnsavedWarning.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { ImirStatus } from '../imir/imirUi.jsx';
 import LotJourney from '../imir/LotJourney.jsx';
@@ -51,17 +52,17 @@ export default function DeviationPage() {
 
       <div className="p-5 grid gap-4 xl:grid-cols-[1fr_24rem]">
         <div className="space-y-4 min-w-0">
-          <LotJourney status={d.imirStatus} history={d.history} deviation={d} />
-          <Facts d={d} />
           {buttons.length > 0 && (
-            <section className="rounded-xl border border-blue-200 bg-blue-50/40 p-4">
-              <h2 className="text-sm font-bold text-slate-800 mb-1">Your decision</h2>
+            <section className="card border-blue-300 border-l-4 border-l-blue-600 p-4">
+              <h2 className="text-sm font-semibold text-slate-900 mb-1">Your turn</h2>
               <StageHint d={d} />
               <div className="flex flex-wrap gap-2 mt-3">
                 {buttons.map((a) => <Button key={a} variant={DECISIONS[a].variant} icon={DECISIONS[a].icon} onClick={() => setDialog(a)}>{DECISIONS[a].label}</Button>)}
               </div>
             </section>
           )}
+          <LotJourney status={d.imirStatus} history={d.history} deviation={d} />
+          <Facts d={d} />
           {can('submit_form') ? <DeviationForm d={d} onRecommendReject={() => setDialog('recommend_reject')} /> : <FormView d={d} />}
           {can('enter_qty') && <QuantityForm d={d} />}
           {d.rounds.length > 0 && <EscalationBoard d={d} />}
@@ -132,6 +133,8 @@ function DeviationForm({ d, onRecommendReject }) {
   });
   const [remark, setRemark] = useState('');
   const [formError, setFormError] = useState(null);
+  const dirty = ['severity', 'action', 'specification', 'iqcObservation', 'correction', 'correctiveAction'].some((k) => (f.values[k] ?? '') !== (d[k] ?? (k === 'action' && d.suggestedActions.length === 1 ? d.suggestedActions[0] : '') ?? ''));
+  useUnsavedWarning(dirty);
   const [run, { isLoading }] = useDeviationActionMutation();
 
   const submit = async () => {
@@ -140,7 +143,7 @@ function DeviationForm({ d, onRecommendReject }) {
     if (!form) return;
     try {
       await run({ id: d.id, action: 'submit_form', rowVersion: d.rowVersion, remark: remark.trim() || null, form }).unwrap();
-      toast.success('Deviation Form submitted for approval');
+      done('Deviation Form submitted. Your approver has been notified.');
     } catch (err) {
       const e = apiError(err);
       setFormError(e.message);
@@ -212,7 +215,7 @@ function QuantityForm({ d }) {
     if (okQty === '' || notOkQty === '') return setError('Enter both quantities.');
     try {
       await run({ id: d.id, action: 'enter_qty', rowVersion: d.rowVersion, okQty: Number(okQty), notOkQty: Number(notOkQty), remark: remark.trim() || null }).unwrap();
-      toast.success('Quantities sent to the IQC Head');
+      done('Quantities sent to the IQC Head for verification.');
     } catch (err) {
       setError(apiError(err).message);
     }
@@ -294,7 +297,7 @@ function SeniorDecision({ d }) {
     if (!remark.trim()) return setError('Enter a remark.');
     try {
       await run({ id: d.id, action: 'senior_decide', roleCode, decision, remark: remark.trim() }).unwrap();
-      toast.success('Decision recorded');
+      done('Decision recorded. The IQC Head is told when the escalation completes.');
       setRemark('');
       setDecision(null);
     } catch (err) {
@@ -341,7 +344,7 @@ function DecisionDialog({ d, action, onClose }) {
     if (action === 'override') body.decision = decision;
     try {
       await run(body).unwrap();
-      toast.success(`${d.deviationNo}: ${c.label.toLowerCase()} done`);
+      done(`${d.deviationNo}: ${c.label.toLowerCase()} done.`);
       onClose();
     } catch (err) {
       setError(apiError(err).message);

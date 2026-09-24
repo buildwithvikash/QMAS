@@ -5,6 +5,7 @@ import { useGetNumberSeriesQuery, useGetSamplingPlansQuery } from '../api/master
 import PageHeader from '../components/ui/PageHeader.jsx';
 import { useAccess } from '../hooks/useAccess.js';
 import PlantStatus from './PlantStatus.jsx';
+import QualityPanel from './QualityPanel.jsx';
 import MyTasks from './MyTasks.jsx';
 
 /**
@@ -24,7 +25,10 @@ export default function Home() {
     <div>
       <PageHeader icon={LayoutDashboard} title={`Good ${partOfDay()}, ${user.fullName.split(' ')[0]}`} subtitle={`${today}. ${roles}`} />
       <div className="p-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem] items-start">
-        <MyTasks />
+        <div className="space-y-5 min-w-0">
+          <MyTasks />
+          <QualityPanel />
+        </div>
         <aside className="space-y-5">
           <PlantStatus />
           {canSeeSetup && <SetupStatus />}
