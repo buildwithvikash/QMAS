@@ -6,7 +6,8 @@ import { pageMeta } from '../../shared/sql.js';
 import { plantScope } from '../auth/access.service.js';
 import { issueNumber } from '../numbering/numbering.service.js';
 import { history, logAction } from '../workflow/history.js';
-import { imirReviewActions } from '../workflow/rules.js';
+import { actingRole, imirReviewActions } from '../workflow/rules.js';
+import { summaryForImir } from '../dn/dn.repo.js';
 import * as repo from './imir.repo.js';
 
 const EDITABLE = ['OPEN', 'IN_INSPECTION'];
@@ -110,7 +111,7 @@ export async function detail(id, user, db = getPool()) {
   const imir = await repo.get(db, id);
   if (!imir) throw AppError.notFound('IMIR');
   if (user) assertCanView(user, imir);
-  if (imir.status === 'AWAITING_FORMAT') return { ...imir, checkpoints: [], cells: [], attachments: [], history: [], deviation: null, allowedActions: [] };
+  if (imir.status === 'AWAITING_FORMAT') return { ...imir, checkpoints: [], cells: [], attachments: [], history: [], deviation: null, dn: null, allowedActions: [] };
 
   const [checkpoints, states, cells, attachments, steps, deviation] = [
     await repo.formatCheckpoints(db, imir.formatVersionId),
@@ -120,6 +121,7 @@ export async function detail(id, user, db = getPool()) {
     await history(db, id),
     await repo.deviationSummary(db, id),
   ];
+  const dn = await summaryForImir(db, id);
   const stateByUid = new Map(states.map((s) => [s.checkpointUid, s]));
   const merged = checkpoints.map((c) => ({ ...c, ...(stateByUid.get(c.uid) ?? {}), checkpointUid: undefined }));
   const evaluation = evaluate(imir, merged, cells);
@@ -130,7 +132,11 @@ export async function detail(id, user, db = getPool()) {
     if (!evaluation.missing.length && imir.model) allowedActions.push('submit');
   }
   if (user) allowedActions.push(...imirReviewActions(user, imir));
-  return { ...imir, checkpoints: merged, cells, attachments, evaluation, history: steps, deviation, allowedActions };
+  // DN: once the lot was escalated to the IQC Head, one per lot (slide 7).
+  if (user && !dn && steps.some((h) => h.action === 'ESCALATE' && !h.deviationId) && actingRole(user, { permission: PERMISSIONS.DN_MANAGE, plantId: imir.plantId })) {
+    allowedActions.push('raise_dn');
+  }
+  return { ...imir, checkpoints: merged, cells, attachments, evaluation, history: steps, deviation, dn, allowedActions };
 }
 
 function evaluate(imir, checkpoints, cells) {

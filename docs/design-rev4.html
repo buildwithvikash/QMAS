@@ -165,7 +165,7 @@ html{scroll-behavior:smooth}
 <tr><td class="k">DN</td><td>Line/Lab/Field DN not in Release 1</td><td>Release 1 builds the Incoming variant only; the <code>variant</code> column stays for later.</td></tr>
 <tr><td class="k">Model</td><td>Captured by the inspector during inspection</td><td>Model field on the inspection screen (typeahead from earlier entries for that item); copied into DN and Deviation Form.</td></tr>
 <tr><td class="k">Integrations / network</td><td>SAP and Windchill teams provide APIs; SAN/SIR is a separate app; existing plant ↔ AWS VPN</td><td>Adapters built against mocks until specs arrive (I-1, I-3, I-7).</td></tr>
-<tr><td class="k">Tablets</td><td>Android; no fixed offline time limit</td><td>Tablet app packaged with <strong>Capacitor</strong> (same React code) using on-device SQLite, not browser storage. No shift-end expiry for offline work (§07).</td></tr>
+<tr><td class="k">Tablets</td><td>Android; no fixed offline time limit</td><td><strong>One app for all devices</strong> (decision, Sept 2026): tablets use the same web app, installed to the home screen, with offline storage on the tablet. No separate native app. No shift-end expiry for offline work (§07).</td></tr>
 <tr><td class="k">AWS</td><td>Existing Mumbai environment; start in dev</td><td>Region <code>ap-south-1</code>; Phase 4 deploys to the existing dev environment.</td></tr>
 </table></div>
 <h3>Round 1 (rev 2)</h3>
@@ -182,7 +182,7 @@ html{scroll-behavior:smooth}
 <tr><td>8</td><td class="k">Own QMAS user accounts</td><td>Local users with argon2id hashing, password policy, lockout, admin reset. Identity layer kept pluggable for later SSO.</td></tr>
 <tr><td>9</td><td class="k">Configurable numbering</td><td>Number-series master with token patterns and reset scope, per document type and plant (see §08).</td></tr>
 <tr><td>10</td><td class="k">AWS hosting</td><td>ECS Fargate, RDS for PostgreSQL Multi-AZ, S3 for files, SES for mail, Secrets Manager, CloudWatch; site-to-site VPN to reach SAP (see §02, Phase 7).</td></tr>
-<tr><td>11–12</td><td class="k">Tablets, offline with sync</td><td>Offline-capable tablet app with a check-out/sync protocol and server-side conflict rules (see §07, §11). Packaging refined in round 2 (Capacitor, Android).</td></tr>
+<tr><td>11–12</td><td class="k">Tablets, offline with sync</td><td>Offline-capable tablet app with a check-out/sync protocol and server-side conflict rules (see §07, §11). Delivered as the same web app installed on the tablet (no separate native app).</td></tr>
 <tr><td>R</td><td class="k">Review workbooks (IMIR, DN, Deviation)</td><td>Format 2 is the target IMIR layout: nominal + LSL/USL (no limit-symbol logic), photo/PDF per visual sample, separate Inspector and Incharge remarks. Drawing No. and Revision come from <strong>Windchill</strong> (new integration). DN has two variants: Incoming and Line/Lab/Field. Details in §01.</td></tr>
 <tr><td>13</td><td class="k">Common format structure</td><td>One fixed format schema (header + three sections + checkpoint columns); only values vary per item. Bulk import uses a single template; no sample set needed now.</td></tr>
 </table></div>
@@ -336,7 +336,7 @@ server.js · worker.js</pre>
 <tr><td class="k">Security middleware</td><td>helmet, CORS from env, express-rate-limit on auth, multer with MIME/size allow-list</td><td>Improved</td><td>WRL hard-codes the CORS origin.</td></tr>
 <tr><td class="k">Mail</td><td>nodemailer over Amazon SES (SMTP interface) + HTML templates, via DB outbox</td><td><span class="pill acc">Same, made reliable</span></td><td>Mail is sent after commit; failures retried.</td></tr>
 <tr><td class="k">Database</td><td>Amazon RDS for PostgreSQL 16/17 (Multi-AZ), extensions <code>pgcrypto</code>, <code>pg_trgm</code>, <code>citext</code></td><td>New</td><td>Managed backups, PITR, patching, failover.</td></tr>
-<tr><td class="k">Offline tablet app</td><td>Capacitor Android shell around the same React code; on-device SQLite (Capacitor SQLite) for lots, entries and photos; Android Keystore for the device credential; distributed through the company MDM or as a signed APK</td><td>New</td><td>No offline time limit means data may sit on the tablet for days, and browser storage can be cleared by Android when space runs low. Native storage avoids that. Desktop users keep the normal web app.</td></tr>
+<tr><td class="k">Offline tablet use</td><td>The same React web app, installed on the tablet from Chrome (installable app with a service worker); IndexedDB for lots, entries and photos; persistent-storage protection; backup file of unsent work</td><td>New</td><td>One code base and one deployment for desktop and tablets, no app store or MDM packaging. Because data may sit offline for days, the app asks Android to protect its storage, shows its state, and can save / restore a backup of everything not yet sent.</td></tr>
 <tr><td class="k">Files</td><td>Amazon S3 with presigned URLs, SSE-KMS, versioning</td><td>Replaces local <code>uploads/</code></td><td>Stateless API containers; files survive redeploys.</td></tr>
 <tr><td class="k">Testing</td><td>Vitest, Supertest, Testcontainers (real PostgreSQL), Playwright, k6</td><td>New</td><td>WRL has no automated tests.</td></tr>
 <tr><td class="k">Runtime</td><td>Docker images on ECS Fargate behind an ALB; CloudFront + WAF in front; secrets in AWS Secrets Manager; logs/metrics in CloudWatch</td><td>Docker (as WRL)</td><td>AWS confirmed. Infrastructure as code with Terraform or AWS CDK.</td></tr>
@@ -555,7 +555,7 @@ sequenceDiagram
     T->>A: Check out IMIRs (online)
     A->>D: soft-lock IMIR to device and user
     A-->>T: IMIR, pinned format, sampling, masters
-    Note over T: Offline - entries saved in on-device SQLite, local auto-decision
+    Note over T: Offline - entries saved on the tablet (IndexedDB), local auto-decision
     T->>T: Submit queued with op id and rowVersion
     T->>A: Push queued ops when connectivity returns
     A->>D: check state, lock and version, recompute decisions
@@ -569,13 +569,13 @@ sequenceDiagram
 <figcaption>Only inspection works offline. Reviews, deviations, escalations and DN need a connection, because they depend on other people's decisions.</figcaption>
 </figure>
 <ul>
-<li><strong>Device trust:</strong> Admin registers each Android tablet (device ID, plant) and it receives a device key kept in the Android Keystore. The inspector signs in online on that tablet once; after that a PIN unlocks the app offline, with <strong>no time limit</strong>. At every sync the server re-checks the user and device: if either was deactivated meanwhile, the data is still received but held for the Incharge to accept.</li>
+<li><strong>Device trust:</strong> Admin registers each tablet (device code, plant) and the tablet is set up once with that code. The inspector signs in online on the tablet; the tablet session lasts long enough to work offline for weeks, with <strong>no time limit</strong> on offline entries. Each entry is stamped with the inspector who recorded it and is only sent under that inspector's session, so a shared tablet never credits one inspector's work to another. At every sync the server re-checks the user and device: if either was deactivated meanwhile, the data is still received but held for the Incharge to accept.</li>
 <li><strong>Check-out:</strong> the inspector downloads the lots they will inspect. Each is soft-locked to that device so two tablets cannot inspect the same lot. Locks do not expire (offline has no limit); the Incharge sees locks older than a set number of days and can release one (e.g. a lost tablet).</li>
 <li><strong>Photos offline:</strong> visual-cell photos are taken with the tablet camera through the file input, compressed on the device (e.g. max 1600 px, JPEG), kept in on-device storage and uploaded to S3 by presigned URL during sync, before the submit operation is applied.</li>
 <li><strong>No numbers generated offline:</strong> IMIR numbers are created on the server when the SAP lot arrives, before check-out.</li>
 <li><strong>Idempotent sync:</strong> every queued operation carries a client UUID; replays are ignored. Client and server timestamps are both stored for audit.</li>
 <li><strong>Server is authoritative:</strong> OK/NOK is recomputed on the server with the same shared module the tablet uses; any mismatch is logged.</li>
-<li><strong>Storage safety:</strong> data lives in SQLite inside the app, which Android does not clear to free space; local data is removed only after a successful sync; unsynced data is never discarded silently, and logout is blocked while anything is unsynced.</li>
+<li><strong>Storage safety:</strong> the app requests persistent storage (granted to installed apps) so Android does not clear it to free space, and shows whether it is protected; unsent work can be saved to a backup file and restored on the same tablet; local data is removed only after a successful sync; unsynced data is never discarded silently, and sign-out warns while anything is unsent.</li>
 </ul>
 
 <div class="grid2">
@@ -888,7 +888,7 @@ erDiagram
 <tr><td>R1</td><td>SAP interface is not yet specified (protocol, lot key, frequency, write-back). Longest lead-time dependency.</td><td>Slide 3</td><td>Mock API until the SAP team provides the specification.</td></tr>
 <tr><td>R2</td><td>Quality of 6–7k legacy formats (free-text specs) will decide go-live readiness.</td><td>Slide 3</td><td>High.</td></tr>
 <tr><td>R3</td><td>Shop-floor connectivity for tablets; offline entry is a large added scope.</td><td>Slide 5</td><td>Confirmed in scope: offline required. Biggest added complexity; see §07.</td></tr>
-<tr><td>R6</td><td>Browser storage can be cleared by the OS when data sits offline for a long time.</td><td>Round 2 (no offline limit)</td><td><span class="pill p2">Addressed: Capacitor app with SQLite on Android.</span></td></tr>
+<tr><td>R6</td><td>Browser storage can be cleared by the OS when data sits offline for a long time.</td><td>Round 2 (no offline limit)</td><td><span class="pill p2">Addressed without a native app: persistent storage for the installed app, storage status on the tablet screen, and backup / restore of unsent work.</span></td></tr>
 <tr><td>R7</td><td>SAP (on-prem) and SAN/SIR must be reachable from AWS: needs site-to-site VPN or Direct Connect, firewall rules and API credentials from the respective owners.</td><td>Decisions 6, 7, 10</td><td>Existing plant ↔ AWS VPN confirmed; real endpoints still unknown, so the first integration test with real systems is a schedule risk.</td></tr>
 <tr><td>R8</td><td>Large samples (up to 200 per checkpoint) make on-tablet entry slow and raise sync payloads and photo volume.</td><td>Sampling table</td><td>High — depends on S-3 / S-4; needs a sample-wise entry screen.</td></tr>
 <tr><td>R9</td><td>Windchill is a third integration (with SAP and SAN/SIR) that must be reachable from AWS; no interface details yet.</td><td>Review workbook</td><td>Mock API until the Windchill team provides the specification.</td></tr>
@@ -930,7 +930,7 @@ erDiagram
 </div>
 
 <div class="qgroup"><h3>UI/UX, reports, deployment</h3>
-<div class="q"><div class="id">U-4</div><div class="t"><span class="pill later">Can decide later</span> Tablet app distribution: company MDM, or a signed APK installed manually?</div></div>
+<div class="q"><div class="id">U-4</div><div class="t"><span class="pill later">Can decide later</span> Tablet app distribution: <em>closed</em> — no separate app; tablets install the web app from Chrome (optionally pushed as a home-screen web app by MDM).</div></div>
 <div class="q"><div class="id">U-2</div><div class="t"><span class="pill later">Can decide later</span> English only, or also Hindi/Gujarati on tablet screens?</div></div>
 <div class="q"><div class="id">RP-1</div><div class="t"><span class="pill later">Can decide later</span> Confirm the proposed report list (§06) and today's KPIs.</div></div>
 <div class="q"><div class="id">RP-2</div><div class="t"><span class="pill later">Can decide later</span> Must printed IMIR / DN / Deviation Form match the Excel layouts exactly?</div></div>

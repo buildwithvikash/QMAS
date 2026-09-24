@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { useGetNumberSeriesQuery, useGetSamplingPlansQuery } from '../api/mastersApi.js';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import { useAccess } from '../hooks/useAccess.js';
+import DashboardTiles from './DashboardTiles.jsx';
 import MyTasks from './MyTasks.jsx';
 
 /**
@@ -17,6 +18,7 @@ export default function Home() {
   return (
     <div>
       <PageHeader icon={LayoutDashboard} title={`Good ${partOfDay()}, ${user.fullName.split(' ')[0]}`} subtitle="QMAS · Incoming Material Inspection & Defect Notification" />
+      <div className="px-5 pt-5"><DashboardTiles /></div>
       <div className="p-5 grid gap-5 lg:grid-cols-3">
         <section className="lg:col-span-2 space-y-5">
           <MyTasks />

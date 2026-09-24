@@ -135,6 +135,12 @@ export async function push(ctx, user, { deviceId, ops }) {
       results.push({ opId: op.opId, outcome: seen[0].outcome, duplicate: true, ...(seen[0].detail ?? {}) });
       continue;
     }
+    // Work recorded offline is credited to the inspector who recorded it, never to whoever syncs.
+    // Not stored, so that inspector can still send it after signing in on this tablet.
+    if (op.recordedBy && op.recordedBy !== user.id) {
+      results.push({ opId: op.opId, outcome: 'WRONG_USER', message: 'Recorded by another inspector; it is sent when they sign in on this tablet.' });
+      continue;
+    }
     let outcome = 'ACCEPTED';
     let detail = null;
     try {

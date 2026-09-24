@@ -1,14 +1,15 @@
-import { CheckCircle2, CornerUpLeft, FileWarning, PauseCircle, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, CornerUpLeft, FileWarning, FileX2, PauseCircle, ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useCreateDnMutation } from '../../api/dnApi.js';
 import { useImirActionMutation } from '../../api/workflowApi.js';
 import Button from '../../components/ui/Button.jsx';
 import { FormError, TextArea } from '../../components/ui/fields.jsx';
 import Modal, { ModalFooter } from '../../components/ui/Modal.jsx';
 import { apiError } from '../../utils/apiError.js';
 import { ACTION_NAMES } from '../deviation/workflowLabels.js';
-import { DeviationStage } from '../deviation/workflowUi.jsx';
+import { DeviationStage, DnStatus } from '../deviation/workflowUi.jsx';
 
 const ACTIONS = {
   approve: { label: 'Approve', icon: CheckCircle2, variant: 'success', title: 'Approve IMIR', help: 'The lot is accepted and the IMIR closes.', remarkRequired: false },
@@ -18,11 +19,24 @@ const ACTIONS = {
   hold: { label: 'Hold for deviation', icon: PauseCircle, variant: 'danger', title: 'Hold lot for deviation', help: 'A deviation is raised and sent to the chosen department, whose initiator fills the Deviation Form.', remarkLabel: 'Hold remark' },
 };
 
-/** Incharge / IQC Head decisions on a submitted IMIR, plus a link to its deviation. */
+/** Incharge / IQC Head decisions on a submitted IMIR, plus links to its deviation and DN. */
 export default function ReviewPanel({ imir }) {
   const [open, setOpen] = useState(null);
+  const [createDn, { isLoading: raising }] = useCreateDnMutation();
+  const navigate = useNavigate();
   const actions = imir.allowedActions.filter((a) => ACTIONS[a]);
-  if (!actions.length && !imir.deviation) return null;
+  const canRaiseDn = imir.allowedActions.includes('raise_dn');
+  if (!actions.length && !imir.deviation && !imir.dn && !canRaiseDn) return null;
+
+  const raiseDn = async () => {
+    try {
+      const dn = await createDn({ imirId: imir.id }).unwrap();
+      toast.success(`DN ${dn.dnNo} raised`);
+      navigate(`/dns/${dn.id}`);
+    } catch (err) {
+      toast.error(apiError(err).message);
+    }
+  };
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
       <h2 className="text-sm font-bold text-slate-800">Review</h2>
@@ -34,12 +48,21 @@ export default function ReviewPanel({ imir }) {
           <span className="ml-auto"><DeviationStage stage={imir.deviation.stage} outcome={imir.deviation.outcome} /></span>
         </Link>
       )}
-      {actions.length > 0 && (
+      {imir.dn && (
+        <Link to={`/dns/${imir.dn.id}`} className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm hover:bg-rose-100">
+          <FileX2 className="w-4 h-4 text-rose-600" />
+          <span className="font-mono font-semibold">{imir.dn.dnNo}</span>
+          <span className="text-slate-500">· Defect notification</span>
+          <span className="ml-auto"><DnStatus status={imir.dn.status} /></span>
+        </Link>
+      )}
+      {(actions.length > 0 || canRaiseDn) && (
         <div className="flex flex-wrap gap-2">
           {actions.map((a) => {
             const c = ACTIONS[a];
             return <Button key={a} variant={c.variant} icon={c.icon} onClick={() => setOpen(a)}>{c.label}</Button>;
           })}
+          {canRaiseDn && <Button variant="secondary" icon={FileX2} loading={raising} onClick={raiseDn}>Raise DN to vendor</Button>}
         </div>
       )}
       {imir.status === 'SUBMITTED' && imir.result === 'NOK' && actions.includes('escalate') && <p className="text-xs text-slate-500">A failed lot cannot be approved by the Incharge: send it back or escalate it.</p>}

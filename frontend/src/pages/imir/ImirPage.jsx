@@ -1,5 +1,5 @@
 import { MAX_SAMPLES } from '@qmas/shared';
-import { AlertTriangle, ArrowLeft, ClipboardCheck, CloudOff, FileText, Loader2, Send, Tablet, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ClipboardCheck, CloudOff, FileText, Loader2, Printer, Send, Tablet, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -120,6 +120,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
         <ImirStatus status={sheet.status} />
         {mode === 'tablet' && <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700"><Tablet className="w-3.5 h-3.5" />On this tablet</span>}
         {mode === 'online' && <span className="text-xs text-slate-400 w-16">{saving ? 'Saving…' : 'Saved'}</span>}
+        {mode === 'view' && sheet.imirNo && <a href={`/api/v1/imirs/${sheet.id}/pdf`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><Printer className="w-4 h-4" />PDF</a>}
       </PageHeader>
 
       <div className="p-5 space-y-4">

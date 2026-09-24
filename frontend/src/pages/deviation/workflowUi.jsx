@@ -5,6 +5,12 @@ import { ACTION_NAMES, DECISION_NAMES, ROLE_SHORT, STAGES } from './workflowLabe
 
 const OUTCOMES = { ACCEPTED_UNDER_DEVIATION: ['Accepted under deviation', 'success'], REJECTED: ['Rejected', 'danger'], AUTO_CLOSED: ['Auto-closed', 'neutral'] };
 
+const DN_STATUS = { OPEN: ['Open · CAPA awaited', 'warning'], CAPA_SUBMITTED: ['CAPA with IQC Head', 'primary'], CLOSED: ['Closed', 'success'] };
+export function DnStatus({ status, overdue }) {
+  const [label, variant] = DN_STATUS[status] ?? [status, 'neutral'];
+  return <Badge variant={overdue ? 'danger' : variant}>{overdue ? 'CAPA overdue' : label}</Badge>;
+}
+
 export function DeviationStage({ stage, outcome }) {
   const [label, variant] = stage === 'CLOSED' && outcome ? OUTCOMES[outcome] : (STAGES[stage] ?? [stage, 'neutral']);
   return <Badge variant={variant}>{label}</Badge>;
@@ -33,6 +39,11 @@ const HISTORY_LABELS = {
   VERIFY_QTY: 'Quantities verified',
   RETURN_QTY: 'Quantities returned',
   AUTO_CLOSE: 'Closed: quantities not entered in 14 days',
+  DN_RAISE: 'Defect notification raised',
+  DN_SUBMIT_CAPA: 'CAPA submitted',
+  DN_RESUBMIT: 'CAPA resubmission asked',
+  DN_CLOSE: 'Defect notification closed',
+  CAPA_REMINDER: 'CAPA overdue reminder',
 };
 
 function payloadText(h) {
@@ -45,13 +56,15 @@ function payloadText(h) {
     case 'SENIOR_DECISION': return `${DECISION_NAMES[p.decision]}${h.actingRole === 'SYSTEM_ADMIN' && p.forRole ? ` (on behalf of ${ROLE_SHORT[p.forRole]})` : ''}`;
     case 'OVERRIDE': return DECISION_NAMES[p.decision];
     case 'SENIOR_RESULT': return `${DECISION_NAMES[p.decision]} (${ROLE_SHORT[p.decidedBy] ?? p.decidedBy}${p.overridden ? ', override' : ''})`;
+    case 'DN_RAISE': return p.dnNo;
+    case 'DN_SUBMIT_CAPA': return p.capaApplicable === false ? 'CAPA not applicable' : `CAPA cycle ${p.cycle}`;
     case 'OPS_TIMEOUT': return p.added?.length ? 'CQA Head added to the round' : null;
     case 'ENTER_QTY': case 'VERIFY_QTY': return p.okQty !== undefined ? `OK ${p.okQty} · Not OK ${p.notOkQty}` : null;
     default: return null;
   }
 }
 
-const tone = (a) => (/REJECT|REVERT|SEND_BACK|RETURN|TIMEOUT|AUTO_CLOSE/.test(a) ? 'bad' : /APPROVE|VERIFY/.test(a) ? 'good' : 'neutral');
+const tone = (a) => (/REJECT|REVERT|SEND_BACK|RETURN|TIMEOUT|AUTO_CLOSE|RESUBMIT|REMINDER/.test(a) ? 'bad' : /APPROVE|VERIFY/.test(a) ? 'good' : 'neutral');
 
 /** Who did what, when and why — every workflow step of the lot, oldest first. */
 export function HistoryTimeline({ history }) {

@@ -3,21 +3,35 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLogoutMutation } from '../../api/authApi.js';
+import * as engine from '../../offline/engine.js';
+import { ConfirmDialog } from '../ui/Modal.jsx';
 import logo from '../../assets/logo.png';
 import { useAccess } from '../../hooks/useAccess.js';
 import { initials } from '../../utils/format.js';
+import NotificationBell from './NotificationBell.jsx';
 
 export default function Navbar() {
   const { user } = useAccess();
   const [logout] = useLogoutMutation();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [unsent, setUnsent] = useState(0);
 
   const primaryRole = user?.roles[0];
   const roleText = primaryRole ? `${primaryRole.roleName}${primaryRole.plantSapCode ? ` · ${primaryRole.plantSapCode}` : ''}` : 'No role assigned';
   const moreRoles = (user?.roles.length ?? 0) - 1;
 
+  // Unsent tablet entries stay on the tablet and are sent when their inspector signs in again;
+  // signing out is allowed, but only after saying so.
+  const askSignOut = async () => {
+    setMenuOpen(false);
+    const n = await engine.unsentCount().catch(() => 0);
+    if (n) setUnsent(n);
+    else signOut();
+  };
+
   const signOut = async () => {
+    setUnsent(0);
     await logout();
     toast.success('Signed out');
     navigate('/login', { replace: true });
@@ -33,7 +47,9 @@ export default function Navbar() {
         </div>
       </Link>
 
-      <div className="ml-auto relative">
+      <div className="ml-auto flex items-center">
+      <NotificationBell />
+      <div className="relative">
         <button
           type="button"
           onClick={() => setMenuOpen((o) => !o)}
@@ -70,13 +86,24 @@ export default function Navbar() {
               <Link role="menuitem" to="/change-password" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-50">
                 <KeyRound className="w-4 h-4 text-slate-400" /> Change password
               </Link>
-              <button role="menuitem" type="button" onClick={signOut} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-rose-600 hover:bg-rose-50 cursor-pointer">
+              <button role="menuitem" type="button" onClick={askSignOut} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-rose-600 hover:bg-rose-50 cursor-pointer">
                 <LogOut className="w-4 h-4" /> Sign out
               </button>
             </div>
           </>
         )}
       </div>
+      </div>
+      {unsent > 0 && (
+        <ConfirmDialog
+          title="Entries not sent yet"
+          variant="primary"
+          confirmLabel="Sign out anyway"
+          message={`This tablet has ${unsent} inspection entr${unsent === 1 ? 'y' : 'ies'} or photo(s) not yet sent to the server. They stay safely on the tablet and are sent when the inspector who recorded them signs in again with a connection. To be safe, sync first or save a backup (This Tablet page).`}
+          onConfirm={signOut}
+          onCancel={() => setUnsent(0)}
+        />
+      )}
     </header>
   );
 }

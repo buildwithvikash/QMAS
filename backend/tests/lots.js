@@ -47,3 +47,29 @@ export const cellsFor = (imir, section, values) => {
   return values.map((v, i) => (section === 'DIMENSIONAL' ? { checkpointUid: cp.uid, sampleNo: i + 1, value: v } : { checkpointUid: cp.uid, sampleNo: i + 1, ok: v }));
 };
 
+
+/** Approves a format, receives a lot of 40 (sample 8) and submits its inspection; fails sample 1 unless `pass`. */
+export async function submittedLot(inspectorAgent, { pass = false } = {}) {
+  const itemCode = uid('LOT');
+  await approveFormat(itemCode);
+  const { imirId } = await inwardLot({ itemCode, qty: 40 });
+  let m = (await inspectorAgent.get(`/api/v1/imirs/${imirId}`)).body.data;
+  const dims = Array.from({ length: m.sampleSize }, (_, i) => (i === 0 && !pass ? 10.2 : 10));
+  const vis = Array.from({ length: m.sampleSize }, () => true);
+  m = (await inspectorAgent.put(`/api/v1/imirs/${imirId}/inspection`).send({ model: 'FR-1', cells: [...cellsFor(m, 'DIMENSIONAL', dims), ...cellsFor(m, 'VISUAL', vis)] })).body.data;
+  const sub = await inspectorAgent.post(`/api/v1/imirs/${imirId}/actions`).send({ action: 'submit', rowVersion: m.rowVersion });
+  expect(sub.status).toBe(200);
+  return sub.body.data;
+}
+
+/** Posts an IMIR action with the current rowVersion. */
+export async function imirAct(agent, id, payload) {
+  const cur = (await agent.get(`/api/v1/imirs/${id}`)).body.data;
+  return agent.post(`/api/v1/imirs/${id}/actions`).send({ rowVersion: cur.rowVersion, ...payload });
+}
+
+/** Unwraps a 200/201 response or fails with the API's message. */
+export function ok(res) {
+  if (res.status !== 200 && res.status !== 201) throw new Error(`${res.status} ${JSON.stringify(res.body)}`);
+  return res.body.data;
+}
