@@ -1,6 +1,7 @@
 /**
- * On-device storage for offline inspection. IndexedDB in the browser; the Android app swaps this
- * module for an SQLite implementation with the same functions (Decision: Capacitor + SQLite).
+ * On-device storage for offline inspection: IndexedDB in the installed web app (tablets use the
+ * same app as desktops; there is no separate native app). Persistent storage is requested so
+ * Android does not evict it, and unsent work can be saved to a backup file (engine.exportBackup).
  *
  *   meta    device registration and the last signed-in user
  *   bundles checked-out IMIRs with the inspector's local entries
@@ -70,5 +71,15 @@ export async function requestPersistence() {
     return (await navigator.storage?.persist?.()) ?? false;
   } catch {
     return false;
+  }
+}
+
+/** Whether storage is protected from eviction, and how much is used. */
+export async function storageStatus() {
+  try {
+    const [persisted, estimate] = await Promise.all([navigator.storage?.persisted?.() ?? false, navigator.storage?.estimate?.() ?? null]);
+    return { persisted: !!persisted, usage: estimate?.usage ?? null, quota: estimate?.quota ?? null, supported: !!navigator.storage?.persist };
+  } catch {
+    return { persisted: false, usage: null, quota: null, supported: false };
   }
 }

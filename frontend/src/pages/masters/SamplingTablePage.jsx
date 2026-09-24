@@ -73,7 +73,7 @@ function PlanEditor({ plan, editable }) {
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1fr_340px]">
-      <section className="rounded-xl border border-slate-200 bg-white">
+      <section className="card">
         <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-slate-100">
           <div>
             <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
@@ -92,7 +92,7 @@ function PlanEditor({ plan, editable }) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
-              <tr className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">
+              <tr className="text-[11px] font-medium text-slate-500">
                 <th className="px-3 py-2.5 text-right">Lot from</th>
                 <th className="px-3 py-2.5 text-right">Lot to</th>
                 <th className="px-3 py-2.5 text-right">Sample size</th>
@@ -150,17 +150,17 @@ function SampleCalculator({ rows, valid }) {
   const [qty, setQty] = useState('5000');
   const result = valid && qty ? determineSample(rows, qty) : null;
   return (
-    <aside className="rounded-xl border border-slate-200 bg-white p-5 h-fit">
+    <aside className="card p-5 h-fit">
       <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Calculator className="w-4 h-4 text-blue-600" />Check a lot</h2>
-      <label className="block mt-3 text-[10px] font-semibold text-slate-500 uppercase tracking-widest" htmlFor="calc-qty">Inward quantity</label>
+      <label className="block mt-3 text-[11px] font-medium text-slate-500" htmlFor="calc-qty">Inward quantity</label>
       <input id="calc-qty" inputMode="decimal" value={qty} onChange={(e) => setQty(e.target.value.replace(/[^\d.]/g, ''))}
         className="mt-1 w-full px-3 py-2 text-lg tabular rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
       {qty && (
         result ? (
           <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-lg bg-blue-50 p-3"><dt className="text-[10px] uppercase tracking-widest text-blue-500">Sample</dt><dd className="text-2xl font-bold text-blue-700 tabular">{result.sampleSize}</dd></div>
-            <div className="rounded-lg bg-emerald-50 p-3"><dt className="text-[10px] uppercase tracking-widest text-emerald-600">Accept ≤</dt><dd className="text-2xl font-bold text-emerald-700 tabular">{result.acceptNo}</dd></div>
-            <div className="rounded-lg bg-rose-50 p-3"><dt className="text-[10px] uppercase tracking-widest text-rose-500">Reject ≥</dt><dd className="text-2xl font-bold text-rose-700 tabular">{result.rejectNo}</dd></div>
+            <div className="rounded-lg bg-blue-50 p-3"><dt className="text-[10px] font-medium text-blue-500">Sample</dt><dd className="text-2xl font-bold text-blue-700 tabular">{result.sampleSize}</dd></div>
+            <div className="rounded-lg bg-emerald-50 p-3"><dt className="text-[10px] font-medium text-emerald-600">Accept ≤</dt><dd className="text-2xl font-bold text-emerald-700 tabular">{result.acceptNo}</dd></div>
+            <div className="rounded-lg bg-rose-50 p-3"><dt className="text-[10px] font-medium text-rose-500">Reject ≥</dt><dd className="text-2xl font-bold text-rose-700 tabular">{result.rejectNo}</dd></div>
             <p className="col-span-3 text-xs text-slate-500 mt-1">{result.basis === 'FULL_LOT' ? 'Lot smaller than the first range: inspect every unit.' : `Lot of ${result.lotSize} units.`}</p>
           </dl>
         ) : (

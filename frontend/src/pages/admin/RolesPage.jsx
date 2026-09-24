@@ -24,7 +24,7 @@ export default function RolesPage() {
     <div>
       <PageHeader icon={ShieldCheck} title="Roles & Permissions" subtitle="What each role can see and do. Plant limits come from each user's role assignment." />
       <div className="p-5 grid gap-5 lg:grid-cols-[320px_1fr]">
-        <ul className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 h-fit" aria-label="Roles">
+        <ul className="card divide-y divide-slate-100 h-fit" aria-label="Roles">
           {roles.map((r) => (
             <li key={r.code}>
               <button
@@ -76,7 +76,7 @@ function RolePermissions({ role, permissions, editable }) {
   };
 
   return (
-    <section className="rounded-xl border border-slate-200 bg-white">
+    <section className="card">
       <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b border-slate-100">
         <div>
           <h2 className="text-base font-bold text-slate-800">{role.name}</h2>
@@ -97,7 +97,7 @@ function RolePermissions({ role, permissions, editable }) {
       <div className="p-5 grid gap-5 md:grid-cols-2">
         {modules.map(([module, perms]) => (
           <fieldset key={module}>
-            <legend className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-2">{module}</legend>
+            <legend className="text-[11px] font-medium text-slate-500 mb-2">{module}</legend>
             <ul className="space-y-1.5">
               {perms.map((p) => (
                 <li key={p.key}>

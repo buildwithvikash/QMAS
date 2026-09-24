@@ -157,7 +157,7 @@ function Editor({ v }) {
 
       <div className="p-5 space-y-5">
         <FormError message={formError} />
-        <section className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid gap-4 card p-4 sm:grid-cols-2 lg:grid-cols-4">
           <TextInput label="Format no." value={header.formatNo} onChange={(e) => { setHeader({ ...header, formatNo: e.target.value }); setDirty(true); }} error={errors.formatNo} />
           <TextInput label="Common format no." hint="Same for all plants" value={header.commonFormatNo} onChange={(e) => { setHeader({ ...header, commonFormatNo: e.target.value }); setDirty(true); }} error={errors.commonFormatNo} />
           <TextInput label="Reference standard" value={header.refStandard} onChange={(e) => { setHeader({ ...header, refStandard: e.target.value }); setDirty(true); }} error={errors.refStandard} />
@@ -168,7 +168,7 @@ function Editor({ v }) {
           const cols = sectionColumns(section);
           const sectionRows = rows.filter((r) => r.section === section);
           return (
-            <section key={section} className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+            <section key={section} className="card overflow-hidden">
               <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200">
                 <h2 className="text-sm font-bold text-slate-700">{SECTION_LABELS[section]} test <span className="font-normal text-slate-400">· {sectionRows.length}</span></h2>
                 <Button size="sm" variant="secondary" icon={Plus} onClick={() => change((rs) => [...rs, blankRow(section)])}>Add</Button>
@@ -177,7 +177,7 @@ function Editor({ v }) {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="text-[10px] font-semibold text-slate-500 uppercase tracking-widest">
+                      <tr className="text-[11px] font-medium text-slate-500">
                         <th className="px-2 py-2 w-8 text-left">#</th>
                         {cols.map((c) => <th key={c} className={`px-2 py-2 ${NUMERIC.has(c) ? 'text-right' : 'text-left'}`}>{c === 'frequencyMonths' ? 'Every (months)' : fieldLabel(c)}</th>)}
                         <th className="w-32" />

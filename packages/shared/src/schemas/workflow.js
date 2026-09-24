@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { ESCALATION_RANKS } from '../constants/roles.js';
 import { SENIOR_DECISIONS } from '../logic/escalation.js';
 import { listQuery, optionalTrimmed, rowVersion, trimmed } from './common.js';
+import { filterParam } from './listFilter.js';
 
 /** Sprint D: review of a submitted IMIR, the deviation track and senior escalation. */
 
@@ -82,6 +83,7 @@ export const deviationListQuery = listQuery.extend({
   open: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
   department: z.enum(DEPARTMENTS).optional(),
   plantId: z.coerce.number().int().positive().optional(),
+  filter: filterParam.optional(),
 });
 
 export const deptApprovalChainSchema = z.object({

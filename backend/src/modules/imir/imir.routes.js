@@ -9,6 +9,7 @@ import { AppError } from '../../shared/AppError.js';
 import { body, created, noContent, ok, params, query } from '../../shared/http.js';
 import * as files from './attachments.service.js';
 import * as imir from './imir.service.js';
+import { renderImirPdf } from './imir.pdf.js';
 import { review } from './review.service.js';
 
 const router = Router();
@@ -35,6 +36,16 @@ router.get('/', canView, validate({ query: imirListQuery }), async (req, res) =>
   ok(res, data, meta);
 });
 router.get('/:id', canView, validate({ params: uuidParam }), async (req, res) => ok(res, await imir.detail(params(req).id, req.user)));
+
+router.get('/:id/pdf', canView, validate({ params: uuidParam }), async (req, res) => {
+  const m = await imir.detail(params(req).id, req.user);
+  if (m.status === 'AWAITING_FORMAT') throw AppError.conflict('This IMIR is not open yet, so there is nothing to print.');
+  const pdf = await renderImirPdf(m);
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `inline; filename="${m.imirNo}.pdf"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.end(pdf);
+});
 
 router.put('/:id/inspection', canInspect, validate({ params: uuidParam, body: inspectionSaveSchema }), async (req, res) => {
   ok(res, await imir.saveProgress(txContext(req), req.user, params(req).id, body(req)));
@@ -66,7 +77,8 @@ filesRouter.get('/:id', validate({ params: uuidParam }), async (req, res) => {
   f.stream.on('error', () => res.destroy());
   f.stream.pipe(res);
 });
-filesRouter.delete('/:id', canInspect, validate({ params: uuidParam }), async (req, res) => {
+// Who may remove a file depends on what it belongs to; checked in the service.
+filesRouter.delete('/:id', validate({ params: uuidParam }), async (req, res) => {
   await files.removeAttachment(txContext(req), req.user, params(req).id);
   noContent(res);
 });

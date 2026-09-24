@@ -1,7 +1,6 @@
 import { deviationFormSchema, ESCALATION_RANKS } from '@qmas/shared';
 import { ArrowLeft, CheckCircle2, CornerUpLeft, FileWarning, Gavel, Scale, Send, ShieldAlert, ThumbsDown, XCircle } from 'lucide-react';
 import { useState } from 'react';
-import toast from 'react-hot-toast';
 import { Link, useParams } from 'react-router-dom';
 import { useDeviationActionMutation, useGetDeviationQuery } from '../../api/workflowApi.js';
 import Badge from '../../components/ui/Badge.jsx';
@@ -12,8 +11,11 @@ import Modal, { ModalFooter } from '../../components/ui/Modal.jsx';
 import PageHeader from '../../components/ui/PageHeader.jsx';
 import { useZodForm } from '../../hooks/useZodForm.js';
 import { apiError } from '../../utils/apiError.js';
+import { done } from '../../utils/notify.jsx';
+import { useUnsavedWarning } from '../../hooks/useUnsavedWarning.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { ImirStatus } from '../imir/imirUi.jsx';
+import LotJourney from '../imir/LotJourney.jsx';
 import { ACTION_NAMES, DECISION_NAMES, ROLE_SHORT } from './workflowLabels.js';
 import { DeviationStage, HistoryTimeline } from './workflowUi.jsx';
 
@@ -43,29 +45,30 @@ export default function DeviationPage() {
 
   return (
     <div className="pb-10">
-      <PageHeader icon={FileWarning} title={d.deviationNo} subtitle={`${d.itemCode} · ${d.itemDescription}`}>
+      <PageHeader icon={FileWarning} title={d.deviationNo} copyTitle subtitle={`${d.itemCode} · ${d.itemDescription}`}>
         <Link to="/deviations" className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />Deviations</Link>
         <DeviationStage stage={d.stage} outcome={d.outcome} />
       </PageHeader>
 
       <div className="p-5 grid gap-4 xl:grid-cols-[1fr_24rem]">
         <div className="space-y-4 min-w-0">
-          <Facts d={d} />
           {buttons.length > 0 && (
-            <section className="rounded-xl border border-blue-200 bg-blue-50/40 p-4">
-              <h2 className="text-sm font-bold text-slate-800 mb-1">Your decision</h2>
+            <section className="card border-blue-300 border-l-4 border-l-blue-600 p-4">
+              <h2 className="text-sm font-semibold text-slate-900 mb-1">Your turn</h2>
               <StageHint d={d} />
               <div className="flex flex-wrap gap-2 mt-3">
                 {buttons.map((a) => <Button key={a} variant={DECISIONS[a].variant} icon={DECISIONS[a].icon} onClick={() => setDialog(a)}>{DECISIONS[a].label}</Button>)}
               </div>
             </section>
           )}
+          <LotJourney status={d.imirStatus} history={d.history} deviation={d} />
+          <Facts d={d} />
           {can('submit_form') ? <DeviationForm d={d} onRecommendReject={() => setDialog('recommend_reject')} /> : <FormView d={d} />}
           {can('enter_qty') && <QuantityForm d={d} />}
           {d.rounds.length > 0 && <EscalationBoard d={d} />}
         </div>
         <aside className="space-y-4">
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <section className="card p-4">
             <h2 className="text-sm font-bold text-slate-800 mb-3">History</h2>
             <HistoryTimeline history={d.history} />
           </section>
@@ -77,12 +80,12 @@ export default function DeviationPage() {
 }
 
 function fact(label, value) {
-  return <div><dt className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{label}</dt><dd className="text-sm text-slate-800">{value ?? '—'}</dd></div>;
+  return <div><dt className="text-[11px] font-medium text-slate-400">{label}</dt><dd className="text-sm text-slate-800">{value ?? '—'}</dd></div>;
 }
 
 function Facts({ d }) {
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    <section className="card p-4 space-y-3">
       <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
         {fact('IMIR', <Link to={`/imirs/${d.imirId}`} className="font-mono text-blue-700 hover:underline">{d.imirNo}</Link>)}
         {fact('IMIR status', <ImirStatus status={d.imirStatus} />)}
@@ -130,6 +133,8 @@ function DeviationForm({ d, onRecommendReject }) {
   });
   const [remark, setRemark] = useState('');
   const [formError, setFormError] = useState(null);
+  const dirty = ['severity', 'action', 'specification', 'iqcObservation', 'correction', 'correctiveAction'].some((k) => (f.values[k] ?? '') !== (d[k] ?? (k === 'action' && d.suggestedActions.length === 1 ? d.suggestedActions[0] : '') ?? ''));
+  useUnsavedWarning(dirty);
   const [run, { isLoading }] = useDeviationActionMutation();
 
   const submit = async () => {
@@ -138,7 +143,7 @@ function DeviationForm({ d, onRecommendReject }) {
     if (!form) return;
     try {
       await run({ id: d.id, action: 'submit_form', rowVersion: d.rowVersion, remark: remark.trim() || null, form }).unwrap();
-      toast.success('Deviation Form submitted for approval');
+      done('Deviation Form submitted. Your approver has been notified.');
     } catch (err) {
       const e = apiError(err);
       setFormError(e.message);
@@ -147,7 +152,7 @@ function DeviationForm({ d, onRecommendReject }) {
   };
 
   return (
-    <section className="rounded-xl border border-blue-200 bg-white p-4 space-y-4">
+    <section className="card border-blue-200 p-4 space-y-4">
       <div>
         <h2 className="text-sm font-bold text-slate-800">Deviation Form</h2>
         <p className="text-xs text-slate-500">{d.seniorEffective === 'CHANGE_TYPE' ? 'Senior authorities asked for a different deviation type. Change the action and submit again.' : `Fill the form for ${d.department}; it goes to your approver, then to the IQC Head.`}</p>
@@ -178,10 +183,10 @@ function DeviationForm({ d, onRecommendReject }) {
 function FormView({ d }) {
   if (!d.formSubmittedAt) return null;
   const row = (label, value) => (
-    <div><dt className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{label}</dt><dd className="text-sm text-slate-800 whitespace-pre-line">{value || '—'}</dd></div>
+    <div><dt className="text-[11px] font-medium text-slate-400">{label}</dt><dd className="text-sm text-slate-800 whitespace-pre-line">{value || '—'}</dd></div>
   );
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+    <section className="card p-4 space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-bold text-slate-800">Deviation Form</h2>
         <Badge variant={d.severity === 'CRITICAL' ? 'danger' : d.severity === 'MAJOR' ? 'warning' : 'neutral'}>{d.severity?.toLowerCase()}</Badge>
@@ -210,13 +215,13 @@ function QuantityForm({ d }) {
     if (okQty === '' || notOkQty === '') return setError('Enter both quantities.');
     try {
       await run({ id: d.id, action: 'enter_qty', rowVersion: d.rowVersion, okQty: Number(okQty), notOkQty: Number(notOkQty), remark: remark.trim() || null }).unwrap();
-      toast.success('Quantities sent to the IQC Head');
+      done('Quantities sent to the IQC Head for verification.');
     } catch (err) {
       setError(apiError(err).message);
     }
   };
   return (
-    <section className="rounded-xl border border-blue-200 bg-white p-4 space-y-3">
+    <section className="card border-blue-200 p-4 space-y-3">
       <div>
         <h2 className="text-sm font-bold text-slate-800">{ACTION_NAMES[d.action]} result</h2>
         <p className="text-xs text-slate-500">Enter the quantities after {ACTION_NAMES[d.action]?.toLowerCase()}, by {formatDateTime(d.qtyDueAt)}. Without them the deviation closes itself.</p>
@@ -238,7 +243,7 @@ const STEP_BADGE = { PENDING: ['Pending', 'warning'], DECIDED: ['Decided', 'succ
 function EscalationBoard({ d }) {
   const current = d.rounds.at(-1);
   return (
-    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
+    <section className="card p-4 space-y-4">
       <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2"><Scale className="w-4 h-4 text-slate-500" />Senior escalation</h2>
       {[...d.rounds].reverse().map((r) => (
         <div key={r.id} className="rounded-lg border border-slate-200 p-3 space-y-3">
@@ -292,7 +297,7 @@ function SeniorDecision({ d }) {
     if (!remark.trim()) return setError('Enter a remark.');
     try {
       await run({ id: d.id, action: 'senior_decide', roleCode, decision, remark: remark.trim() }).unwrap();
-      toast.success('Decision recorded');
+      done('Decision recorded. The IQC Head is told when the escalation completes.');
       setRemark('');
       setDecision(null);
     } catch (err) {
@@ -339,7 +344,7 @@ function DecisionDialog({ d, action, onClose }) {
     if (action === 'override') body.decision = decision;
     try {
       await run(body).unwrap();
-      toast.success(`${d.deviationNo}: ${c.label.toLowerCase()} done`);
+      done(`${d.deviationNo}: ${c.label.toLowerCase()} done.`);
       onClose();
     } catch (err) {
       setError(apiError(err).message);
@@ -354,7 +359,7 @@ function DecisionDialog({ d, action, onClose }) {
       <div className="space-y-4">
         {action === 'escalate' && (
           <fieldset>
-            <legend className="block text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-1">Authorities <span className="text-rose-500">*</span></legend>
+            <legend className="block text-[11px] font-medium text-slate-500 mb-1">Authorities <span className="text-rose-500">*</span></legend>
             <div className="grid gap-2 sm:grid-cols-2">
               {[...ESCALATION_RANKS].reverse().map(({ roleCode }) => (
                 <label key={roleCode} className={`cursor-pointer rounded-lg border px-3 py-2 text-sm ${authorities.includes(roleCode) ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-slate-200'}`}>

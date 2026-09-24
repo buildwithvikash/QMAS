@@ -21,6 +21,16 @@ const schema = z.object({
   LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(20).default(5),
   LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(15),
   SERVE_WEB_DIST: z.string().optional(),
+  // Mail: 'log' keeps mail on this machine (logged, marked sent); 'smtp' sends through SES SMTP or any relay.
+  MAIL_TRANSPORT: z.enum(['log', 'smtp']).default('log'),
+  MAIL_FROM: z.string().default('QMAS <no-reply@localhost>'),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: bool.default(false),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  // Links in mails point here (the web app's public address).
+  APP_BASE_URL: z.string().url().default('http://localhost:5173'),
 });
 
 let cached;
@@ -33,6 +43,9 @@ export function loadEnv(source = process.env) {
     throw new Error(`Invalid configuration:\n${lines.join('\n')}`);
   }
   const env = parsed.data;
+  if (env.MAIL_TRANSPORT === 'smtp' && !env.SMTP_HOST) {
+    throw new Error('Invalid configuration:\n  - SMTP_HOST is required when MAIL_TRANSPORT=smtp');
+  }
   if (env.NODE_ENV === 'production' && !env.COOKIE_SECURE) {
     throw new Error('Invalid configuration:\n  - COOKIE_SECURE must be true in production');
   }
