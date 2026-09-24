@@ -1,5 +1,5 @@
 import { PERMISSIONS as P } from '@qmas/shared';
-import { ClipboardCheck, FileSpreadsheet, Home, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import { ClipboardCheck, FileSpreadsheet, FileWarning, Home, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import { lazy } from 'react';
 
 const HomePage = lazy(() => import('../pages/Home.jsx'));
@@ -19,12 +19,15 @@ const FormatImportPage = lazy(() => import('../pages/formats/FormatImportPage.js
 const ImirListPage = lazy(() => import('../pages/imir/ImirListPage.jsx'));
 const ImirPage = lazy(() => import('../pages/imir/ImirPage.jsx'));
 const TabletPage = lazy(() => import('../pages/imir/TabletPage.jsx'));
+const DeviationListPage = lazy(() => import('../pages/deviation/DeviationListPage.jsx'));
+const DeviationPage = lazy(() => import('../pages/deviation/DeviationPage.jsx'));
+const ApprovalChainPage = lazy(() => import('../pages/masters/ApprovalChainPage.jsx'));
 const DevicesPage = lazy(() => import('../pages/admin/DevicesPage.jsx'));
 const SapSyncPage = lazy(() => import('../pages/admin/SapSyncPage.jsx'));
 
 /**
  * Sidebar sections and routes, filtered by the user's permissions (same idea as WRL's
- * ROUTE_CONFIG). Later modules — formats, incoming inspection, deviation, DN — are added here.
+ * ROUTE_CONFIG). Later modules (DN, reports) are added here.
  */
 export const ROUTE_SECTIONS = [
   {
@@ -42,6 +45,16 @@ export const ROUTE_SECTIONS = [
       { path: '/imirs', label: 'Incoming Lots', permission: P.IMIR_VIEW, element: <ImirListPage /> },
       { path: '/tablet', label: 'This Tablet', permission: P.IMIR_INSPECT, element: <TabletPage /> },
       { path: '/imirs/:id', hidden: true, permission: P.IMIR_VIEW, element: <ImirPage /> },
+    ],
+  },
+  {
+    key: 'deviation',
+    label: 'Deviation',
+    icon: FileWarning,
+    activePrefix: '/deviations',
+    items: [
+      { path: '/deviations', label: 'Deviations', permission: P.DEVIATION_VIEW, element: <DeviationListPage /> },
+      { path: '/deviations/:id', hidden: true, permission: P.DEVIATION_VIEW, element: <DeviationPage /> },
     ],
   },
   {
@@ -77,6 +90,7 @@ export const ROUTE_SECTIONS = [
       { path: '/masters/uoms', label: 'Units of Measure', group: 'material', permission: P.MASTERS_VIEW, element: <MasterListPage key="uoms" resource="uoms" /> },
       { path: '/masters/instruments', label: 'Instruments', group: 'inspection', permission: P.MASTERS_VIEW, element: <MasterListPage key="instruments" resource="instruments" /> },
       { path: '/masters/sampling', label: 'Sampling Table', group: 'inspection', permission: P.MASTERS_VIEW, element: <SamplingTablePage /> },
+      { path: '/masters/approval-chain', label: 'Deviation Approval', group: 'inspection', permission: P.MASTERS_VIEW, element: <ApprovalChainPage /> },
     ],
   },
   {

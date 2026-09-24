@@ -4,10 +4,11 @@ import { Link } from 'react-router-dom';
 import { useGetNumberSeriesQuery, useGetSamplingPlansQuery } from '../api/mastersApi.js';
 import PageHeader from '../components/ui/PageHeader.jsx';
 import { useAccess } from '../hooks/useAccess.js';
+import MyTasks from './MyTasks.jsx';
 
 /**
- * Sprint A dashboard: who you are, where you can go, and — for people who maintain masters —
- * whether the configuration the inspection flow depends on is complete.
+ * Dashboard: what is waiting for you, who you are, where you can go, and — for people who
+ * maintain masters — whether the configuration the inspection flow depends on is complete.
  */
 export default function Home() {
   const { user, can, menu } = useAccess();
@@ -18,6 +19,7 @@ export default function Home() {
       <PageHeader icon={LayoutDashboard} title={`Good ${partOfDay()}, ${user.fullName.split(' ')[0]}`} subtitle="QMAS · Incoming Material Inspection & Defect Notification" />
       <div className="p-5 grid gap-5 lg:grid-cols-3">
         <section className="lg:col-span-2 space-y-5">
+          <MyTasks />
           <div className="rounded-xl border border-slate-200 bg-white p-5">
             <h2 className="text-sm font-bold text-slate-800 mb-3">Your access</h2>
             {user.roles.length === 0 ? (
