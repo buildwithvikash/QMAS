@@ -1,4 +1,5 @@
-import { SECTIONS } from '@qmas/shared';
+import { LIST_FIELDS, SECTIONS } from '@qmas/shared';
+import { buildDynamicFilter, listFieldMap } from '../../shared/dynamicFilter.js';
 import { camelRow, camelRows, likeContains, offsetOf, orderBy } from '../../shared/sql.js';
 
 const num = (v) => (v === null || v === undefined ? null : Number(v));
@@ -40,6 +41,14 @@ const GROUPS = {
   IN_REVIEW: "m.status IN ('SUBMITTED', 'WITH_IQC_HEAD', 'DEPT_REVIEW', 'IQC_HEAD_FINAL', 'SENIOR_ESCALATION', 'UNDER_DEVIATION', 'QTY_VERIFICATION')",
   CLOSED: "m.status IN ('CLOSED_ACCEPTED', 'CLOSED_REJECTED', 'CLOSED_UNDER_DEVIATION', 'AUTO_CLOSED')",
 };
+const FILTER_FIELDS = listFieldMap(LIST_FIELDS.imirs, {
+  imirNo: 'm.imir_no', grnNo: 'm.grn_no', sapLotNo: 'l.sap_lot_no', invoiceNo: 'm.invoice_no', itemCode: 'i.item_code', itemDescription: 'i.description',
+  itemCategory: 'c.name', vendorCode: 'v.vendor_code', vendorName: 'v.name', model: 'm.model', plant: 'p.sap_code', inspectedBy: 'iu.full_name',
+  status: 'm.status', result: 'm.result', grnDate: 'm.grn_date', receivedAt: { sql: 'm.created_at', tz: true }, submittedAt: { sql: 'm.submitted_at', tz: true },
+  inwardQty: 'm.inward_qty', sampleSize: 'm.sample_size',
+  hasDeviation: 'EXISTS (SELECT 1 FROM qms.deviation dx WHERE dx.imir_id = m.id)', hasDn: 'EXISTS (SELECT 1 FROM qms.defect_notification nx WHERE nx.imir_id = m.id)',
+});
+
 const SORTABLE = { createdAt: 'm.created_at', imirNo: 'm.imir_no', grnDate: 'm.grn_date', itemCode: 'i.item_code', status: 'm.status' };
 
 /** List restricted to the plants in `scope` ({ all } or { plantIds }). */
@@ -53,6 +62,8 @@ export async function list(db, f, scope) {
   if (f.statusGroup) where.push(GROUPS[f.statusGroup]);
   if (f.from) where.push(`m.grn_date >= ${arg(f.from)}`);
   if (f.to) where.push(`m.grn_date <= ${arg(f.to)}`);
+  const dyn = buildDynamicFilter(f.filter, FILTER_FIELDS, arg);
+  if (dyn) where.push(dyn);
   if (f.q) {
     const p = arg(likeContains(f.q));
     where.push(`(m.imir_no ILIKE ${p} OR m.grn_no ILIKE ${p} OR i.item_code ILIKE ${p} OR i.description ILIKE ${p} OR v.name ILIKE ${p} OR v.vendor_code ILIKE ${p} OR l.sap_lot_no ILIKE ${p})`);

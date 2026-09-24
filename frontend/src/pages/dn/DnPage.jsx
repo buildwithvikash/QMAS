@@ -10,6 +10,8 @@ import Loader from '../../components/ui/Loader.jsx';
 import PageHeader from '../../components/ui/PageHeader.jsx';
 import { useZodForm } from '../../hooks/useZodForm.js';
 import { apiError } from '../../utils/apiError.js';
+import { done } from '../../utils/notify.jsx';
+import { useUnsavedWarning } from '../../hooks/useUnsavedWarning.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { DnStatus, HistoryTimeline } from '../deviation/workflowUi.jsx';
 import { Stepper } from '../imir/LotJourney.jsx';
@@ -42,6 +44,7 @@ export default function DnPage() {
 
       <div className="p-5 grid gap-4 xl:grid-cols-[1fr_22rem]">
         <div className="space-y-4 min-w-0">
+          <YourTurn dn={dn} />
           <Stepper title="DN route" steps={dnSteps(dn)} since={dn.history.at(-1)?.at} />
           <Facts dn={dn} />
           {editable ? <DnForm key={dn.rowVersion} dn={dn} /> : <DnView dn={dn} />}
@@ -105,6 +108,8 @@ function DnForm({ dn }) {
   const [fieldErrors, setFieldErrors] = useState({});
   const [save, { isLoading }] = useUpdateDnMutation();
   const set = (k) => (e) => setV((s) => ({ ...s, [k]: e?.target ? e.target.value : e }));
+  const [touched, setTouched] = useState(false);
+  useUnsavedWarning(touched);
   const setLine = (i, k, value) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, [k]: value } : l)));
 
   const submit = async () => {
@@ -117,7 +122,8 @@ function DnForm({ dn }) {
     };
     try {
       await save(body).unwrap();
-      toast.success('DN saved');
+      setTouched(false);
+      done('DN saved.');
     } catch (err) {
       const e = apiError(err);
       setError(e.message);
@@ -126,8 +132,11 @@ function DnForm({ dn }) {
   };
 
   return (
-    <section className="card border-blue-200 p-4 space-y-4">
-      <h2 className="text-sm font-bold text-slate-800">Defect notification</h2>
+    <section className="card border-blue-200 p-4 space-y-4" onInput={() => setTouched(true)} onClick={(e) => e.target.closest('button[aria-label^="Remove line"], button[role="switch"]') && setTouched(true)}>
+      <div className="flex items-center gap-2">
+        <h2 className="section-title">Defect notification</h2>
+        {touched && <span className="text-xs font-medium text-amber-700">Unsaved changes</span>}
+      </div>
       <FormError message={error} />
       <div className="grid gap-3 sm:grid-cols-4">
         <TextInput label="Model" value={v.model} onChange={set('model')} maxLength={60} />
@@ -260,12 +269,26 @@ function Images({ dn, editable }) {
   );
 }
 
+/** Tells the user what this DN needs from them now, and takes them there. */
+function YourTurn({ dn }) {
+  const need = dn.allowedActions.includes('submit_capa')
+    ? (dn.capaApplicable ? "enter the vendor's CAPA (due " + formatDateTime(dn.capaDueAt) + ')' : 'send the DN to the IQC Head for closure')
+    : dn.allowedActions.includes('approve_capa') ? 'review the CAPA and close the DN, or ask for a new one' : null;
+  if (!need) return null;
+  return (
+    <section className="card border-blue-300 border-l-4 border-l-blue-600 px-4 py-3 flex flex-wrap items-center gap-3">
+      <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">Your turn:</span> {need}</p>
+      <Button size="sm" className="ml-auto" onClick={() => document.getElementById('capa')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>Go to CAPA</Button>
+    </section>
+  );
+}
+
 function CapaSection({ dn }) {
   const canSubmit = dn.allowedActions.includes('submit_capa');
   const canReview = dn.allowedActions.includes('approve_capa');
   return (
-    <section className="card p-4 space-y-4">
-      <h2 className="text-sm font-bold text-slate-800">CAPA</h2>
+    <section id="capa" className="card p-4 space-y-4 scroll-mt-28">
+      <h2 className="section-title">CAPA</h2>
       {!dn.capaApplicable && <p className="text-sm text-slate-500">CAPA does not apply to this DN.</p>}
       {[...dn.capas].reverse().map((c) => <CapaCard key={c.id} c={c} files={dn.capaFiles.filter((f) => f.cycleNo === c.cycleNo)} dnId={dn.id} />)}
       {canSubmit && <CapaForm dn={dn} />}
@@ -319,7 +342,7 @@ function CapaForm({ dn }) {
     }
     try {
       await run({ id: dn.id, action: 'submit_capa', rowVersion: dn.rowVersion, remark: remark.trim() || null, capa }).unwrap();
-      toast.success(dn.capaApplicable ? 'CAPA sent to the IQC Head' : 'DN sent to the IQC Head for closure');
+      done(dn.capaApplicable ? 'CAPA sent to the IQC Head for review.' : 'DN sent to the IQC Head for closure.');
     } catch (err) {
       setError(apiError(err).message);
     }
@@ -365,7 +388,7 @@ function CapaReview({ dn }) {
     if (action === 'resubmit' && !remark.trim()) return setError('Give the reason for resubmission.');
     try {
       await run({ id: dn.id, action, rowVersion: dn.rowVersion, remark: remark.trim() || null }).unwrap();
-      toast.success(action === 'approve_capa' ? `DN ${dn.dnNo} closed` : 'Sent back for resubmission');
+      done(action === 'approve_capa' ? `DN ${dn.dnNo} closed. The people involved have been notified.` : 'Sent back to the Incharge for a new CAPA.');
     } catch (err) {
       setError(apiError(err).message);
     }

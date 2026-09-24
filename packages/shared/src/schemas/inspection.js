@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { MAX_SAMPLES } from '../logic/inspection.js';
 import { listQuery, optionalTrimmed, rowVersion, trimmed } from './common.js';
+import { filterParam } from './listFilter.js';
 
 const reading = z
   .number({ error: 'Enter a number.' })
@@ -46,6 +47,7 @@ export const imirListQuery = listQuery.extend({
   plantId: z.coerce.number().int().positive().optional(),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
+  filter: filterParam.optional(),
 });
 
 // ── Devices and offline sync ─────────────────────────────────────────────────

@@ -279,6 +279,11 @@ describe('reports and dashboard', () => {
     expect(s.lots30Days.received).toBeGreaterThan(0);
     expect(s.dn).toHaveProperty('capaOverdue');
     expect(typeof s.openDeviations).toBe('number');
+    expect(s.trend).toHaveLength(30);
+    expect(s.trend.at(-1).received).toBeGreaterThan(0);
+    expect(s.worstVendors[0]).toMatchObject({ vendorCode: 'V100' });
+    expect(s.ageing.find((a) => a.status === 'WITH_IQC_HEAD').d0).toBeGreaterThan(0);
+    expect(Array.isArray(s.capaDue)).toBe(true);
   });
 });
 
@@ -297,5 +302,32 @@ describe('global search', () => {
     const none = ok(await otherPlant.get('/api/v1/search').query({ q: m.imirNo }));
     expect(none.find((g) => g.key === 'imir')).toBeUndefined();
     expect((await A.head.get('/api/v1/search').query({ q: 'x' })).status).toBe(422);
+  });
+});
+
+describe('dynamic list filters', () => {
+  it('filters on any field with any condition, combined with all or any', async () => {
+    const m = await escalatedLot();
+    const list = async (filter, extra = {}) => A.head.get('/api/v1/imirs').query({ filter: JSON.stringify(filter), pageSize: 200, ...extra });
+    const ids = async (filter) => (await list(filter)).body.data.map((r) => r.id);
+
+    expect(await ids({ rules: [{ field: 'imirNo', op: 'equals', value: m.imirNo.toLowerCase() }] })).toEqual([m.id]);
+    expect(await ids({ rules: [{ field: 'itemCode', op: 'starts_with', value: m.itemCode.slice(0, 5) }, { field: 'result', op: 'in', value: ['NOK'] }] })).toContain(m.id);
+    expect(await ids({ rules: [{ field: 'imirNo', op: 'equals', value: m.imirNo }, { field: 'result', op: 'in', value: ['OK'] }] })).toEqual([]);
+    expect(await ids({ mode: 'any', rules: [{ field: 'imirNo', op: 'equals', value: m.imirNo }, { field: 'imirNo', op: 'equals', value: 'nope' }] })).toEqual([m.id]);
+    expect(await ids({ rules: [{ field: 'imirNo', op: 'equals', value: m.imirNo }, { field: 'inwardQty', op: 'between', value: [39, 41] }, { field: 'receivedAt', op: 'last_days', value: 2 }, { field: 'hasDeviation', op: 'is', value: false }] })).toEqual([m.id]);
+    expect(await ids({ rules: [{ field: 'imirNo', op: 'equals', value: m.imirNo }, { field: 'status', op: 'not_in', value: ['WITH_IQC_HEAD'] }] })).toEqual([]);
+
+    const bad = await list({ rules: [{ field: 'password', op: 'contains', value: 'x' }] });
+    expect(bad.status).toBe(422);
+    expect(bad.body.message).toBe('"password" cannot be filtered on.');
+    expect((await list({ rules: [{ field: 'inwardQty', op: 'contains', value: 'x' }] })).body.message).toBe('"contains" does not apply to number fields.');
+    expect((await list({ rules: [{ field: 'status', op: 'in', value: ["x'); DROP TABLE qms.imir;--"] }] })).status).toBe(422);
+    expect((await A.head.get('/api/v1/imirs').query({ filter: '{not json' })).status).toBe(422);
+
+    const dns = await A.head.get('/api/v1/dns').query({ filter: JSON.stringify({ rules: [{ field: 'capaApplicable', op: 'is', value: true }] }) });
+    expect(dns.status).toBe(200);
+    const devs = await A.head.get('/api/v1/deviations').query({ filter: JSON.stringify({ rules: [{ field: 'severity', op: 'in', value: ['MAJOR', 'CRITICAL'] }] }) });
+    expect(devs.status).toBe(200);
   });
 });

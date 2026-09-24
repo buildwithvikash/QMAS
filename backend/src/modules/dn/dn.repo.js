@@ -1,3 +1,5 @@
+import { LIST_FIELDS } from '@qmas/shared';
+import { buildDynamicFilter, listFieldMap } from '../../shared/dynamicFilter.js';
 import { camelRow, camelRows, likeContains, offsetOf, orderBy } from '../../shared/sql.js';
 
 const num = (v) => (v === null || v === undefined ? null : Number(v));
@@ -31,6 +33,12 @@ export async function summaryForImir(db, imirId) {
   return camelRow(rows[0]) ?? null;
 }
 
+const FILTER_FIELDS = listFieldMap(LIST_FIELDS.dns, {
+  dnNo: 'n.dn_no', imirNo: 'm.imir_no', itemCode: 'i.item_code', itemDescription: 'i.description', vendorName: 'v.name', vendorCode: 'v.vendor_code',
+  plant: 'p.sap_code', status: 'n.status', capaApplicable: 'n.capa_applicable', defectiveQty: 'n.defective_qty',
+  dnDate: { sql: 'n.dn_date', tz: true }, capaDueAt: { sql: 'n.capa_due_at', tz: true }, closedAt: { sql: 'n.closed_at', tz: true },
+});
+
 const SORTABLE = { dnDate: 'n.dn_date', dnNo: 'n.dn_no', status: 'n.status', itemCode: 'i.item_code', capaDueAt: 'n.capa_due_at' };
 
 export async function list(db, f, scope) {
@@ -43,6 +51,8 @@ export async function list(db, f, scope) {
   if (f.overdue === true) where.push("n.status = 'OPEN' AND n.capa_applicable AND n.capa_due_at < now()");
   if (f.from) where.push(`n.dn_date >= ${arg(f.from)}::date`);
   if (f.to) where.push(`n.dn_date < ${arg(f.to)}::date + 1`);
+  const dyn = buildDynamicFilter(f.filter, FILTER_FIELDS, arg);
+  if (dyn) where.push(dyn);
   if (f.q) {
     const p = arg(likeContains(f.q));
     where.push(`(n.dn_no ILIKE ${p} OR m.imir_no ILIKE ${p} OR i.item_code ILIKE ${p} OR i.description ILIKE ${p} OR v.name ILIKE ${p} OR v.vendor_code ILIKE ${p})`);

@@ -16,6 +16,7 @@ import { apiError } from '../../utils/apiError.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { ImirResult, ImirStatus } from './imirUi.jsx';
 import InspectionSheet from './InspectionSheet.jsx';
+import { focusFirstMissing } from './sheetNav.js';
 import LotJourney from './LotJourney.jsx';
 import ReviewPanel from './ReviewPanel.jsx';
 import { HistoryTimeline } from '../deviation/workflowUi.jsx';
@@ -130,6 +131,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
         {mode === 'view' && sheet.checkoutDeviceCode && <Banner tone="info">This lot is on tablet {sheet.checkoutDeviceCode} ({sheet.checkoutUserName}) since {formatDateTime(sheet.checkedOutAt)}. Record it there.</Banner>}
         {sheet.status === 'AWAITING_FORMAT' && <Banner tone="warning">{sheet.awaitingReason} It opens automatically once that is fixed.</Banner>}
 
+        {mode !== 'tablet' && <ReviewPanel imir={sheet} />}
         <LotJourney status={sheet.status} history={sheet.history ?? []} deviation={sheet.deviation} dn={sheet.dn} />
         <LotFacts sheet={sheet} readOnly={readOnly} onPatch={onPatch} />
 
@@ -140,13 +142,10 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
         )}
 
         {mode !== 'tablet' && sheet.history?.length > 0 && (
-          <div className="grid gap-4 lg:grid-cols-2">
-            <ReviewPanel imir={sheet} />
-            <section className="card p-4">
-              <h2 className="text-sm font-bold text-slate-800 mb-3">History</h2>
-              <HistoryTimeline history={sheet.history} />
-            </section>
-          </div>
+          <section className="card p-4">
+            <h2 className="section-title mb-3">History</h2>
+            <HistoryTimeline history={sheet.history} />
+          </section>
         )}
       </div>
 
@@ -155,7 +154,11 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
           <span className="text-sm text-slate-600">{sheet.result ? "Result:" : "Result so far:"}</span>
           <ImirResult result={sheet.result ?? ev.result} />
           {ev.defectiveSamples.length > 0 && <span className="text-xs text-rose-600">NOK in sample {ev.defectiveSamples.join(', ')}</span>}
-          {!readOnly && (ev.missing.length > 0 ? <span className="text-xs text-amber-700">{ev.missing.length} required entr{ev.missing.length > 1 ? 'ies' : 'y'} still empty</span> : !sheet.model && <span className="text-xs text-amber-700">Enter the model</span>)}
+          {!readOnly && (ev.missing.length > 0 ? (
+            <button type="button" onClick={() => focusFirstMissing(ev.missing)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 cursor-pointer">
+              {ev.missing.length} empty: go to next
+            </button>
+          ) : !sheet.model && <span className="text-xs text-amber-700">Enter the model</span>)}
           {!readOnly && <Button className="ml-auto" size="lg" icon={Send} disabled={!canSubmit || saving} onClick={() => setDialog({ type: 'submit' })}>Submit IMIR</Button>}
         </div>
       )}
