@@ -8,7 +8,7 @@ describe('master data', () => {
     const byCode = Object.fromEntries(res.body.data.map((p) => [p.sapCode, p]));
     expect(byCode['1115']).toMatchObject({ shortCode: '03', name: 'Sanjan' });
     expect(byCode['1179']).toMatchObject({ shortCode: '08', name: 'Tumb FG 1' });
-    expect(Object.keys(byCode)).toHaveLength(7);
+    expect(Object.keys(byCode)).toEqual(expect.arrayContaining(['1111', '1115', '1120', '1125', '1130', '1179', '1191']));
   });
 
   it('creates items with category and UOM, and finds them by partial code or description', async () => {
