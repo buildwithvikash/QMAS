@@ -4,17 +4,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // The engine runs in a browser; give it the few globals it uses.
 globalThis.window = { addEventListener() {}, removeEventListener() {} };
 const net = { online: true };
-Object.defineProperty(globalThis, 'navigator', { value: { get onLine() { return net.online; }, storage: { persist: async () => true } }, configurable: true });
+Object.defineProperty(globalThis, 'navigator', {
+  value: { get onLine() { return net.online; }, storage: { persist: async () => true, persisted: async () => true, estimate: async () => ({ usage: 2e6, quota: 1e9 }) } },
+  configurable: true,
+});
 
 const DEVICE = { id: '11111111-1111-4111-8111-111111111111', deviceCode: 'TAB-1', name: 'Stores', plantId: 2, plantName: 'Sanjan', plantSapCode: '1115' };
 const IMIR = '22222222-2222-4222-8222-222222222222';
+const USER_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const USER_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const DIM = { uid: '33333333-3333-4333-8333-333333333333', section: 'DIMENSIONAL', checkpoint: 'Dia', lsl: 9.9, usl: 10.1, isRequired: true };
 const bundle = () => ({ id: IMIR, imirNo: 'IMIR1115260923001', sampleSize: 2, acceptNo: 0, rejectNo: 1, model: null, cells: [], checkpoints: [{ ...DIM }], rowVersion: 3 });
 
 /** Scripted server: records what it receives and answers like the real API. */
 let server;
 function installServer() {
-  server = { pushed: [], uploads: 0, failPush: false, refuse: new Set(), submitted: false };
+  server = { pushed: [], uploads: 0, failPush: false, refuse: new Set(), submitted: false, user: USER_A };
   globalThis.fetch = vi.fn(async (url, init = {}) => {
     const path = url.replace('/api/v1', '');
     const json = (status, data) => ({ ok: status < 400, status, json: async () => (status < 400 ? { success: true, data } : { success: false, ...data }) });
@@ -27,6 +32,7 @@ function installServer() {
       if (server.failPush) throw new TypeError('Failed to fetch');
       const { ops } = JSON.parse(init.body);
       const results = ops.map((op) => {
+        if (op.recordedBy && op.recordedBy !== server.user) return { opId: op.opId, outcome: 'WRONG_USER' };
         server.pushed.push(op);
         if (server.refuse.has(op.type)) return { opId: op.opId, outcome: 'CONFLICT', message: 'This IMIR has been submitted; observations can no longer change.' };
         if (op.type === 'SUBMIT') server.submitted = true;
@@ -48,6 +54,7 @@ beforeEach(async () => {
   installServer();
   engine = await import('./engine.js');
   store = await import('./store.js');
+  engine.setCurrentUser(USER_A);
   await engine.registerThisTablet('tab-1');
   await engine.checkout([IMIR]);
 });
@@ -129,5 +136,67 @@ describe('offline inspection engine', () => {
     server.failPush = true; // keep it unsent
     await engine.checkout([IMIR]);
     expect((await store.getBundle(IMIR)).cells).toHaveLength(1);
+  });
+
+  it('credits offline entries to the inspector who recorded them when the tablet is shared', async () => {
+    net.online = false;
+    await engine.recordSave(IMIR, { model: 'A-model' });
+    net.online = true;
+    engine.setCurrentUser(USER_B);
+    server.user = USER_B;
+    expect(await engine.syncNow()).toEqual({ sent: 0, refused: 0 });
+    expect(server.pushed).toEqual([]);
+    const sB = await engine.status();
+    expect(sB).toMatchObject({ pendingOps: 0, pendingOthers: 1 });
+    expect(await engine.unsentCount()).toBe(1);
+
+    engine.setCurrentUser(USER_A);
+    server.user = USER_A;
+    expect(await engine.syncNow()).toEqual({ sent: 1, refused: 0 });
+    expect(server.pushed[0]).toMatchObject({ recordedBy: USER_A, payload: { model: 'A-model' } });
+    expect(await engine.unsentCount()).toBe(0);
+  });
+
+  it('does not send anything while nobody is signed in', async () => {
+    await engine.recordSave(IMIR, { model: 'M' });
+    engine.setCurrentUser(null);
+    expect(await engine.syncNow()).toMatchObject({ sent: 0, signedOut: true });
+    expect(await engine.unsentCount()).toBe(1);
+  });
+
+  it('saves unsent work to a backup file and restores it after the tablet storage was lost', async () => {
+    net.online = false;
+    await engine.recordSave(IMIR, { model: 'M1', cells: [cell(1, 10)] });
+    await engine.recordPhoto(IMIR, { checkpointUid: DIM.uid, sampleNo: 1, file: new File([new Uint8Array([1, 2, 3])], 'p.jpg', { type: 'image/jpeg' }) });
+    const s0 = await engine.status();
+    expect(s0.storage).toMatchObject({ persisted: true, usage: 2e6 });
+    expect(s0.oldestPendingAt).toBeTruthy();
+    const backup = await engine.exportBackup();
+    const opId = (await store.listOps())[0].opId;
+
+    // Storage wiped (e.g. Android cleared site data): fresh database, tablet set up again.
+    vi.resetModules();
+    globalThis.indexedDB = new (await import('fake-indexeddb')).IDBFactory();
+    net.online = true;
+    engine = await import('./engine.js');
+    store = await import('./store.js');
+    engine.setCurrentUser(USER_A);
+    await engine.registerThisTablet('tab-1');
+    expect(await engine.unsentCount()).toBe(0);
+
+    expect(await engine.importBackup(backup)).toEqual({ restored: 3 });
+    expect(await engine.importBackup(backup)).toEqual({ restored: 0 }); // idempotent
+    const files = await store.listFiles();
+    expect(new Uint8Array(await files[0].blob.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+    expect((await store.getBundle(IMIR)).model).toBe('M1');
+
+    expect(await engine.syncNow()).toEqual({ sent: 2, refused: 0 });
+    expect(server.pushed.map((o) => o.opId)).toEqual([opId]);
+    expect(server.uploads).toBe(1);
+
+    await expect(engine.importBackup(new Blob(['{"format":"x"}']))).rejects.toThrow('not a QMAS tablet backup');
+    const other = JSON.parse(await backup.text());
+    other.device = { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', code: 'TAB-9' };
+    await expect(engine.importBackup(new Blob([JSON.stringify(other)]))).rejects.toThrow('from tablet TAB-9');
   });
 });

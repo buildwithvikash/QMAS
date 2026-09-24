@@ -9,9 +9,22 @@ import * as store from './store.js';
  */
 const listeners = new Set();
 let syncing = null;
+let currentUserId = null;
 
 export const subscribe = (fn) => { listeners.add(fn); return () => listeners.delete(fn); };
 const notify = () => listeners.forEach((fn) => fn());
+
+/**
+ * The signed-in user. Entries are stamped with who recorded them, and only that user's entries are
+ * sent: when inspectors share a tablet, each one's offline work is credited to them.
+ */
+export function setCurrentUser(id) {
+  if (currentUserId === id) return;
+  currentUserId = id;
+  notify();
+  if (id) scheduleSync(500);
+}
+const mine = (x) => !x.recordedBy || x.recordedBy === currentUserId;
 
 async function api(path, { method = 'GET', body, form } = {}) {
   const send = () =>
@@ -90,14 +103,14 @@ export async function recordSave(imirId, patch) {
   if (b.pendingSubmit) throw new Error('This lot is waiting to be submitted and can no longer change.');
   const next = { ...applyPatch(b, patch), localChanges: true };
   await store.putBundle(next);
-  await store.addOp({ opId: crypto.randomUUID(), type: 'SAVE', imirId, clientTime: new Date().toISOString(), payload: patch });
+  await store.addOp({ opId: crypto.randomUUID(), type: 'SAVE', imirId, clientTime: new Date().toISOString(), recordedBy: currentUserId, payload: patch });
   notify();
   scheduleSync();
   return next;
 }
 
 export async function recordPhoto(imirId, { checkpointUid, sampleNo, file }) {
-  await store.addFile({ localId: crypto.randomUUID(), imirId, checkpointUid, sampleNo, blob: file, name: file.name, capturedAt: new Date().toISOString() });
+  await store.addFile({ localId: crypto.randomUUID(), imirId, checkpointUid, sampleNo, blob: file, name: file.name, capturedAt: new Date().toISOString(), recordedBy: currentUserId });
   notify();
   scheduleSync();
 }
@@ -108,7 +121,7 @@ export async function recordSubmit(imirId) {
   if (evaluation.missing.length) throw new Error(`${evaluation.missing.length} required observation(s) are still empty.`);
   if (!b.model) throw new Error('Enter the model before submitting.');
   await store.putBundle({ ...b, pendingSubmit: true });
-  await store.addOp({ opId: crypto.randomUUID(), type: 'SUBMIT', imirId, clientTime: new Date().toISOString(), payload: {} });
+  await store.addOp({ opId: crypto.randomUUID(), type: 'SUBMIT', imirId, clientTime: new Date().toISOString(), recordedBy: currentUserId, payload: {} });
   notify();
   scheduleSync();
 }
@@ -129,10 +142,11 @@ export function syncNow() {
   syncing ??= (async () => {
     const device = await getDevice();
     if (!device || !navigator.onLine) return { sent: 0, refused: 0, offline: !navigator.onLine };
+    if (!currentUserId) return { sent: 0, refused: 0, signedOut: true };
     let sent = 0;
     let refused = 0;
 
-    for (const f of await store.listFiles()) {
+    for (const f of (await store.listFiles()).filter(mine)) {
       const form = new FormData();
       form.append('file', f.blob, f.name);
       form.append('checkpointUid', f.checkpointUid);
@@ -150,19 +164,21 @@ export function syncNow() {
       await store.deleteFile(f.localId);
     }
 
-    const ops = await store.listOps();
+    const ops = (await store.listOps()).filter(mine);
     for (let i = 0; i < ops.length; i += 50) {
       const batch = ops.slice(i, i + 50);
       const res = await api('/sync/push', { method: 'POST', body: { deviceId: device.id, ops: batch.map(({ seq: _seq, ...op }) => op) } });
+      const keep = new Set();
       for (const r of res.results) {
         if (r.outcome === 'ACCEPTED') sent += 1;
+        else if (r.outcome === 'WRONG_USER') keep.add(r.opId); // stays queued for the inspector who recorded it
         else {
           refused += 1;
           const op = batch.find((o) => o.opId === r.opId);
           await markAttention(op.imirId, r.message ?? 'Not accepted by the server.');
         }
       }
-      await store.deleteOps(batch.map((o) => o.seq));
+      await store.deleteOps(batch.filter((o) => !keep.has(o.opId)).map((o) => o.seq));
       for (const s of res.imirs) {
         const b = await store.getBundle(s.id);
         if (!b) continue;
@@ -190,14 +206,20 @@ async function markAttention(imirId, message) {
 
 /** Snapshot for the tablet screen. */
 export async function status() {
-  const [device, bundles, ops, files, lastSyncAt, attention] = await Promise.all([
-    getDevice(), store.listBundles(), store.listOps(), store.listFiles(), store.getMeta('lastSyncAt'), store.getMeta('attention'),
+  const [device, bundles, allOps, allFiles, lastSyncAt, attention, storage] = await Promise.all([
+    getDevice(), store.listBundles(), store.listOps(), store.listFiles(), store.getMeta('lastSyncAt'), store.getMeta('attention'), store.storageStatus(),
   ]);
+  const ops = allOps.filter(mine);
+  const files = allFiles.filter(mine);
+  const times = [...allOps.map((o) => o.clientTime), ...allFiles.map((f) => f.capturedAt)].filter(Boolean).sort();
   return {
     device,
     bundles: bundles.sort((a, b) => (a.checkedOutAt < b.checkedOutAt ? 1 : -1)),
     pendingOps: ops.length,
     pendingFiles: files.length,
+    pendingOthers: allOps.length - ops.length + allFiles.length - files.length,
+    oldestPendingAt: times[0] ?? null,
+    storage,
     pendingByImir: Object.fromEntries(bundles.map((b) => [b.id, ops.filter((o) => o.imirId === b.id).length + files.filter((f) => f.imirId === b.id).length])),
     lastSyncAt,
     orphanAttention: attention ?? [],
@@ -206,6 +228,82 @@ export async function status() {
 }
 
 export const clearOrphanAttention = () => store.deleteMeta('attention').then(notify);
+
+/** Entries and photos not yet sent, all users (sign-out warns on these). */
+export async function unsentCount() {
+  const [ops, files] = await Promise.all([store.listOps(), store.listFiles()]);
+  return ops.length + files.length;
+}
+
+/** Asks the browser to keep this tablet's data even when the device runs low on space. */
+export async function protectStorage() {
+  const ok = await store.requestPersistence();
+  notify();
+  return ok;
+}
+
+// ── Backup of unsent work ─────────────────────────────────────────────────────
+
+const BACKUP_FORMAT = 'qmas-tablet-backup';
+const toBase64 = async (blob) => {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+};
+const fromBase64 = (b64, type) => new Blob([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], { type });
+
+/**
+ * Everything on the tablet that the server has not received (lots, queued entries, photos) as one
+ * file, so work survives even if the browser's storage is lost. Returns a Blob to save.
+ */
+export async function exportBackup() {
+  const device = await getDevice();
+  if (!device) throw new Error('This tablet is not set up.');
+  const [bundles, ops, files] = await Promise.all([store.listBundles(), store.listOps(), store.listFiles()]);
+  const data = {
+    format: BACKUP_FORMAT,
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    device: { id: device.id, code: device.code },
+    bundles,
+    ops: ops.map(({ seq: _seq, ...o }) => o),
+    files: await Promise.all(files.map(async ({ blob, ...f }) => ({ ...f, type: blob.type, data: await toBase64(blob) }))),
+  };
+  return new Blob([JSON.stringify(data)], { type: 'application/json' });
+}
+
+/**
+ * Restores a backup made on this tablet. Only what is missing is added back; entries the server
+ * already has are answered as duplicates when sent again, so restoring twice is harmless.
+ */
+export async function importBackup(file) {
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch {
+    throw new Error('This is not a QMAS tablet backup file.');
+  }
+  if (data?.format !== BACKUP_FORMAT || data.version !== 1) throw new Error('This is not a QMAS tablet backup file.');
+  const device = await getDevice();
+  if (!device) throw new Error('Set up this tablet with its device code first, then restore.');
+  if (data.device.id !== device.id) throw new Error(`This backup is from tablet ${data.device.code}. Restore it on that tablet, or set this tablet up as ${data.device.code}.`);
+  const haveOps = new Set((await store.listOps()).map((o) => o.opId));
+  const haveFiles = new Set((await store.listFiles()).map((f) => f.localId));
+  let restored = 0;
+  for (const b of data.bundles) {
+    if (!(await store.getBundle(b.id))) { await store.putBundle(b); restored += 1; }
+  }
+  for (const o of [...data.ops].sort((a, b) => (a.clientTime < b.clientTime ? -1 : 1))) {
+    if (!haveOps.has(o.opId)) { await store.addOp(o); restored += 1; }
+  }
+  for (const { data: b64, type, ...f } of data.files) {
+    if (!haveFiles.has(f.localId)) { await store.addFile({ ...f, blob: fromBase64(b64, type) }); restored += 1; }
+  }
+  notify();
+  scheduleSync();
+  return { restored };
+}
 
 let stopAutoSync = null;
 

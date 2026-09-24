@@ -1,5 +1,5 @@
-import { AlertTriangle, CloudOff, Download, RefreshCw, Tablet, Wifi } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { AlertTriangle, CloudOff, Download, HardDrive, RefreshCw, ShieldCheck, Tablet, Upload, Wifi } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import { useGetImirsQuery } from '../../api/imirApi.js';
@@ -86,6 +86,18 @@ function TabletHome({ s }) {
           <Stat label="Last sync" value={s.lastSyncAt ? formatRelative(s.lastSyncAt) : 'never'} hint={s.lastSyncAt ? formatDateTime(s.lastSyncAt) : undefined} />
         </div>
 
+        {s.pendingOthers > 0 && (
+          <p className="rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
+            {s.pendingOthers} entr{s.pendingOthers === 1 ? 'y was' : 'ies were'} recorded by another inspector on this tablet. They are sent when that inspector signs in here with a connection.
+          </p>
+        )}
+        {s.oldestPendingAt && Date.now() - new Date(s.oldestPendingAt) > 2 * 86_400_000 && (
+          <p className="flex gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+            Some entries have been waiting since {formatDateTime(s.oldestPendingAt)}. Connect to the network to send them, and save a backup below in the meantime.
+          </p>
+        )}
+
         {s.orphanAttention.length > 0 && (
           <section className="rounded-xl border border-rose-200 bg-rose-50 p-4">
             <h2 className="flex items-center gap-2 text-sm font-bold text-rose-800"><AlertTriangle className="w-4 h-4" />Needs attention</h2>
@@ -126,12 +138,80 @@ function TabletHome({ s }) {
         </section>
 
         {s.online && <TakeLots device={s.device} onTablet={new Set(s.bundles.map((b) => b.id))} />}
+        <StorageSafety s={s} />
         <p className="text-xs text-slate-400">
-          Entries are saved on the tablet first and sent automatically when there is a connection. Do not clear the browser data of this tablet while entries are waiting.
+          Entries are saved on the tablet first and sent automatically when there is a connection. Do not clear the browser data or uninstall the app while entries are waiting.
           {' '}<Link to="/imirs" className="underline">All incoming lots</Link>
         </p>
       </div>
     </div>
+  );
+}
+
+const mb = (bytes) => (bytes === null ? '—' : `${(bytes / 1024 / 1024).toFixed(bytes < 10 * 1024 * 1024 ? 1 : 0)} MB`);
+
+/**
+ * Keeping offline work safe without a native app: protected (persistent) storage so Android does
+ * not clear it when space is low, and a backup file of everything not yet sent.
+ */
+function StorageSafety({ s }) {
+  const fileInput = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const unsent = s.pendingOps + s.pendingFiles + s.pendingOthers;
+
+  const protect = async () => {
+    const ok = await engine.protectStorage();
+    if (ok) toast.success('Storage protected');
+    else toast.error('The browser did not allow it. Install QMAS on the home screen (browser menu → Install app), then try again.');
+  };
+  const backup = async () => {
+    setBusy(true);
+    try {
+      const blob = await engine.exportBackup();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `qmas-${s.device.code}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '')}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+      toast.success('Backup saved to Downloads');
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const restore = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const r = await engine.importBackup(file);
+      toast.success(r.restored ? `${r.restored} item(s) restored; they are sent at the next sync` : 'Nothing to restore: the tablet already has everything in this backup');
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+      <h2 className="flex items-center gap-2 text-sm font-bold text-slate-800"><HardDrive className="w-4 h-4 text-slate-500" />Keeping offline work safe</h2>
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        {s.storage.persisted
+          ? <Badge variant="success"><ShieldCheck className="w-3 h-3" />Storage protected</Badge>
+          : <Badge variant="warning">Storage not protected</Badge>}
+        <span className="text-xs text-slate-500">{mb(s.storage.usage)} used{s.storage.quota ? ` of ${mb(s.storage.quota)} available` : ''}</span>
+        {!s.storage.persisted && s.storage.supported && <Button size="sm" variant="secondary" icon={ShieldCheck} onClick={protect}>Protect storage</Button>}
+      </div>
+      {!s.storage.persisted && (
+        <p className="text-xs text-slate-500">Without protection, Android may clear this app&apos;s data when the tablet runs low on space. Install QMAS on the home screen from the browser menu, then tap “Protect storage”.</p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" variant="secondary" icon={Download} loading={busy} disabled={!unsent && !s.bundles.length} onClick={backup}>Save backup{unsent ? ` (${unsent} unsent)` : ''}</Button>
+        <Button size="sm" variant="ghost" icon={Upload} onClick={() => fileInput.current?.click()}>Restore backup</Button>
+        <input ref={fileInput} type="file" accept="application/json,.json" className="hidden" onChange={restore} />
+      </div>
+      <p className="text-xs text-slate-400">A backup holds the lots on this tablet and every entry and photo not yet sent. Restoring it on this tablet puts back anything missing; entries already sent are not applied twice.</p>
+    </section>
   );
 }
 

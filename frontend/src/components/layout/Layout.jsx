@@ -1,4 +1,5 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { Outlet } from 'react-router-dom';
 import * as engine from '../../offline/engine.js';
 import Loader from '../ui/Loader.jsx';
@@ -21,6 +22,10 @@ export default function Layout() {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
+
+  // Offline entries are credited to the inspector who recorded them (shared tablets).
+  const userId = useSelector((s) => s.auth.user?.id ?? null);
+  useEffect(() => engine.setCurrentUser(userId), [userId]);
 
   // On a registered tablet, keep sending queued inspection entries in the background.
   useEffect(() => {

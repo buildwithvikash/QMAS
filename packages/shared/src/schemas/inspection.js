@@ -66,8 +66,8 @@ export const syncPushSchema = z.object({
   ops: z
     .array(
       z.discriminatedUnion('type', [
-        z.object({ opId: z.uuid(), type: z.literal('SAVE'), imirId: z.uuid(), clientTime: z.iso.datetime({ offset: true }), payload: inspectionSaveSchema.omit({ deviceId: true }) }),
-        z.object({ opId: z.uuid(), type: z.literal('SUBMIT'), imirId: z.uuid(), clientTime: z.iso.datetime({ offset: true }), payload: z.object({ rowVersion: z.number().int().min(1).optional() }).default({}) }),
+        z.object({ opId: z.uuid(), type: z.literal('SAVE'), imirId: z.uuid(), clientTime: z.iso.datetime({ offset: true }), recordedBy: z.uuid().optional(), payload: inspectionSaveSchema.omit({ deviceId: true }) }),
+        z.object({ opId: z.uuid(), type: z.literal('SUBMIT'), imirId: z.uuid(), clientTime: z.iso.datetime({ offset: true }), recordedBy: z.uuid().optional(), payload: z.object({ rowVersion: z.number().int().min(1).optional() }).default({}) }),
       ]),
     )
     .min(1)

@@ -1,5 +1,5 @@
 import { PERMISSIONS as P } from '@qmas/shared';
-import { ClipboardCheck, FileSpreadsheet, FileWarning, Home, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import { BarChart3, ClipboardCheck, FileSpreadsheet, FileWarning, FileX2, Home, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import { lazy } from 'react';
 
 const HomePage = lazy(() => import('../pages/Home.jsx'));
@@ -21,13 +21,16 @@ const ImirPage = lazy(() => import('../pages/imir/ImirPage.jsx'));
 const TabletPage = lazy(() => import('../pages/imir/TabletPage.jsx'));
 const DeviationListPage = lazy(() => import('../pages/deviation/DeviationListPage.jsx'));
 const DeviationPage = lazy(() => import('../pages/deviation/DeviationPage.jsx'));
+const DnListPage = lazy(() => import('../pages/dn/DnListPage.jsx'));
+const DnPage = lazy(() => import('../pages/dn/DnPage.jsx'));
+const ReportsPage = lazy(() => import('../pages/reports/ReportsPage.jsx'));
 const ApprovalChainPage = lazy(() => import('../pages/masters/ApprovalChainPage.jsx'));
 const DevicesPage = lazy(() => import('../pages/admin/DevicesPage.jsx'));
 const SapSyncPage = lazy(() => import('../pages/admin/SapSyncPage.jsx'));
 
 /**
  * Sidebar sections and routes, filtered by the user's permissions (same idea as WRL's
- * ROUTE_CONFIG). Later modules (DN, reports) are added here.
+ * ROUTE_CONFIG).
  */
 export const ROUTE_SECTIONS = [
   {
@@ -56,6 +59,22 @@ export const ROUTE_SECTIONS = [
       { path: '/deviations', label: 'Deviations', permission: P.DEVIATION_VIEW, element: <DeviationListPage /> },
       { path: '/deviations/:id', hidden: true, permission: P.DEVIATION_VIEW, element: <DeviationPage /> },
     ],
+  },
+  {
+    key: 'dn',
+    label: 'Defect Notification',
+    icon: FileX2,
+    activePrefix: '/dns',
+    items: [
+      { path: '/dns', label: 'DN Register', permission: P.DN_VIEW, element: <DnListPage /> },
+      { path: '/dns/:id', hidden: true, permission: P.DN_VIEW, element: <DnPage /> },
+    ],
+  },
+  {
+    key: 'reports',
+    label: 'Reports',
+    icon: BarChart3,
+    items: [{ path: '/reports', label: 'Registers & KPIs', permission: P.REPORTS_VIEW, element: <ReportsPage /> }],
   },
   {
     key: 'formats',
