@@ -8,6 +8,8 @@ export const imirApi = baseApi
     endpoints: (b) => ({
       getImirs: b.query({ query: (params) => ({ url: '/imirs', params }), transformResponse: pagedEnvelope, providesTags: ['Imir'] }),
       getImir: b.query({ query: (id) => `/imirs/${id}`, transformResponse: envelope, providesTags: (_r, _e, id) => [imirTag(id)] }),
+      // Field-level change history; refreshed whenever the lot changes.
+      getImirChanges: b.query({ query: (id) => `/imirs/${id}/changes`, transformResponse: envelope, providesTags: (_r, _e, id) => [imirTag(id), 'Imir'] }),
       saveInspection: b.mutation({
         query: ({ id, ...body }) => ({ url: `/imirs/${id}/inspection`, method: 'PUT', body }),
         transformResponse: envelope,
@@ -45,6 +47,7 @@ export const imirApi = baseApi
 export const {
   useGetImirsQuery,
   useGetImirQuery,
+  useGetImirChangesQuery,
   useSaveInspectionMutation,
   useSubmitImirMutation,
   useUploadAttachmentMutation,

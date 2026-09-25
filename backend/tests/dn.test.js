@@ -63,7 +63,13 @@ describe('defect notification', () => {
       status: 'OPEN', imirNo: m.imirNo, model: 'FR-1', receivedQty: 40, checkedQty: 8, defectiveQty: 1, capaApplicable: true,
       defect: 'Dia over size on sample 1', allowedActions: ['edit', 'submit_capa'],
     });
-    expect(dn.lines).toEqual([{ lineNo: 1, parameter: 'Dia', specification: '10 ± 0.1', observation: 'S1: 10.2 mm' }]);
+    expect(dn.lines).toEqual([{ lineNo: 1, parameter: 'Dia', specification: '10 ± 0.1', observation: 'X1: 10.2 mm' }]);
+
+    // Fetch from the inspection report: every checkpoint, failed ones with their failed readings.
+    const src = ok(await A.incharge.get(`/api/v1/dns/${dn.id}/source`));
+    expect(src).toMatchObject({ imirNo: m.imirNo, result: 'NOK', suggested: { model: 'FR-1', receivedQty: 40, checkedQty: 8, defectiveQty: 1 } });
+    expect(src.checkpoints.map((c) => [c.checkpoint, c.result])).toEqual([['Dia', 'NOK'], ['Aesthetic', 'OK']]);
+    expect(src.checkpoints[1].line.observation).toBe('X1: OK, X2: OK, X3: OK, X4: OK, X5: OK, X6: OK, X7: OK, X8: OK');
     const due = new Date(dn.capaDueAt).getTime() - before;
     expect(due).toBeGreaterThan(2.99 * DAY);
     expect(due).toBeLessThan(3.01 * DAY);
@@ -185,6 +191,25 @@ describe('defect notification', () => {
   });
 });
 
+describe('dashboard tasks', () => {
+  it('lists lots to inspect, the CAPA to enter and the CAPA to review, each for the right person', async () => {
+    const tasksOf = async (agent) => ok(await agent.get('/api/v1/tasks/me'));
+    const m = await escalatedLot();
+    const dn = ok(await A.incharge.post('/api/v1/dns').send({ imirId: m.id }));
+    expect((await tasksOf(A.incharge)).find((t) => t.id === dn.id)).toMatchObject({ kind: 'capa', task: "Enter vendor's CAPA", link: `/dns/${dn.id}` });
+    expect((await tasksOf(A.head)).some((t) => t.id === dn.id)).toBe(false);
+    ok(await act(A.incharge, dn.id, { action: 'submit_capa', capa: CAPA }));
+    expect((await tasksOf(A.head)).find((t) => t.id === dn.id)).toMatchObject({ kind: 'capa', task: 'Review CAPA' });
+    expect((await tasksOf(A.incharge)).some((t) => t.id === dn.id)).toBe(false);
+
+    const recent = ok(await A.incharge.get('/api/v1/tasks/recent'));
+    expect(recent[0]).toMatchObject({ action: 'DN_SUBMIT_CAPA', docNo: dn.dnNo, link: `/dns/${dn.id}` });
+    const inspect = (await tasksOf(A.inspector)).filter((t) => t.kind === 'inspect');
+    expect(inspect.every((t) => t.link.startsWith('/imirs/'))).toBe(true);
+    expect((await tasksOf(A.scm)).some((t) => t.kind === 'inspect' || t.kind === 'capa')).toBe(false);
+  });
+});
+
 describe('notifications and mail', () => {
   it('tells the next actor, keeps unread counts, and sends queued mail once', async () => {
     const m = await submittedLot(A.inspector);
@@ -201,6 +226,10 @@ describe('notifications and mail', () => {
     const { rows } = await getPool().query("SELECT id, to_address, subject, body_html FROM core.mail_outbox WHERE to_user_id = $1 AND status = 'PENDING'", [U.incharge.id]);
     const mail = rows.find((r) => r.subject === `[QMAS] IMIR ${m.imirNo} submitted (NOK) — review needed`);
     expect(mail.body_html).toContain(`/imirs/${m.id}`);
+    expect(mail.body_html).toContain('What to do');
+    expect(mail.body_html).toContain(m.imirNo);
+    expect(mail.body_html).toContain('Recent activity');
+    expect(mail.body_html).not.toMatch(/<script/i);
 
     const failing = { sendMail: async () => { throw new Error('SMTP down'); } };
     await sendPendingMail({ transport: failing, limit: 1000 });
@@ -329,5 +358,31 @@ describe('dynamic list filters', () => {
     expect(dns.status).toBe(200);
     const devs = await A.head.get('/api/v1/deviations').query({ filter: JSON.stringify({ rules: [{ field: 'severity', op: 'in', value: ['MAJOR', 'CRITICAL'] }] }) });
     expect(devs.status).toBe(200);
+  });
+});
+
+describe('change history', () => {
+  it('lists field changes of the lot with old and new values, tied to the workflow step', async () => {
+    const m = await submittedLot(A.inspector);
+    const dim = m.checkpoints.find((c) => c.section === 'DIMENSIONAL');
+    ok(await imirAct(A.incharge, m.id, { action: 'revert', remark: 'Re-measure S1', checkpointRemarks: [{ checkpointUid: dim.uid, remark: 'Check S1' }] }));
+    ok(await A.inspector.put(`/api/v1/imirs/${m.id}/inspection`).send({ cells: [{ checkpointUid: dim.uid, sampleNo: 1, value: 10.05 }] }));
+
+    const list = ok(await A.incharge.get(`/api/v1/imirs/${m.id}/changes`));
+    const reading = list.filter((c) => c.entity === 'READING' && c.label === `${dim.checkpoint}, sample 1`);
+    expect(reading.at(-1)).toMatchObject({ op: 'U', unit: 'mm' });
+    expect(reading.at(-1).fields).toEqual(expect.arrayContaining([{ key: 'value_num', old: 10.2, new: 10.05 }, { key: 'decision', old: 'NOK', new: 'OK' }]));
+    const remark = list.find((c) => c.entity === 'CHECKPOINT' && c.fields.some((f) => f.key === 'incharge_remark'));
+    expect(remark.fields.find((f) => f.key === 'incharge_remark')).toEqual({ key: 'incharge_remark', old: null, new: 'Check S1' });
+
+    // The revert step and its field changes share a request id.
+    const imir = ok(await A.incharge.get(`/api/v1/imirs/${m.id}`));
+    const revert = imir.history.find((h) => h.action === 'REVERT');
+    expect(revert.requestId).toBeTruthy();
+    expect(list.filter((c) => c.requestId === revert.requestId).map((c) => c.entity)).toEqual(expect.arrayContaining(['IMIR', 'CHECKPOINT']));
+    expect(list.every((c) => c.op !== 'U' || c.fields.length > 0)).toBe(true);
+
+    const { agent: other } = await agentWithRoles([{ roleCode: 'IQC_INSPECTOR', plantId: await plantId('1111') }]);
+    expect((await other.get(`/api/v1/imirs/${m.id}/changes`)).status).toBe(404);
   });
 });

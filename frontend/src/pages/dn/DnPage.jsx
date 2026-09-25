@@ -1,5 +1,5 @@
 import { capaSchema, DN_MAX_IMAGES } from '@qmas/shared';
-import { ArrowLeft, CheckCircle2, CornerUpLeft, FileText, FileX2, ImagePlus, Mail, Paperclip, Plus, Printer, Save, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, CornerUpLeft, FileSearch, FileText, FileX2, ImagePlus, Mail, Paperclip, Plus, Printer, Save, Send, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useParams } from 'react-router-dom';
@@ -13,8 +13,13 @@ import { apiError } from '../../utils/apiError.js';
 import { done } from '../../utils/notify.jsx';
 import { useUnsavedWarning } from '../../hooks/useUnsavedWarning.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
-import { DnStatus, HistoryTimeline } from '../deviation/workflowUi.jsx';
+import HistoryPanel from '../deviation/HistoryPanel.jsx';
+import { ActivityLayout, KeyFacts, LinkedRecords, StageHistory } from '../deviation/RecordSide.jsx';
+import { ImirStatus } from '../imir/imirUi.jsx';
+import { DeviationStage, DnStatus } from '../deviation/workflowUi.jsx';
+import { currentStage, stageRows } from '../imir/journey.js';
 import { Stepper } from '../imir/LotJourney.jsx';
+import FetchFromReport from './FetchFromReport.jsx';
 
 export default function DnPage() {
   const { id } = useParams();
@@ -42,7 +47,7 @@ export default function DnPage() {
         <Button size="sm" variant="secondary" icon={Mail} loading={mailing} onClick={mailMe}>Mail to me</Button>
       </PageHeader>
 
-      <div className="p-5 grid gap-4 xl:grid-cols-[1fr_22rem]">
+      <div className="p-5 space-y-4">
         <div className="space-y-4 min-w-0">
           <YourTurn dn={dn} />
           <Stepper title="DN route" steps={dnSteps(dn)} since={dn.history.at(-1)?.at} />
@@ -50,13 +55,19 @@ export default function DnPage() {
           {editable ? <DnForm key={dn.rowVersion} dn={dn} /> : <DnView dn={dn} />}
           <Images dn={dn} editable={editable} />
           <CapaSection dn={dn} />
+          <ActivityLayout history={<HistoryPanel imirId={dn.imirId} history={dn.history} owner="DN" current={currentStage(dnSteps(dn))} />}>
+            <LinkedRecords items={[
+              dn.imirId && { kind: 'imir', label: dn.imirNo, sub: `Inspection report, ${dn.itemCode}`, to: `/imirs/${dn.imirId}`, badge: <ImirStatus status={dn.imirStatus} /> },
+              dn.deviation && { kind: 'deviation', label: dn.deviation.deviationNo, sub: `Deviation, ${dn.deviation.department}`, to: `/deviations/${dn.deviation.id}`, badge: <DeviationStage stage={dn.deviation.stage} outcome={dn.deviation.outcome} /> },
+            ]} />
+            <StageHistory rows={stageRows({ history: dn.history.filter((h) => h.dnId), current: currentStage(dnSteps(dn)) })} />
+            <KeyFacts rows={[
+              dn.capaApplicable ? { label: 'CAPA due', at: dn.capaDueAt, tone: dn.capaOverdue ? 'bad' : undefined } : { label: 'CAPA', value: 'Not applicable' },
+              { label: 'CAPA rounds', value: dn.capas.length ? `${dn.capas.length} (${dn.capas.filter((c) => c.reviewDecision === 'RESUBMIT').length} sent back)` : null },
+              { label: 'Last reminder', at: dn.lastReminderAt },
+            ]} />
+          </ActivityLayout>
         </div>
-        <aside>
-          <section className="card p-4">
-            <h2 className="text-sm font-bold text-slate-800 mb-3">History</h2>
-            <HistoryTimeline history={dn.history} />
-          </section>
-        </aside>
       </div>
     </div>
   );
@@ -109,7 +120,19 @@ function DnForm({ dn }) {
   const [save, { isLoading }] = useUpdateDnMutation();
   const set = (k) => (e) => setV((s) => ({ ...s, [k]: e?.target ? e.target.value : e }));
   const [touched, setTouched] = useState(false);
+  const [fetching, setFetching] = useState(false);
   useUnsavedWarning(touched);
+  // Fill the form from the inspection report (saved only with "Save DN").
+  const applyReport = ({ lines: picked, mode, header, defect }) => {
+    const keep = lines.filter((l) => l.parameter?.trim());
+    setLines(mode === 'add' ? [...keep, ...picked] : picked.length ? picked : [{ parameter: '', specification: '', observation: '' }]);
+    setV((s) => ({
+      ...s,
+      ...(header ? { model: header.model ?? s.model, receivedQty: header.receivedQty ?? '', checkedQty: header.checkedQty ?? '', defectiveQty: header.defectiveQty ?? '' } : {}),
+      ...(defect ? { defect } : {}),
+    }));
+    setTouched(true);
+  };
   const setLine = (i, k, value) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, [k]: value } : l)));
 
   const submit = async () => {
@@ -136,6 +159,7 @@ function DnForm({ dn }) {
       <div className="flex items-center gap-2">
         <h2 className="section-title">Defect notification</h2>
         {touched && <span className="text-xs font-medium text-amber-700">Unsaved changes</span>}
+        {dn.imirId && <Button className="ml-auto" size="sm" variant="secondary" icon={FileSearch} onClick={() => setFetching(true)}>Fetch from inspection report</Button>}
       </div>
       <FormError message={error} />
       <div className="grid gap-3 sm:grid-cols-4">
@@ -176,6 +200,7 @@ function DnForm({ dn }) {
         <TextArea label="Correction" value={v.correction} onChange={set('correction')} maxLength={2000} hint="Immediate action taken on this lot" />
       </div>
       <Toggle label="CAPA applicable" checked={v.capaApplicable} onChange={set('capaApplicable')} description="The vendor shares CAPA within 3 days of the DN date." />
+      {fetching && <FetchFromReport dn={dn} onApply={applyReport} onClose={() => setFetching(false)} />}
       <div className="flex justify-end"><Button icon={Save} loading={isLoading} onClick={submit}>Save DN</Button></div>
     </section>
   );
@@ -288,7 +313,10 @@ function CapaSection({ dn }) {
   const canReview = dn.allowedActions.includes('approve_capa');
   return (
     <section id="capa" className="card p-4 space-y-4 scroll-mt-28">
-      <h2 className="section-title">CAPA</h2>
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h2 className="section-title">{dn.capas.length > 1 ? 'CAPA rounds' : 'CAPA'}</h2>
+        {dn.capas.length > 1 && <span className="text-xs text-slate-500">{dn.capas.length} rounds, {dn.capas.filter((c) => c.reviewDecision === 'RESUBMIT').length} sent back</span>}
+      </div>
       {!dn.capaApplicable && <p className="text-sm text-slate-500">CAPA does not apply to this DN.</p>}
       {[...dn.capas].reverse().map((c) => <CapaCard key={c.id} c={c} files={dn.capaFiles.filter((f) => f.cycleNo === c.cycleNo)} dnId={dn.id} />)}
       {canSubmit && <CapaForm dn={dn} />}
@@ -303,7 +331,7 @@ function CapaCard({ c, files, dnId }) {
   return (
     <div className="rounded-lg border border-slate-200 p-3 space-y-2">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="font-semibold">Cycle {c.cycleNo}</span>
+        <span className="font-semibold">Round {c.cycleNo}</span>
         <span className="text-xs text-slate-500">{c.submittedByName} · {formatDateTime(c.submittedAt)}</span>
       </div>
       <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
@@ -350,7 +378,7 @@ function CapaForm({ dn }) {
 
   return (
     <div className="rounded-lg border border-blue-200 bg-blue-50/30 p-3 space-y-3">
-      <h3 className="text-sm font-bold text-slate-800">{dn.capaApplicable ? `Vendor CAPA${dn.nextCycleNo > 1 ? ` (resubmission ${dn.nextCycleNo})` : ''}` : 'Send for closure'}</h3>
+      <h3 className="text-sm font-bold text-slate-800">{dn.capaApplicable ? `Vendor CAPA${dn.nextCycleNo > 1 ? `, round ${dn.nextCycleNo}` : ''}` : 'Send for closure'}</h3>
       <FormError message={error} />
       {dn.capaApplicable && (
         <>

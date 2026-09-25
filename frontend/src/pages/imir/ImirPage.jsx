@@ -1,5 +1,5 @@
 import { MAX_SAMPLES } from '@qmas/shared';
-import { AlertTriangle, ArrowLeft, ClipboardCheck, CloudOff, FileText, Loader2, Printer, Send, Tablet, Trash2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardCheck, CloudOff, FileText, Loader2, Printer, Save, Send, Tablet, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -16,10 +16,14 @@ import { apiError } from '../../utils/apiError.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { ImirResult, ImirStatus } from './imirUi.jsx';
 import InspectionSheet from './InspectionSheet.jsx';
-import { focusFirstMissing } from './sheetNav.js';
+import { focusFirstMissing, sheetProgress } from './sheetNav.js';
+import { currentStage, journeySteps, stageRows } from './journey.js';
 import LotJourney from './LotJourney.jsx';
 import ReviewPanel from './ReviewPanel.jsx';
-import { HistoryTimeline } from '../deviation/workflowUi.jsx';
+import HistoryPanel from '../deviation/HistoryPanel.jsx';
+import RoundsPanel from '../deviation/RoundsPanel.jsx';
+import { ActivityLayout, LinkedRecords, StageHistory } from '../deviation/RecordSide.jsx';
+import { DeviationStage, DnStatus } from '../deviation/workflowUi.jsx';
 
 /** Combines two save patches: later cells/entries win. */
 function mergePatch(a, b) {
@@ -115,14 +119,34 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
   const ev = sheet.evaluation;
   const canSubmit = !readOnly && ev && ev.missing.length === 0 && !!sheet.model;
 
+  const progress = sheetProgress(sheet);
+  const [tab, setTab] = useState('dim');
+  const goToMissing = () => {
+    const m = ev?.missing?.[0];
+    if (!m) return;
+    const cp = sheet.checkpoints.find((c) => c.uid === m.checkpointUid);
+    setTab(cp?.section === 'DIMENSIONAL' ? 'dim' : 'visrel');
+    setTimeout(() => focusFirstMissing(ev.missing), 60);
+  };
+  const saveDraft = async () => {
+    clearTimeout(timer.current);
+    await flush();
+    toast.success(mode === 'tablet' ? 'Saved on this tablet' : 'Draft saved');
+  };
+  const opened = sheet.status !== 'AWAITING_FORMAT';
+  const tabs = [
+    { key: 'dim', label: 'Dimensional test', ...progress.dim },
+    { key: 'visrel', label: 'Visual & reliability tests', ...progress.visrel },
+    { key: 'signoff', label: 'Sign-off & decision' },
+  ];
+
   return (
-    <div className="pb-24">
-      <PageHeader icon={ClipboardCheck} title={sheet.imirNo ?? 'IMIR (not opened)'} copyTitle={!!sheet.imirNo} subtitle={`${sheet.itemCode} · ${sheet.itemDescription}`}>
+    <div>
+      <PageHeader icon={ClipboardCheck} title={sheet.imirNo ?? 'IMIR (not opened)'} copyTitle={!!sheet.imirNo} subtitle={`Incoming Material Inspection Report · ${sheet.itemCode} ${sheet.itemDescription}`}>
         <Link to={mode === 'tablet' ? '/tablet' : '/imirs'} className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />{mode === 'tablet' ? 'This tablet' : 'Incoming lots'}</Link>
         <ImirStatus status={sheet.status} />
         {mode === 'tablet' && <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700"><Tablet className="w-3.5 h-3.5" />On this tablet</span>}
-        {mode === 'online' && <span className="text-xs text-slate-400 w-16">{saving ? 'Saving…' : 'Saved'}</span>}
-        {mode === 'view' && sheet.imirNo && <a href={`/api/v1/imirs/${sheet.id}/pdf`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><Printer className="w-4 h-4" />PDF</a>}
+        {mode === 'view' && sheet.imirNo && <a href={`/api/v1/imirs/${sheet.id}/pdf`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"><Printer className="w-4 h-4" />PDF</a>}
       </PageHeader>
 
       <div className="p-5 space-y-4">
@@ -133,33 +157,73 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
 
         {mode !== 'tablet' && <ReviewPanel imir={sheet} />}
         <LotJourney status={sheet.status} history={sheet.history ?? []} deviation={sheet.deviation} dn={sheet.dn} />
-        <LotFacts sheet={sheet} readOnly={readOnly} onPatch={onPatch} />
+        <GeneralInfo sheet={sheet} readOnly={readOnly} onPatch={onPatch} progress={opened ? progress.pct : null} />
 
-        {sheet.checkpoints?.length > 0 && (
-          <InspectionSheet sheet={sheet} readOnly={readOnly} onPatch={onPatch} photosByCell={photosByCell}
-            onAddPhoto={readOnly ? undefined : (cp) => setDialog({ type: 'photo', cp })}
-            onOpenPhotos={(cp, s) => setDialog({ type: 'photos', cp, sampleNo: s })} />
+        {opened && sheet.checkpoints?.length > 0 && (
+          <>
+            <div role="tablist" aria-label="Report sections" className="no-scrollbar flex gap-1 overflow-x-auto border-b border-slate-200">
+              {tabs.map((t, i) => {
+                const on = tab === t.key;
+                return (
+                  <button key={t.key} type="button" role="tab" aria-selected={on} onClick={() => setTab(t.key)}
+                    className={`shrink-0 flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm cursor-pointer transition-colors ${on ? 'border-blue-600 text-blue-800 font-semibold' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>
+                    <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center ${on ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{i + 1}</span>
+                    {t.label}
+                    {t.total > 0 && <span className={`text-xs tabular ${t.done === t.total ? 'text-emerald-700' : 'text-slate-500'}`}>{t.done}/{t.total}</span>}
+                    {t.nok && <span className="w-2 h-2 rounded-full bg-rose-500" title="Has a NOK" />}
+                  </button>
+                );
+              })}
+            </div>
+            {tab === 'signoff'
+              ? <SignOff sheet={sheet} readOnly={readOnly} onPatch={onPatch} />
+              : <InspectionSheet sheet={sheet} tab={tab} readOnly={readOnly} onPatch={onPatch} photosByCell={photosByCell}
+                  onAddPhoto={readOnly ? undefined : (cp) => setDialog({ type: 'photo', cp })}
+                  onOpenPhotos={(cp, s) => setDialog({ type: 'photos', cp, sampleNo: s })} />}
+          </>
         )}
 
-        {mode !== 'tablet' && sheet.history?.length > 0 && (
-          <section className="card p-4">
-            <h2 className="section-title mb-3">History</h2>
-            <HistoryTimeline history={sheet.history} />
-          </section>
+        {mode !== 'tablet' && opened && (
+          <ActivityLayout history={<HistoryPanel imirId={sheet.id} history={sheet.history ?? []} current={currentStage(journeySteps({ status: sheet.status, history: sheet.history, deviation: sheet.deviation }))} />}>
+            <RoundsPanel history={sheet.history ?? []} loop="inspection" waitingFor={sheet.status === 'SUBMITTED' ? 'Waiting for the Incharge to review' : 'Being inspected again'} />
+            <LinkedRecords items={[
+              sheet.deviation && { kind: 'deviation', label: sheet.deviation.deviationNo, sub: `Deviation, ${sheet.deviation.department}`, to: `/deviations/${sheet.deviation.id}`, badge: <DeviationStage stage={sheet.deviation.stage} outcome={sheet.deviation.outcome} /> },
+              sheet.dn && { kind: 'dn', label: sheet.dn.dnNo, sub: 'Defect notification', to: `/dns/${sheet.dn.id}`, badge: <DnStatus status={sheet.dn.status} /> },
+              sheet.formatVersionId && { kind: 'format', label: `${sheet.formatNo ?? 'Inspection format'} (v${sheet.formatVersionNo})`, sub: 'Inspection format used', to: `/formats/versions/${sheet.formatVersionId}` },
+            ]} />
+            <StageHistory rows={stageRows({
+              history: sheet.history,
+              current: currentStage(journeySteps({ status: sheet.status, history: sheet.history, deviation: sheet.deviation })),
+              start: { stage: 'SAP receipt', at: sheet.createdAt, status: 'Received' },
+            })} />
+          </ActivityLayout>
         )}
       </div>
 
-      {ev && sheet.status !== 'AWAITING_FORMAT' && (
-        <div className="fixed bottom-0 right-0 left-0 md:left-auto md:w-[calc(100%-16rem)] z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-5 py-3 flex flex-wrap items-center gap-3">
-          <span className="text-sm text-slate-600">{sheet.result ? "Result:" : "Result so far:"}</span>
-          <ImirResult result={sheet.result ?? ev.result} />
-          {ev.defectiveSamples.length > 0 && <span className="text-xs text-rose-600">NOK in sample {ev.defectiveSamples.join(', ')}</span>}
+      {ev && opened && (
+        <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-5 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">Progress</span>
+            <span className="w-24 h-1.5 rounded-full bg-slate-200 overflow-hidden"><span className={`block h-full rounded-full ${progress.pct === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`} style={{ width: `${progress.pct}%` }} /></span>
+            <span className="text-xs font-semibold tabular text-slate-700">{progress.pct}%</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">{sheet.result ? 'Result' : 'Result so far'}</span>
+            <ImirResult result={sheet.result ?? ev.result} />
+            {ev.defectiveSamples.length > 0 && <span className="text-xs text-rose-700">NOK in X{ev.defectiveSamples.join(', X')}</span>}
+          </div>
           {!readOnly && (ev.missing.length > 0 ? (
-            <button type="button" onClick={() => focusFirstMissing(ev.missing)} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 cursor-pointer">
+            <button type="button" onClick={goToMissing} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 cursor-pointer">
               {ev.missing.length} empty: go to next
             </button>
-          ) : !sheet.model && <span className="text-xs text-amber-700">Enter the model</span>)}
-          {!readOnly && <Button className="ml-auto" size="lg" icon={Send} disabled={!canSubmit || saving} onClick={() => setDialog({ type: 'submit' })}>Submit IMIR</Button>}
+          ) : !sheet.model && <span className="text-xs text-amber-700">Enter the model in General info</span>)}
+          {!readOnly && (
+            <div className="ml-auto flex items-center gap-2">
+              {mode === 'online' && <span className="text-xs text-slate-400">{saving ? 'Saving…' : 'All changes saved'}</span>}
+              <Button variant="secondary" icon={Save} loading={saving} onClick={saveDraft}>Save draft</Button>
+              <Button icon={Send} disabled={!canSubmit || saving} onClick={() => setDialog({ type: 'submit' })}>Submit report</Button>
+            </div>
+          )}
         </div>
       )}
 
@@ -171,39 +235,129 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
 }
 
 function Banner({ tone, children }) {
-  const tones = { info: 'border-sky-200 bg-sky-50 text-sky-800', warning: 'border-amber-200 bg-amber-50 text-amber-800', danger: 'border-rose-200 bg-rose-50 text-rose-800' };
-  return <div className={`flex gap-2 rounded-xl border px-4 py-3 text-sm ${tones[tone]}`}><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><div>{children}</div></div>;
+  const tones = { info: 'border-blue-200 bg-blue-50 text-blue-900', warning: 'border-amber-200 bg-amber-50 text-amber-900', danger: 'border-rose-200 bg-rose-50 text-rose-900' };
+  return <div className={`flex gap-2 rounded-lg border px-4 py-3 text-sm ${tones[tone]}`}><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><div>{children}</div></div>;
 }
 
-function LotFacts({ sheet, readOnly, onPatch }) {
+/** A read-only report field: label above a filled box, like the JIR header. */
+const Field = ({ label, children, span }) => (
+  <div className={span ? 'sm:col-span-2' : ''}>
+    <dt className="text-[11px] font-medium text-slate-600 mb-0.5">{label}</dt>
+    <dd className="min-h-8 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[13px] text-slate-900 truncate">{children ?? <span className="text-slate-400">—</span>}</dd>
+  </div>
+);
+
+/** Report header ("General info"): the lot from SAP, format and sampling, plus the model the inspector enters. */
+function GeneralInfo({ sheet, readOnly, onPatch, progress }) {
   const [model, setModel] = useState(sheet.model ?? '');
-  const [remark, setRemark] = useState(sheet.inspectorRemark ?? '');
   useEffect(() => setModel(sheet.model ?? ''), [sheet.model]);
-  const fact = (label, value) => (
-    <div><dt className="text-[11px] font-medium text-slate-400">{label}</dt><dd className="text-sm text-slate-800">{value ?? '—'}</dd></div>
+  const opened = sheet.status !== 'AWAITING_FORMAT';
+  const missingModel = opened && !readOnly && !model.trim();
+  return (
+    <section className="card">
+      <div className="flex flex-wrap items-center gap-3 px-4 pt-3.5 pb-3 border-b border-slate-100">
+        <h2 className="section-title">General info</h2>
+        {progress !== null && (
+          <div className="ml-auto flex items-center gap-2" aria-label={`Report ${progress}% complete`}>
+            <span className="text-xs text-slate-500">Progress</span>
+            <span className="w-40 h-2 rounded-full bg-slate-200 overflow-hidden"><span className={`block h-full rounded-full transition-[width] duration-300 ${progress === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`} style={{ width: `${progress}%` }} /></span>
+            <span className="text-sm font-semibold tabular text-slate-800 w-10 text-right">{progress}%</span>
+          </div>
+        )}
+      </div>
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 p-4 md:grid-cols-4 xl:grid-cols-6">
+        <Field label="Inspection date">{formatDate(sheet.inspectionStartedAt ?? sheet.openedAt)}</Field>
+        <Field label="GRN no.">{sheet.grnNo}</Field>
+        <Field label="GRN date">{formatDate(sheet.grnDate)}</Field>
+        <Field label="Vendor">{sheet.vendorName}</Field>
+        <Field label="Vendor code">{sheet.vendorCode}</Field>
+        <Field label="Item code">{sheet.itemCode}</Field>
+        <Field label="Item description" span>{sheet.itemDescription}</Field>
+        <Field label="Item category">{sheet.itemCategory}</Field>
+        <Field label="Drawing no. / rev">{sheet.drawingNo ? `${sheet.drawingNo}${sheet.drawingRev ? ` / ${sheet.drawingRev}` : ''}` : null}</Field>
+        <Field label="Plant">{`${sheet.plantSapCode} · ${sheet.plantName}`}</Field>
+        <Field label="Invoice no.">{sheet.invoiceNo}</Field>
+        <Field label="Inward qty">{formatQty(sheet.inwardQty, sheet.uom)}</Field>
+        <Field label="SAP lot">{sheet.sapLotNo}</Field>
+        <Field label="Format no.">{sheet.formatVersionNo ? `${sheet.formatNo ?? '—'} (v${sheet.formatVersionNo})` : null}</Field>
+        <Field label="Common format no.">{sheet.commonFormatNo}</Field>
+        <Field label="Ref. standard">{sheet.refStandard}</Field>
+        <Field label="Sample">{sheet.sampleSize ? `${sheet.sampleSize} of ${sheet.lotSize}${sheet.samplingBasis === 'FULL_LOT' ? ' (whole lot)' : ''}` : null}</Field>
+        <Field label="Reject at">{sheet.sampleSize ? `${sheet.rejectNo} NOK sample${sheet.rejectNo === 1 ? '' : 's'}` : null}</Field>
+        {opened && (
+          <div>
+            <label htmlFor="imir-model" className="block text-[11px] font-medium text-slate-600 mb-0.5">Model <span className="text-rose-600">*</span></label>
+            <input id="imir-model" disabled={readOnly} value={model} placeholder="Model the lot is for" onChange={(e) => setModel(e.target.value)}
+              onBlur={() => (model.trim() || null) !== (sheet.model ?? null) && onPatch({ model: model.trim() || null })}
+              className={`w-full min-h-8 rounded-md border px-2.5 py-1 text-[13px] focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:bg-slate-50 disabled:text-slate-900 ${
+                missingModel ? 'border-rose-300 bg-rose-50/60' : model.trim() ? 'border-emerald-300 bg-emerald-50/50' : 'border-slate-300 bg-white'
+              }`} />
+          </div>
+        )}
+      </dl>
+    </section>
   );
+}
+
+const lastOf = (history, actions) => [...(history ?? [])].reverse().find((h) => actions.includes(h.action) && !h.deviationId);
+
+/** One sign-off box: role, who signed and when, and what they decided. */
+function Signature({ role, step, pending, done: doneLabel }) {
+  return (
+    <div className={`rounded-lg border px-4 py-3 ${step ? 'border-emerald-200 bg-emerald-50/50' : 'border-dashed border-slate-300 bg-slate-50/60'}`}>
+      <div className="text-xs font-medium text-slate-600">{role}</div>
+      {step ? (
+        <div className="mt-1 flex items-start gap-2">
+          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          <div>
+            <div className="text-sm font-semibold text-slate-900">{step.actorName ?? 'System'}</div>
+            <div className="text-xs text-slate-600">{doneLabel(step)}, {formatDateTime(step.at)}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-1 text-sm text-slate-500">{pending}</div>
+      )}
+    </div>
+  );
+}
+
+const DECIDED = { APPROVE: 'Approved', REVERT: 'Sent back', ESCALATE: 'Escalated to IQC Head', HEAD_APPROVE: 'Approved', HOLD: 'Held for deviation' };
+const OUTCOME = {
+  CLOSED_ACCEPTED: ['Accepted', 'bg-emerald-600 text-white'],
+  CLOSED_UNDER_DEVIATION: ['Accepted under deviation', 'bg-amber-500 text-white'],
+  CLOSED_REJECTED: ['Rejected', 'bg-rose-600 text-white'],
+  AUTO_CLOSED: ['Auto-closed', 'bg-slate-500 text-white'],
+};
+
+/** Final remarks, who checked / reviewed / decided (from the workflow), and the decision. */
+function SignOff({ sheet, readOnly, onPatch }) {
+  const [remark, setRemark] = useState(sheet.inspectorRemark ?? '');
+  useEffect(() => setRemark(sheet.inspectorRemark ?? ''), [sheet.inspectorRemark]);
+  const submitted = lastOf(sheet.history, ['SUBMIT']);
+  const reviewed = lastOf(sheet.history, ['APPROVE', 'REVERT', 'ESCALATE']);
+  const decided = lastOf(sheet.history, ['HEAD_APPROVE', 'HOLD']);
+  const outcome = OUTCOME[sheet.status];
   return (
     <section className="card p-4 space-y-4">
-      <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-6">
-        {fact('GRN', `${sheet.grnNo} · ${formatDate(sheet.grnDate)}`)}
-        {fact('Vendor', `${sheet.vendorName} (${sheet.vendorCode})`)}
-        {fact('Invoice', sheet.invoiceNo)}
-        {fact('Plant', `${sheet.plantSapCode} · ${sheet.plantName}`)}
-        {fact('Inward qty', formatQty(sheet.inwardQty, sheet.uom))}
-        {fact('Drawing', sheet.drawingNo ? `${sheet.drawingNo}${sheet.drawingRev ? ` rev ${sheet.drawingRev}` : ''}` : null)}
-        {sheet.sampleSize && fact('Sample', `${sheet.sampleSize} of ${sheet.lotSize}${sheet.samplingBasis === 'FULL_LOT' ? ' (whole lot)' : ''} · reject at ${sheet.rejectNo} NOK`)}
-        {sheet.formatVersionNo && fact('Format', `v${sheet.formatVersionNo}${sheet.formatNo ? ` · ${sheet.formatNo}` : ''} · ${sheet.refStandard ?? ''}`)}
-        {fact('SAP lot', sheet.sapLotNo)}
-        {sheet.submittedAt && fact('Submitted', `${sheet.submittedByName ?? ''} · ${formatDateTime(sheet.submittedAt)}`)}
-      </dl>
-      {sheet.status !== 'AWAITING_FORMAT' && (
-        <div className="grid gap-3 sm:grid-cols-[16rem_1fr]">
-          <TextInput label="Model" required disabled={readOnly} value={model} onChange={(e) => setModel(e.target.value)}
-            onBlur={() => (model.trim() || null) !== (sheet.model ?? null) && onPatch({ model: model.trim() || null })} hint={readOnly ? undefined : 'Model the lot is for'} />
-          <TextInput label="Final remarks" disabled={readOnly} value={remark} onChange={(e) => setRemark(e.target.value)}
-            onBlur={() => (remark || null) !== (sheet.inspectorRemark ?? null) && onPatch({ inspectorRemark: remark || null })} />
-        </div>
-      )}
+      <div>
+        <label htmlFor="imir-final-remarks" className="block text-sm font-semibold text-slate-900 mb-1.5">Final remarks</label>
+        <textarea id="imir-final-remarks" disabled={readOnly} rows={3} value={remark} placeholder={readOnly ? '' : 'Anything the reviewer should know about this lot'}
+          onChange={(e) => setRemark(e.target.value)} onBlur={() => (remark || null) !== (sheet.inspectorRemark ?? null) && onPatch({ inspectorRemark: remark || null })}
+          className="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 disabled:bg-slate-50" />
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        <Signature role="Checked by (Inspector)" step={submitted} pending="Signs when the report is submitted" done={() => 'Submitted'} />
+        <Signature role="Reviewed by (IQC Incharge)" step={reviewed} pending="Waiting for the Incharge review" done={(s) => DECIDED[s.action]} />
+        <Signature role="Decided by (IQC Head)" step={decided} pending={reviewed?.action === 'ESCALATE' ? 'Waiting for the IQC Head' : 'Only needed if escalated'} done={(s) => DECIDED[s.action]} />
+      </div>
+      <div className="flex flex-wrap items-center gap-3 rounded-lg bg-slate-50 border border-slate-200 px-4 py-3">
+        <span className="text-sm font-semibold text-slate-900">Final decision</span>
+        {outcome
+          ? <span className={`rounded-md px-3 py-1 text-sm font-semibold ${outcome[1]}`}>{outcome[0]}</span>
+          : <span className="text-sm text-slate-600">Open: <ImirStatus status={sheet.status} /></span>}
+        {sheet.deviation && <Link to={`/deviations/${sheet.deviation.id}`} className="text-sm text-blue-700 hover:underline">Deviation {sheet.deviation.deviationNo}</Link>}
+      </div>
+      {sheet.allowedActions.some((a) => ['approve', 'revert', 'escalate', 'head_approve', 'hold', 'raise_dn'].includes(a)) && <ReviewPanel imir={sheet} />}
     </section>
   );
 }

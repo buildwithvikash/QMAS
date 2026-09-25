@@ -7,6 +7,7 @@ export const dnApi = baseApi
     endpoints: (b) => ({
       getDns: b.query({ query: (params) => ({ url: '/dns', params }), transformResponse: pagedEnvelope, providesTags: ['Dn'] }),
       getDn: b.query({ query: (id) => `/dns/${id}`, transformResponse: envelope, providesTags: (_r, _e, id) => [{ type: 'Dn', id }] }),
+      getDnSource: b.query({ query: (id) => `/dns/${id}/source`, transformResponse: envelope, keepUnusedDataFor: 0 }),
       createDn: b.mutation({ query: (body) => ({ url: '/dns', method: 'POST', body }), transformResponse: envelope, invalidatesTags: ['Dn', 'Imir', 'Dashboard'] }),
       updateDn: b.mutation({
         query: ({ id, ...body }) => ({ url: `/dns/${id}`, method: 'PUT', body }),
@@ -39,6 +40,7 @@ export const dnApi = baseApi
 export const {
   useGetDnsQuery,
   useGetDnQuery,
+  useGetDnSourceQuery,
   useCreateDnMutation,
   useUpdateDnMutation,
   useDnActionMutation,

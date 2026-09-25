@@ -2,41 +2,7 @@ import { Check, FileX2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatDateTime, formatRelative } from '../../utils/format.js';
 import { DnStatus } from '../deviation/workflowUi.jsx';
-
-const CLOSED = { CLOSED_ACCEPTED: 'Accepted', CLOSED_REJECTED: 'Rejected', CLOSED_UNDER_DEVIATION: 'Accepted under deviation', AUTO_CLOSED: 'Auto-closed' };
-const DEPT_ROLE = { INITIATOR: 'initiator', SUB_HEAD: 'Sub-Head', HEAD: 'Head' };
-
-/** The lot's path, in order. Optional steps appear only when this lot reached them. */
-const STEPS = [
-  { key: 'format', label: 'Format', statuses: ['AWAITING_FORMAT'], optional: true, holder: () => 'IQC Head (approve a format)' },
-  { key: 'inspect', label: 'Inspection', statuses: ['OPEN', 'IN_INSPECTION'], holder: () => 'IQC Inspector' },
-  { key: 'review', label: 'Incharge review', statuses: ['SUBMITTED'], holder: () => 'IQC Incharge' },
-  { key: 'head', label: 'IQC Head', statuses: ['WITH_IQC_HEAD'], optional: true, holder: () => 'Plant IQC Head' },
-  { key: 'dept', label: 'SCM / VD', statuses: ['DEPT_REVIEW'], optional: true, holder: (d) => (d ? `${d.department} ${DEPT_ROLE[d.stage] ?? ''}`.trim() : 'SCM / VD') },
-  { key: 'final', label: 'Final decision', statuses: ['IQC_HEAD_FINAL'], optional: true, holder: () => 'Plant IQC Head' },
-  { key: 'senior', label: 'Senior escalation', statuses: ['SENIOR_ESCALATION'], optional: true, holder: () => 'Senior authorities' },
-  { key: 'qty', label: 'Quantities', statuses: ['UNDER_DEVIATION', 'QTY_VERIFICATION'], optional: true, holder: (d, s) => (s === 'QTY_VERIFICATION' ? 'Plant IQC Head (verify)' : `${d?.department ?? 'SCM / VD'} initiator (enter OK / Not OK)`) },
-  { key: 'closed', label: 'Closed', statuses: Object.keys(CLOSED) },
-];
-
-/** Builds the steps for a lot from its status, workflow history and deviation. */
-function journeySteps({ status, history = [], deviation }) {
-  const reached = new Set([status, ...history.map((h) => h.toStatus).filter(Boolean)]);
-  const currentIdx = STEPS.findIndex((s) => s.statuses.includes(status));
-  const closed = !!CLOSED[status];
-  return STEPS.map((s, i) => ({ ...s, i }))
-    .filter((s) => !s.optional || s.statuses.some((st) => reached.has(st)))
-    .map((s) => {
-      const state = closed ? 'done' : s.i < currentIdx ? 'done' : s.i === currentIdx ? 'current' : 'next';
-      return {
-        key: s.key,
-        label: s.key === 'closed' && closed ? CLOSED[status] : s.label,
-        state,
-        holder: state === 'current' ? s.holder?.(deviation, status) : null,
-        tone: s.key === 'closed' && closed ? (status === 'CLOSED_REJECTED' ? 'bad' : status === 'AUTO_CLOSED' ? 'neutral' : 'good') : null,
-      };
-    });
-}
+import { journeySteps } from './journey.js';
 
 /**
  * The lot's route, drawn like a factory routing ticket: a rail of stations, filled up to the

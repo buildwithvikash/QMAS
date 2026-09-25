@@ -60,6 +60,7 @@ export async function detail(id, user, db = getPool()) {
     capaFiles: files.filter((f) => f.entityType === 'CAPA').map((f) => ({ ...f, cycleNo: Number(f.ref) })),
     nextCycleNo: capas.length + 1,
     history: steps,
+    deviation: dn.imirId ? await imirRepo.deviationSummary(db, dn.imirId) : null,
     allowedActions: user ? dnActions(user, dn) : [],
   };
 }
@@ -99,23 +100,58 @@ export async function create(ctx, user, { imirId }) {
   return detail(id, user);
 }
 
-/** Defect table from the failed checkpoints; defect text from the escalation remark. */
-async function prefillFromImir(db, imir) {
+/**
+ * Everything on the inspection report a DN can draw from: each checkpoint with its specification,
+ * readings, result and remarks (a ready-made defect line), and suggested header values.
+ * Samples are X1…Xn, as on the report.
+ */
+async function reportDetails(db, imir) {
   const checkpoints = await imirRepo.formatCheckpoints(db, imir.formatVersionId);
   const states = new Map((await imirRepo.checkpointStates(db, imir.id)).map((s) => [s.checkpointUid, s]));
   const cells = await imirRepo.observations(db, imir.id);
-  const lines = checkpoints
-    .filter((c) => states.get(c.uid)?.result === 'NOK')
-    .map((c) => {
-      const s = states.get(c.uid);
-      const bad = cells.filter((o) => o.checkpointUid === c.uid && o.decision === 'NOK');
-      const observation = c.section === 'RELIABILITY'
-        ? s.textObservation
-        : bad.map((o) => (c.section === 'DIMENSIONAL' ? `S${o.sampleNo}: ${o.value}${c.uom ? ` ${c.uom}` : ''}` : `S${o.sampleNo}: NOK`)).join(', ');
-      return { parameter: c.checkpoint, specification: c.specification, observation: [observation, s.inchargeRemark].filter(Boolean).join(' — ') || null };
-    });
-  const { rows } = await db.query("SELECT remark FROM qms.imir_action WHERE imir_id = $1 AND action = 'ESCALATE' AND deviation_id IS NULL ORDER BY at DESC LIMIT 1", [imir.id]);
-  return { lines, defect: rows[0]?.remark ?? imir.inspectorRemark ?? null };
+  const reading = (c, o) => (c.section === 'DIMENSIONAL' ? `X${o.sampleNo}: ${o.value}${c.uom ? ` ${c.uom}` : ''}` : `X${o.sampleNo}: ${o.ok ? 'OK' : 'NOK'}`);
+  const rows = checkpoints.map((c) => {
+    const s = states.get(c.uid) ?? {};
+    const mine = cells.filter((o) => o.checkpointUid === c.uid).sort((x, y) => x.sampleNo - y.sampleNo);
+    const nok = s.result === 'NOK';
+    // A failed check lists its failed readings; any other lists all readings taken.
+    const shown = nok ? mine.filter((o) => o.decision === 'NOK') : mine;
+    const readings = c.section === 'RELIABILITY' ? (s.textObservation ?? null) : shown.map((o) => reading(c, o)).join(', ') || null;
+    const observation = [readings, s.inspectorRemark && `Inspector: ${s.inspectorRemark}`, s.inchargeRemark && `Incharge: ${s.inchargeRemark}`].filter(Boolean).join(' — ') || null;
+    return {
+      uid: c.uid, section: c.section, checkpoint: c.checkpoint, specification: c.specification, result: s.result ?? null,
+      required: c.section !== 'RELIABILITY' || !!s.isRequired, readings, observation,
+      line: { parameter: c.checkpoint, specification: c.specification ?? null, observation },
+    };
+  });
+  const { rows: esc } = await db.query("SELECT remark FROM qms.imir_action WHERE imir_id = $1 AND action = 'ESCALATE' AND deviation_id IS NULL ORDER BY at DESC LIMIT 1", [imir.id]);
+  return {
+    imirNo: imir.imirNo,
+    result: imir.result,
+    checkpoints: rows,
+    suggested: {
+      model: imir.model ?? null,
+      receivedQty: imir.inwardQty,
+      checkedQty: imir.sampleSize,
+      defectiveQty: imir.defectiveSamples?.length ?? 0,
+      defect: esc[0]?.remark ?? imir.inspectorRemark ?? null,
+    },
+  };
+}
+
+/** Defect table from the failed checkpoints; defect text from the escalation remark. */
+async function prefillFromImir(db, imir) {
+  const r = await reportDetails(db, imir);
+  return { lines: r.checkpoints.filter((c) => c.result === 'NOK').map((c) => c.line), defect: r.suggested.defect };
+}
+
+/** The lot's inspection report, for "Fetch from inspection report" on the DN. */
+export async function source(id, user) {
+  const dn = await detail(id, user);
+  if (!dn.imirId) throw AppError.notFound('Inspection report');
+  const db = getPool();
+  const imir = await imirRepo.get(db, dn.imirId);
+  return reportDetails(db, imir);
 }
 
 // ── Editing ───────────────────────────────────────────────────────────────────
@@ -252,6 +288,11 @@ export async function mailToSelf(ctx, user, id) {
   await withTransaction(ctx, (db) =>
     notifyUsers(db, [{ id: user.id, email: rows[0].email }], {
       kind: 'MAIL_SELF', title: `DN ${dn.dnNo} (PDF attached)`, body: `${dn.itemCode} · ${dn.itemDescription}\nVendor: ${dn.vendorName}`, link: `/dns/${id}`, attachment: { type: 'DN_PDF', id },
+      mail: {
+        tone: 'info', pill: 'DN copy', record: dn.dnNo, todo: 'The defect notification is attached as a PDF, ready to forward to the vendor.', button: 'Open the DN',
+        facts: [['DN no.', dn.dnNo, true], ['Item', `${dn.itemCode} — ${dn.itemDescription}`, true], ['Vendor', `${dn.vendorName} (${dn.vendorCode})`], ['IMIR no.', dn.imirNo]],
+        reason: 'You get this because you asked QMAS to mail this DN to yourself.',
+      },
     }),
   );
   return { email: rows[0].email };
