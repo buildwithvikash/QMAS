@@ -27,3 +27,31 @@ export function focusFirstMissing(missing) {
   el.scrollIntoView({ block: 'center', behavior: 'smooth' });
   el.focus({ preventScroll: true });
 }
+
+/**
+ * How much of the report is filled: per tab (required entries done / total, and whether any
+ * check is NOK) and overall, counting the model. Drives the progress bar and the tab labels.
+ */
+export function sheetProgress(sheet) {
+  const n = sheet.sampleSize ?? 0;
+  const byCell = new Map(sheet.cells.map((c) => [`${c.checkpointUid}:${c.sampleNo}`, c]));
+  const results = sheet.evaluation?.checkpointResults ?? {};
+  const count = (list, has) => list.reduce((a, cp) => {
+    let k = 0;
+    for (let s = 1; s <= n; s += 1) if (has(byCell.get(`${cp.uid}:${s}`))) k += 1;
+    return a + k;
+  }, 0);
+  const cps = sheet.checkpoints ?? [];
+  const dims = cps.filter((c) => c.section === 'DIMENSIONAL');
+  const vis = cps.filter((c) => c.section === 'VISUAL');
+  const rel = cps.filter((c) => c.section === 'RELIABILITY' && c.isRequired);
+  const dim = { done: count(dims, (c) => c?.value != null), total: dims.length * n, nok: dims.some((c) => results[c.uid] === 'NOK') };
+  const visrel = {
+    done: count(vis, (c) => c?.ok != null) + rel.filter((c) => c.textObservation && c.manualResult).length,
+    total: vis.length * n + rel.length,
+    nok: [...vis, ...cps.filter((c) => c.section === 'RELIABILITY')].some((c) => results[c.uid] === 'NOK'),
+  };
+  const total = dim.total + visrel.total + 1;
+  const done = dim.done + visrel.done + (sheet.model ? 1 : 0);
+  return { dim, visrel, pct: total ? Math.round((done / total) * 100) : 0 };
+}

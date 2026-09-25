@@ -12,7 +12,9 @@
     "create-admin": "node --env-file-if-exists=.env scripts/create-admin.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "worker": "node --env-file-if-exists=.env src/worker.js"
+    "worker": "node --env-file-if-exists=.env src/worker.js",
+    "demo-users": "node --env-file-if-exists=.env scripts/create-demo-users.js",
+    "check-mail": "node --env-file-if-exists=.env scripts/check-mail.js"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.1",

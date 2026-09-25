@@ -15,9 +15,14 @@ import { done } from '../../utils/notify.jsx';
 import { useUnsavedWarning } from '../../hooks/useUnsavedWarning.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { ImirStatus } from '../imir/imirUi.jsx';
+import { currentStage, journeySteps, stageRows } from '../imir/journey.js';
 import LotJourney from '../imir/LotJourney.jsx';
 import { ACTION_NAMES, DECISION_NAMES, ROLE_SHORT } from './workflowLabels.js';
-import { DeviationStage, HistoryTimeline } from './workflowUi.jsx';
+import HistoryPanel from './HistoryPanel.jsx';
+import RoundsPanel from './RoundsPanel.jsx';
+import { ActivityLayout, KeyFacts, LinkedRecords, StageHistory } from './RecordSide.jsx';
+import { fieldLabel, formatValue } from './historyFormat.js';
+import { DeviationStage } from './workflowUi.jsx';
 
 /** Buttons for the simple decisions: a remark and (for escalation) the authorities. */
 const DECISIONS = {
@@ -50,7 +55,7 @@ export default function DeviationPage() {
         <DeviationStage stage={d.stage} outcome={d.outcome} />
       </PageHeader>
 
-      <div className="p-5 grid gap-4 xl:grid-cols-[1fr_24rem]">
+      <div className="p-5 space-y-4">
         <div className="space-y-4 min-w-0">
           {buttons.length > 0 && (
             <section className="card border-blue-300 border-l-4 border-l-blue-600 p-4">
@@ -66,13 +71,23 @@ export default function DeviationPage() {
           {can('submit_form') ? <DeviationForm d={d} onRecommendReject={() => setDialog('recommend_reject')} /> : <FormView d={d} />}
           {can('enter_qty') && <QuantityForm d={d} />}
           {d.rounds.length > 0 && <EscalationBoard d={d} />}
+        <ActivityLayout history={<HistoryPanel imirId={d.imirId} history={d.history} current={currentStage(journeySteps({ status: d.imirStatus, history: d.history, deviation: d }))} />}>
+            <RoundsPanel history={d.history} loop="form" detail={(r) => <RevisionChanges d={d} round={r} />}
+            waitingFor={d.stage === 'INITIATOR' ? 'Waiting for the initiator to submit again' : 'Waiting for the approver'} />
+            <RoundsPanel history={d.history} loop="qty" waitingFor="Waiting for the IQC Head to verify" />
+            <LinkedRecords items={[
+              { kind: 'imir', label: d.imirNo, sub: `Inspection report, ${d.itemCode}`, to: `/imirs/${d.imirId}`, badge: <ImirStatus status={d.imirStatus} /> },
+              d.history.find((h) => h.action === 'DN_RAISE') && { kind: 'dn', label: d.history.find((h) => h.action === 'DN_RAISE').payload?.dnNo ?? 'Defect notification', sub: 'Defect notification', to: `/dns/${d.history.find((h) => h.action === 'DN_RAISE').dnId}` },
+            ]} />
+            <StageHistory rows={stageRows({ history: d.history, current: currentStage(journeySteps({ status: d.imirStatus, history: d.history, deviation: d })) })} />
+            <KeyFacts rows={[
+              { label: 'Department', value: d.department },
+              { label: 'Approval chain', value: d.approvalLevels?.map((l) => (l === 'SUB_HEAD' ? 'Sub-Head' : 'Head')).join(', then ') },
+              { label: 'Initiator', value: d.initiatorName },
+              d.stage === 'UNDER_DEVIATION' ? { label: 'Quantities due', at: d.qtyDueAt, tone: 'warn' } : null,
+            ]} />
+          </ActivityLayout>
         </div>
-        <aside className="space-y-4">
-          <section className="card p-4">
-            <h2 className="text-sm font-bold text-slate-800 mb-3">History</h2>
-            <HistoryTimeline history={d.history} />
-          </section>
-        </aside>
       </div>
       {dialog && <DecisionDialog d={d} action={dialog} onClose={() => setDialog(null)} />}
     </div>
@@ -180,6 +195,36 @@ function DeviationForm({ d, onRecommendReject }) {
   );
 }
 
+const FORM_KEYS = [['action', 'action'], ['severity', 'severity'], ['deviationQty', 'deviation_qty'], ['specification', 'specification'],
+  ['iqcObservation', 'iqc_observation'], ['correction', 'correction'], ['correctiveAction', 'corrective_action']];
+
+/** What the initiator changed in this round's Deviation Form, compared with the round before. */
+function RevisionChanges({ d, round }) {
+  const at = new Date(round.start.at).getTime();
+  const idx = d.revisions.findIndex((rv) => Math.abs(new Date(rv.submittedAt).getTime() - at) < 5000);
+  if (idx <= 0) return null;
+  const cur = d.revisions[idx].data;
+  const prev = d.revisions[idx - 1].data;
+  const diffs = FORM_KEYS.filter(([k]) => (cur[k] ?? null) !== (prev[k] ?? null));
+  if (!diffs.length) return <p className="mt-1.5 text-xs text-slate-500">Resubmitted without changes.</p>;
+  return (
+    <ul className="mt-2 space-y-0.5 rounded-md bg-slate-50 border border-slate-200 px-3 py-2">
+      {diffs.map(([k, col]) => {
+        const o = formatValue(col, prev[k]);
+        const n = formatValue(col, cur[k]);
+        return (
+          <li key={k} className="flex flex-wrap items-baseline gap-x-1.5 text-[13px]">
+            <span className="text-slate-500">{fieldLabel(col)}</span>
+            {o !== null && <del className="rounded px-1 bg-rose-50 text-rose-700 decoration-rose-400">{k === 'action' ? ACTION_NAMES[prev[k]] : o}</del>}
+            {o !== null && n !== null && <span className="text-slate-400" aria-hidden="true">→</span>}
+            {n !== null ? <ins className="no-underline rounded px-1 font-semibold bg-emerald-50 text-emerald-800">{k === 'action' ? ACTION_NAMES[cur[k]] : n}</ins> : <span className="text-xs italic text-slate-400">cleared</span>}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function FormView({ d }) {
   if (!d.formSubmittedAt) return null;
   const row = (label, value) => (
@@ -190,7 +235,7 @@ function FormView({ d }) {
       <div className="flex flex-wrap items-center gap-2">
         <h2 className="text-sm font-bold text-slate-800">Deviation Form</h2>
         <Badge variant={d.severity === 'CRITICAL' ? 'danger' : d.severity === 'MAJOR' ? 'warning' : 'neutral'}>{d.severity?.toLowerCase()}</Badge>
-        <span className="text-xs text-slate-500 ml-auto">{d.initiatorName} · {formatDateTime(d.formSubmittedAt)}{d.revisions.length > 1 ? ` · revision ${d.revisions.length}` : ''}</span>
+        <span className="text-xs text-slate-500 ml-auto">{d.initiatorName} · {formatDateTime(d.formSubmittedAt)}{d.revisions.length > 1 ? `, round ${d.revisions.length}` : ''}</span>
       </div>
       <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
         {row('Action', ACTION_NAMES[d.action])}

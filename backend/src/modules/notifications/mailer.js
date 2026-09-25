@@ -23,6 +23,14 @@ function transportFromEnv() {
   return nodemailer.createTransport({ jsonTransport: true }); // 'log': nothing leaves the machine
 }
 
+/** Checks the SMTP settings by logging in to the server; sends nothing. */
+export async function verifyMailTransport() {
+  const t = transportFromEnv();
+  if (getEnv().MAIL_TRANSPORT !== 'smtp') return { ok: true, transport: 'log' };
+  await t.verify();
+  return { ok: true, transport: 'smtp', host: getEnv().SMTP_HOST };
+}
+
 /**
  * Sends queued mail. Rows are leased (next_attempt_at pushed ahead) under SKIP LOCKED, so several
  * workers never send the same mail twice; a failed send is retried with growing delays and marked
@@ -47,7 +55,10 @@ export async function sendPendingMail({ transport = (defaultTransport ??= transp
         if (!render) throw new Error(`No renderer for attachment ${m.attachment.type}`);
         attachments.push(await render(m.attachment));
       }
-      await transport.sendMail({ from: env.MAIL_FROM, to: m.to_address, subject: m.subject, text: m.body_text, html: m.body_html, attachments });
+      // While testing, all mail goes to one inbox; the subject says who it was meant for.
+      const to = env.MAIL_REDIRECT_TO ?? m.to_address;
+      const subject = env.MAIL_REDIRECT_TO ? `${m.subject} (for ${m.to_address})` : m.subject;
+      await transport.sendMail({ from: env.MAIL_FROM, to, subject, text: m.body_text, html: m.body_html, attachments });
       await pool.query("UPDATE core.mail_outbox SET status = 'SENT', sent_at = now(), attempts = attempts + 1, last_error = NULL WHERE id = $1", [m.id]);
       if (env.MAIL_TRANSPORT === 'log') log?.info({ mailId: m.id, to: m.to_address, subject: m.subject }, 'mail (log transport, not sent)');
       sent += 1;

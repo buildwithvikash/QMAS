@@ -29,6 +29,9 @@ const schema = z.object({
   SMTP_SECURE: bool.default(false),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  // Testing: every mail goes to this one address instead (the intended recipient is named in the
+  // subject). Leave empty in production.
+  MAIL_REDIRECT_TO: z.union([z.literal(''), z.string().email()]).optional().transform((v) => v || undefined),
   // Links in mails point here (the web app's public address).
   APP_BASE_URL: z.string().url().default('http://localhost:5173'),
 });

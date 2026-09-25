@@ -38,10 +38,13 @@ export function errorHandler(err, req, res, _next) {
   if (status >= 500) log.error({ err }, 'request failed');
   else if (err !== error) log.warn({ err: { code: err.code, detail: err.detail, constraint: err.constraint } }, error.message);
 
+  // A bug stays hidden behind a reference number; an outside system being down (SAP 502/503,
+  // raised on purpose as an AppError) is said as it is, so people know it is not their input.
+  const hidden = status >= 500 && !(error instanceof AppError && (status === 502 || status === 503));
   res.status(status).json({
     success: false,
-    message: status >= 500 ? 'Something went wrong on the server. Please try again; if it keeps happening, report the reference number.' : error.message,
-    code: status >= 500 ? 'INTERNAL' : error.code,
+    message: hidden ? 'Something went wrong on the server. Please try again; if it keeps happening, report the reference number.' : error.message,
+    code: hidden ? 'INTERNAL' : error.code,
     ...(error.errors && status < 500 ? { errors: error.errors } : {}),
     requestId: req.id,
   });
