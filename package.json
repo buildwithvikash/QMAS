@@ -18,6 +18,8 @@
     "create-admin": "npm -w backend run create-admin",
     "test": "npm -w @qmas/shared test && npm -w @qmas/backend test && npm -w @qmas/frontend test",
     "build:web": "npm -w frontend run build",
-    "lint": "npm -w frontend run lint"
+    "lint": "npm -w frontend run lint",
+    "demo-users": "npm -w backend run demo-users",
+    "check-mail": "npm -w backend run check-mail"
   }
 }
