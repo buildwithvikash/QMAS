@@ -18,6 +18,7 @@ export const workflowApi = baseApi
         invalidatesTags: (_r, _e, { id }) => ['Deviation', { type: 'Deviation', id }, 'Imir', 'Tasks'],
       }),
       getMyTasks: b.query({ query: () => '/tasks/me', transformResponse: envelope, providesTags: ['Tasks'] }),
+      getMyRecent: b.query({ query: () => '/tasks/recent', transformResponse: envelope, providesTags: ['Tasks'] }),
       getDeptChains: b.query({ query: () => '/masters/dept-approval-chains', transformResponse: envelope, providesTags: ['DeptChain'] }),
       updateDeptChain: b.mutation({
         query: ({ department, ...body }) => ({ url: `/masters/dept-approval-chains/${department}`, method: 'PUT', body }),
@@ -35,4 +36,5 @@ export const {
   useGetMyTasksQuery,
   useGetDeptChainsQuery,
   useUpdateDeptChainMutation,
+  useGetMyRecentQuery,
 } = workflowApi;

@@ -59,7 +59,7 @@ function SimulateLot({ onClose }) {
   const { data: lookups } = useGetLookupsQuery();
   const form = useZodForm(sapMockLotSchema, {
     plantSapCode: '1115', itemCode: '123456', itemDescription: 'Compressor mounting bracket', itemCategory: 'Sheet Metal', uom: 'NOS',
-    vendorCode: 'V1001', vendorName: 'Acme Metals', grnNo: `GRN${Date.now().toString().slice(-6)}`, grnDate: today(), invoiceNo: `INV${Date.now().toString().slice(-5)}`, inwardQty: 500,
+    vendorCode: '105101', vendorName: 'MYND SOLUTIONS PRIVATE LIMITED', grnNo: `GRN${Date.now().toString().slice(-6)}`, grnDate: today(), invoiceNo: `INV${Date.now().toString().slice(-5)}`, inwardQty: 500,
   });
   const [add, { isLoading, error }] = useAddMockLotMutation();
   const [run] = useRunSapSyncMutation();

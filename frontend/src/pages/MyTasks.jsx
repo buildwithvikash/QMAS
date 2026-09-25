@@ -1,63 +1,90 @@
-import { ClipboardCheck, FileWarning, Inbox } from 'lucide-react';
+import { ArrowRight, CornerUpLeft, Inbox, Tablet, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useGetMyTasksQuery } from '../api/workflowApi.js';
 import { formatDateTime, formatRelative } from '../utils/format.js';
 import { DeviationStage } from './deviation/workflowUi.jsx';
 import { ImirResult } from './imir/imirUi.jsx';
+import { byUrgency, KIND, urgencyOf } from './home/taskUi.js';
 
-const DAY = 86_400_000;
+const EDGE = { overdue: 'bg-rose-500', due: 'bg-amber-400', stale: 'bg-rose-300', waiting: 'bg-amber-200', fresh: 'bg-transparent' };
 
-/** How long a task has waited, coloured once it is a day (amber) or three days (red) old. */
-function Age({ since }) {
-  const waited = Date.now() - new Date(since).getTime();
-  const tone = waited > 3 * DAY ? 'text-rose-700 font-semibold' : waited > DAY ? 'text-amber-700 font-medium' : 'text-slate-400';
-  return <span className={`text-xs whitespace-nowrap tabular ${tone}`} title={`Waiting since ${formatDateTime(since)}`}>{formatRelative(since)}</span>;
+/** Deadline or waiting time, in words and colour. */
+function When({ t }) {
+  const { level } = urgencyOf(t);
+  if (t.dueAt && (level === 'overdue' || level === 'due')) {
+    return (
+      <span className={`text-xs font-semibold whitespace-nowrap ${level === 'overdue' ? 'text-rose-700' : 'text-amber-700'}`} title={`Due ${formatDateTime(t.dueAt)}`}>
+        {level === 'overdue' ? `Overdue ${formatRelative(t.dueAt).replace(' ago', '')}` : `Due ${formatDateTime(t.dueAt).split(', ').at(-1)}`}
+      </span>
+    );
+  }
+  const tone = level === 'stale' ? 'text-rose-700 font-semibold' : level === 'waiting' ? 'text-amber-700 font-medium' : 'text-slate-400';
+  return <span className={`text-xs whitespace-nowrap tabular ${tone}`} title={`Waiting since ${formatDateTime(t.since)}`}>{formatRelative(t.since)}</span>;
 }
 
-/** Every IMIR and deviation waiting for the signed-in user, oldest first: the user's work queue. */
-export default function MyTasks() {
-  const { data: tasks, isLoading, error } = useGetMyTasksQuery(undefined, { pollingInterval: 60_000, refetchOnFocus: true });
+/**
+ * The user's work queue: most urgent first (overdue, due today, sent back), then oldest.
+ * `kind` narrows it to one kind of work, chosen on the tiles above.
+ */
+export default function MyTasks({ tasks, isLoading, error, kind, onClearKind }) {
+  const list = (tasks ?? []).filter((t) => !kind || t.kind === kind).sort(byUrgency);
   return (
-    <section className="card">
-      <div className="flex items-center gap-2 px-5 pt-4 pb-3 border-b border-slate-100">
-        <h2 className="text-base font-semibold text-slate-900">My tasks</h2>
-        {tasks?.length > 0 && <span className="rounded-full bg-blue-600 text-white text-xs font-semibold px-2 py-0.5 tabular">{tasks.length}</span>}
-        {tasks?.length > 0 && <span className="ml-auto text-xs text-slate-500">Oldest first</span>}
+    <section className="card overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100">
+        <h2 className="text-sm font-semibold text-slate-900">{kind ? KIND[kind].long : 'My tasks'}</h2>
+        {list.length > 0 && <span className="rounded-full bg-blue-600 text-white text-[11px] font-semibold px-2 py-px tabular">{list.length}</span>}
+        {kind && (
+          <button type="button" onClick={onClearKind} className="ml-1 inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 hover:bg-slate-200 cursor-pointer">
+            <X className="w-3 h-3" />Show all
+          </button>
+        )}
+        {list.length > 0 && <span className="ml-auto text-xs text-slate-400">Most urgent first</span>}
       </div>
-      {isLoading && <div className="p-5 space-y-3">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-12" />)}</div>}
-      {error && <p className="px-5 py-6 text-sm text-rose-700">Tasks could not be loaded. Check the connection; the list refreshes every minute.</p>}
-      {tasks?.length === 0 && (
-        <div className="flex items-center gap-3 px-5 py-8">
+      {isLoading && <div className="p-4 space-y-2">{[1, 2, 3, 4].map((i) => <div key={i} className="skeleton h-12" />)}</div>}
+      {error && <p className="px-4 py-6 text-sm text-rose-700">Tasks could not be loaded. Check the connection; the list refreshes every minute.</p>}
+      {!isLoading && !error && list.length === 0 && (
+        <div className="flex items-center gap-3 px-4 py-8">
           <span className="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center"><Inbox className="w-5 h-5 text-emerald-600" /></span>
           <div>
-            <p className="text-sm font-medium text-slate-800">Nothing is waiting for you</p>
+            <p className="text-sm font-medium text-slate-800">{kind ? 'Nothing of this kind is waiting for you' : 'Nothing is waiting for you'}</p>
             <p className="text-xs text-slate-500">New work appears here and in the bell as soon as it reaches you.</p>
           </div>
         </div>
       )}
-      {tasks?.length > 0 && (
+      {list.length > 0 && (
         <ul className="divide-y divide-slate-100">
-          {tasks.map((t) => {
-            const Icon = t.entity === 'IMIR' ? ClipboardCheck : FileWarning;
+          {list.map((t) => {
+            const k = KIND[t.kind];
+            const Icon = k.icon;
+            const { level } = urgencyOf(t);
             return (
-              <li key={`${t.entity}-${t.id}`}>
-                <Link to={t.entity === 'IMIR' ? `/imirs/${t.id}` : `/deviations/${t.id}`} className="group flex items-start gap-3 px-5 py-3.5 hover:bg-blue-50/40 transition-colors">
-                  <span className="mt-0.5 w-8 h-8 rounded-lg bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center shrink-0 transition-colors">
+              <li key={`${t.entity}-${t.id}`} className="relative">
+                <span className={`absolute left-0 top-0 bottom-0 w-1 ${EDGE[level]}`} aria-hidden="true" />
+                <Link to={t.link} className="group flex items-center gap-3 pl-4 pr-3 py-2.5 hover:bg-blue-50/50 transition-colors">
+                  <span className="w-8 h-8 rounded-lg bg-slate-100 group-hover:bg-blue-100 flex items-center justify-center shrink-0 transition-colors">
                     <Icon className="w-4 h-4 text-slate-500 group-hover:text-blue-700" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                       <span className="text-sm font-semibold text-slate-900">{t.task}</span>
-                      <span className="text-xs text-slate-500 tabular">{t.docNo}</span>
-                      {t.entity === 'IMIR' ? <ImirResult result={t.result} /> : <DeviationStage stage={t.stage} />}
+                      <span className="text-xs font-mono text-slate-500">{t.docNo}</span>
+                      {t.result && <ImirResult result={t.result} />}
+                      {t.stage && <DeviationStage stage={t.stage} />}
+                      {t.sentBack && <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-px text-[11px] font-semibold text-amber-900"><CornerUpLeft className="w-3 h-3" />Sent back</span>}
+                      {t.tablet && <span className="inline-flex items-center gap-0.5 text-[11px] text-slate-500" title="Checked out to this tablet"><Tablet className="w-3 h-3" />{t.tablet}</span>}
                     </div>
-                    <p className="text-xs text-slate-500 truncate mt-0.5">
-                      <span className="text-slate-700">{t.itemCode}</span> {t.itemDescription}, from {t.vendorName}
-                      {t.department ? ` (${t.department})` : ''}
+                    <p className="text-xs text-slate-500 truncate">
+                      <span className="text-slate-700">{t.itemCode}</span> {t.itemDescription}
+                      {t.vendorName && <> · {t.vendorName}</>}
+                      {t.department && <> · {t.department}</>}
+                      {t.qty && <> · {Number(t.qty).toLocaleString('en-IN')} {t.uom ?? ''}</>}
+                      {t.plantSapCode && <> · {t.plantSapCode}</>}
                     </p>
-                    {t.dueAt && t.stage === 'UNDER_DEVIATION' && <p className="text-xs text-amber-700 mt-0.5">Quantities due {formatDateTime(t.dueAt)}</p>}
+                    {t.note && <p className={`text-xs truncate ${t.sentBack ? 'text-amber-800' : 'text-slate-500'}`}>{t.sentBack ? `“${t.note}”` : t.note}</p>}
                   </div>
-                  <Age since={t.since} />
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <When t={t} />
+                    <span className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-blue-700 opacity-0 group-hover:opacity-100 transition-opacity">{k.verb}<ArrowRight className="w-3 h-3" /></span>
+                  </div>
                 </Link>
               </li>
             );

@@ -3,8 +3,8 @@ import { formatDateTime } from '../utils/format.js';
 import { useGetDashboardQuery } from '../api/dnApi.js';
 
 /**
- * Open work in the user's plants, as a short list: each line says what is waiting, how many, and
- * opens the list behind it. Lines that need attention are marked, not the whole panel.
+ * Open work in the user's plants as four figures (to inspect, in review, open deviations, open
+ * DNs), each opening its list; then how long open lots have waited, CAPA falling due and 30 days' intake.
  */
 export default function PlantStatus() {
   const { data: s, isLoading } = useGetDashboardQuery(undefined, { pollingInterval: 120_000 });
@@ -15,27 +15,23 @@ export default function PlantStatus() {
   const l = s.lots30Days;
   const nokPct = l.ok + l.nok ? Math.round((1000 * l.nok) / (l.ok + l.nok)) / 10 : null;
   const lines = [
-    { label: 'To inspect', value: n('OPEN', 'IN_INSPECTION'), note: st.AWAITING_FORMAT ? `${st.AWAITING_FORMAT} more waiting for a format` : null, warn: !!st.AWAITING_FORMAT, to: '/imirs' },
-    { label: 'In review', value: n('SUBMITTED', 'WITH_IQC_HEAD'), note: `${st.SUBMITTED ?? 0} with Incharge, ${st.WITH_IQC_HEAD ?? 0} with IQC Head`, to: '/imirs' },
+    { label: 'To inspect', value: n('OPEN', 'IN_INSPECTION'), note: st.AWAITING_FORMAT ? `+${st.AWAITING_FORMAT} waiting for a format` : null, warn: !!st.AWAITING_FORMAT, to: '/imirs' },
+    { label: 'In review', value: n('SUBMITTED', 'WITH_IQC_HEAD'), note: `${st.SUBMITTED ?? 0} Incharge · ${st.WITH_IQC_HEAD ?? 0} IQC Head`, to: '/imirs' },
     { label: 'Open deviations', value: s.openDeviations, note: s.deviationsByStage.SENIOR ? `${s.deviationsByStage.SENIOR} with senior authorities` : null, to: '/deviations' },
     { label: 'Open DNs', value: s.dn.open + s.dn.capaSubmitted, note: s.dn.capaOverdue ? `${s.dn.capaOverdue} CAPA overdue` : s.dn.capaSubmitted ? `${s.dn.capaSubmitted} CAPA to review` : null, warn: s.dn.capaOverdue > 0, to: '/dns' },
   ];
   return (
     <section className="card">
-      <h2 className="section-title px-4 pt-3.5 pb-2">Open work</h2>
-      <ul className="divide-y divide-slate-100">
-        {lines.map((x) => (
-          <li key={x.label}>
-            <Link to={x.to} className="flex items-baseline gap-3 px-4 py-2.5 hover:bg-slate-50 transition-colors">
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm text-slate-700">{x.label}</span>
-                {x.note && <span className={`block text-xs ${x.warn ? 'text-amber-700' : 'text-slate-500'}`}>{x.note}</span>}
-              </span>
-              <span className={`text-xl font-semibold tabular ${x.value ? 'text-slate-900' : 'text-slate-300'}`}>{x.value.toLocaleString('en-IN')}</span>
-            </Link>
-          </li>
+      <h2 className="section-title px-4 pt-3.5 pb-2">Plant at a glance</h2>
+      <div className="grid grid-cols-2 border-t border-slate-100">
+        {lines.map((x, i) => (
+          <Link key={x.label} to={x.to} className={`px-4 py-3 hover:bg-slate-50 transition-colors ${i % 2 ? 'border-l border-slate-100' : ''} ${i > 1 ? 'border-t border-slate-100' : ''}`}>
+            <span className="block text-xs text-slate-500">{x.label}</span>
+            <span className={`block text-2xl font-semibold tabular leading-tight ${x.value ? 'text-slate-900' : 'text-slate-300'}`}>{x.value.toLocaleString('en-IN')}</span>
+            {x.note && <span className={`block text-[11px] leading-snug ${x.warn ? 'text-amber-700 font-medium' : 'text-slate-500'}`}>{x.note}</span>}
+          </Link>
         ))}
-      </ul>
+      </div>
       <Ageing ageing={s.ageing} />
       {s.capaDue.length > 0 && (
         <div className="border-t border-slate-100 px-4 py-3">

@@ -57,6 +57,16 @@ npm -w @qmas/backend run worker   # SAP pull, deviation timers and CAPA reminder
 
 `create-admin` asks for a temporary password; the admin must change it at first sign-in.
 
+**Demo accounts for testing** (never in production): `npm run demo-users` creates one account per role
+(`DEMO-INSP`, `DEMO-INCH`, `DEMO-IQCHEAD`, `DEMO-SCM`, `DEMO-SCMSUB`, … `DEMO-CQA`, `DEMO-OPSHEAD`,
+`DEMO-AUDIT`), plant-scoped roles on plant 1115, all with one password that is printed once (or taken
+from `DEMO_PASSWORD`). Running it again resets them.
+
+**Mail:** set the SMTP values in `backend/.env` and run `npm run check-mail` to test the login (it
+sends nothing). While testing, `MAIL_REDIRECT_TO=<your address>` sends every notification to you,
+with the intended recipient in the subject. The worker (`npm -w @qmas/backend run worker`) sends
+queued mail every 30 seconds.
+
 ## Tests
 
 ```bash

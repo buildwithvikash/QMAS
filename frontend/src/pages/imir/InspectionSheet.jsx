@@ -1,5 +1,5 @@
-import { dimensionalDecision, MAX_SAMPLES, SECTION_LABELS } from '@qmas/shared';
-import { ArrowDown, ArrowUp, Camera, Check, CheckCheck, Paperclip, Plus, X } from 'lucide-react';
+import { dimensionalDecision, MAX_SAMPLES } from '@qmas/shared';
+import { ArrowDown, ArrowUp, Camera, Check, CheckCheck, MessageSquareText, Paperclip, Plus, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import Badge from '../../components/ui/Badge.jsx';
 import { formatDate } from '../../utils/format.js';
@@ -14,172 +14,266 @@ const ResultPill = ({ result }) =>
   result === 'OK' ? <Badge variant="success">OK</Badge> : result === 'NOK' ? <Badge variant="danger">NOK</Badge> : <span className="text-xs text-slate-300">—</span>;
 
 /**
- * The inspection grid, laid out like the JIR sheet. Samples 1..n are required (green), the rest
- * optional (grey). Every change is reported as a save patch through `onPatch`; the parent decides
- * whether it goes to the server (online) or the tablet's queue (offline).
+ * The inspection report grid, laid out like the JIR sheet and split into tabs by the page
+ * (`tab`: 'dim' or 'visrel'; the sign-off tab is the page's own). X1…Xn are the required samples
+ * (green); optional ones appear on request. Every change goes out as a save patch through
+ * `onPatch`; the parent decides whether it goes to the server or the tablet's queue.
  */
-export default function InspectionSheet({ sheet, readOnly = false, onPatch, photosByCell = {}, onAddPhoto, onOpenPhotos }) {
+export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch, photosByCell = {}, onAddPhoto, onOpenPhotos }) {
   const n = sheet.sampleSize;
   const byCell = new Map(sheet.cells.map((c) => [cellKey(c.checkpointUid, c.sampleNo), c]));
   const results = sheet.evaluation?.checkpointResults ?? {};
   const dims = sheet.checkpoints.filter((c) => c.section === 'DIMENSIONAL');
   const vis = sheet.checkpoints.filter((c) => c.section === 'VISUAL');
   const rel = sheet.checkpoints.filter((c) => c.section === 'RELIABILITY');
-  // Only the required samples by default; optional ones on request (or when some are filled).
   const usesOptional = sheet.cells.some((c) => c.sampleNo > n);
   const [optionalOpen, setOptionalOpen] = useState(false);
   const showOptional = optionalOpen || usesOptional;
   const shown = SAMPLES.filter((s) => s <= n || showOptional);
   const lastCol = shown.length;
+  const canAddOptional = !showOptional && n < MAX_SAMPLES && !readOnly;
 
-  const filled = (list, has) => list.reduce((a, cp) => a + SAMPLES.filter((s) => s <= n && has(byCell.get(cellKey(cp.uid, s)))).length, 0);
-  const dimDone = filled(dims, (c) => c?.value != null);
-  const visDone = filled(vis, (c) => c?.ok != null);
-
-  const header = (
-    <tr className="text-xs font-semibold text-slate-600">
-      <th className="px-3 py-2 text-left min-w-44">Check point</th>
+  const th = 'px-2 py-2 text-xs font-semibold text-slate-600 whitespace-nowrap border-b border-slate-200';
+  const sampleHeads = (
+    <>
       {shown.map((s) => (
-        <th key={s} className={`px-1 py-2 text-center w-20 ${s <= n ? 'text-emerald-800' : 'text-slate-400'}`} title={s <= n ? 'Required sample' : 'Optional sample'}>
-          S{s}
-        </th>
+        <th key={s} className={`${th} text-center w-[4.5rem] ${s <= n ? 'text-emerald-800 bg-emerald-50/70' : 'text-slate-400'}`} title={s <= n ? 'Required sample' : 'Optional sample'}>X{s}</th>
       ))}
-      {!showOptional && n < MAX_SAMPLES && !readOnly && (
-        <th className="px-1 py-2 w-24">
-          <button type="button" onClick={() => setOptionalOpen(true)} className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-700 hover:underline cursor-pointer" title="Show optional samples">
-            <Plus className="w-3 h-3" />S{n + 1}–S{MAX_SAMPLES}
+      {canAddOptional && (
+        <th className={`${th} w-16`}>
+          <button type="button" onClick={() => setOptionalOpen(true)} className="inline-flex items-center gap-0.5 text-[11px] font-medium text-blue-700 hover:underline cursor-pointer" title="Add optional samples">
+            <Plus className="w-3 h-3" />X{n + 1}+
           </button>
         </th>
       )}
-      <th className="px-2 py-2 text-center w-16">Result</th>
-      <th className="px-2 py-2 text-left min-w-40">Remark</th>
-    </tr>
+    </>
   );
-  const spacer = !showOptional && n < MAX_SAMPLES && !readOnly ? <td /> : null;
+  const tail = (
+    <>
+      <th className={`${th} text-center w-16`}>OK / NOK</th>
+    </>
+  );
+  const spacer = canAddOptional ? <td /> : null;
+  // Remarks live with the check point (no separate columns): the inspector's is editable from the
+  // small note button; the Incharge's, set during review, is shown under the name.
+  const remarkNote = (cp) => (
+    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+      <RemarkButton who="Inspector" value={cp.inspectorRemark} readOnly={readOnly} onCommit={(v) => onPatch({ entries: [{ checkpointUid: cp.uid, inspectorRemark: v }] })} />
+      {cp.inchargeRemark && <span className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Incharge: {cp.inchargeRemark}</span>}
+    </div>
+  );
 
-  return (
-    <div className="space-y-5">
-      {dims.length > 0 && (
-        <Section title={SECTION_LABELS.DIMENSIONAL} note="Type each reading; Enter moves to the next cell." done={dimDone} total={dims.length * n}>
-          <thead className="bg-blue-50/70">{header}</thead>
-          <tbody className="divide-y divide-slate-100">
-            {dims.map((cp, ri) => (
-              <tr key={cp.uid}>
-                <td className="px-2 py-2 align-top">
-                  <div className="font-semibold text-slate-800">{cp.checkpoint}</div>
-                  <div className="text-xs text-slate-500 tabular">
-                    {cp.lsl !== null ? fmtNum(cp.lsl) : '—'} … {cp.usl !== null ? fmtNum(cp.usl) : '—'} {cp.uom ?? ''}
-                    {cp.instrument && <span className="text-slate-400"> · {cp.instrument}</span>}
-                  </div>
+  if (tab === 'dim') {
+    if (!dims.length) return <EmptyTab text="This format has no dimensional checks." />;
+    return (
+      <Table note="Type each reading; Enter moves to the next cell. Out-of-limit readings turn red with an arrow.">
+        <thead className="bg-slate-50">
+          <tr>
+            <th className={`${th} text-left w-12`}>SR</th>
+            <th className={`${th} text-left min-w-36`}>Check point</th>
+            <th className={`${th} text-right`}>LSL</th>
+            <th className={`${th} text-right`}>USL</th>
+            <th className={`${th} text-left min-w-32`}>Specification</th>
+            <th className={`${th} text-left`}>UOM</th>
+            <th className={`${th} text-left`}>Instrument</th>
+            {sampleHeads}
+            {tail}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {dims.map((cp, ri) => (
+            <tr key={cp.uid} className={results[cp.uid] === 'NOK' ? 'bg-rose-50/30' : ''}>
+              <td className="px-2 py-1.5 text-slate-500 tabular">{ri + 1}</td>
+              <td className="px-2 py-1.5">
+                <div className="font-semibold text-slate-900">{cp.checkpoint}</div>
+                {(!readOnly || cp.inspectorRemark || cp.inchargeRemark) && remarkNote(cp)}
+              </td>
+              <td className="px-2 py-1.5 text-right tabular text-slate-700">{cp.lsl !== null ? fmtNum(cp.lsl) : '—'}</td>
+              <td className="px-2 py-1.5 text-right tabular text-slate-700">{cp.usl !== null ? fmtNum(cp.usl) : '—'}</td>
+              <td className="px-2 py-1.5 text-xs text-slate-600">{cp.specification}</td>
+              <td className="px-2 py-1.5 text-xs text-slate-600">{cp.uom ?? '—'}</td>
+              <td className="px-2 py-1.5 text-xs text-slate-600">{cp.instrument ?? '—'}</td>
+              {shown.map((s, ci) => (
+                <td key={s} className={`px-1 py-1.5 ${s <= n ? 'bg-emerald-50/40' : ''}`}>
+                  <DimCell cp={cp} sampleNo={s} row={ri} col={ci + 1} lastCol={lastCol} value={byCell.get(cellKey(cp.uid, s))?.value ?? null} readOnly={readOnly}
+                    onCommit={(value) => onPatch({ cells: [{ checkpointUid: cp.uid, sampleNo: s, value }] })} />
                 </td>
-                {shown.map((s, ci) => (
-                  <td key={s} className={`px-1 py-1.5 ${s <= n ? 'bg-emerald-50/60' : 'bg-slate-50'}`}>
-                    <DimCell cp={cp} sampleNo={s} row={ri} col={ci + 1} lastCol={lastCol} value={byCell.get(cellKey(cp.uid, s))?.value ?? null} readOnly={readOnly}
-                      onCommit={(value) => onPatch({ cells: [{ checkpointUid: cp.uid, sampleNo: s, value }] })} />
-                  </td>
-                ))}
-                {spacer}
-                <td className="px-2 text-center"><ResultPill result={results[cp.uid]} /></td>
-                <td className="px-2"><RemarkInput value={cp.inspectorRemark} incharge={cp.inchargeRemark} readOnly={readOnly} onCommit={(v) => onPatch({ entries: [{ checkpointUid: cp.uid, inspectorRemark: v }] })} /></td>
+              ))}
+              {spacer}
+              <td className="px-2 text-center"><ResultPill result={results[cp.uid]} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </Table>
+    );
+  }
+
+  if (tab === 'visrel') {
+    if (!vis.length && !rel.length) return <EmptyTab text="This format has no visual or reliability checks." />;
+    return (
+      <div className="space-y-4">
+        {vis.length > 0 && (
+          <Table title="Visual test" note="Tap once for OK, twice for NOK, three times to clear. Any NOK makes the check NOK.">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className={`${th} text-left w-12`}>SR</th>
+                <th className={`${th} text-left min-w-36`}>Check point</th>
+                <th className={`${th} text-left min-w-40`}>Specification</th>
+                <th className={`${th} text-left`}>Instrument / method</th>
+                {sampleHeads}
+                {tail}
               </tr>
-            ))}
-          </tbody>
-        </Section>
-      )}
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {vis.map((cp, ri) => {
+                const emptyRequired = SAMPLES.filter((s) => s <= n && byCell.get(cellKey(cp.uid, s))?.ok == null);
+                return (
+                  <tr key={cp.uid} className={results[cp.uid] === 'NOK' ? 'bg-rose-50/30' : ''}>
+                    <td className="px-2 py-1.5 text-slate-500 tabular align-top pt-3">{ri + 1}</td>
+                    <td className="px-2 py-1.5 align-top pt-2.5">
+                      <div className="font-semibold text-slate-900">{cp.checkpoint}</div>
+                      {(!readOnly || cp.inspectorRemark || cp.inchargeRemark) && remarkNote(cp)}
+                      {!readOnly && (
+                        <div className="mt-1 flex gap-1">
+                          {emptyRequired.length > 0 && (
+                            <button type="button" onClick={() => onPatch({ cells: emptyRequired.map((s) => ({ checkpointUid: cp.uid, sampleNo: s, ok: true })) })}
+                              className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800 cursor-pointer hover:bg-emerald-100">
+                              <CheckCheck className="w-3.5 h-3.5" />All OK
+                            </button>
+                          )}
+                          {onAddPhoto && (
+                            <button type="button" onClick={() => onAddPhoto(cp)} className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-700 cursor-pointer hover:bg-slate-50">
+                              <Camera className="w-3.5 h-3.5" />Photo
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 text-xs text-slate-600 align-top pt-3">{cp.specification}</td>
+                    <td className="px-2 py-1.5 text-xs text-slate-600 align-top pt-3">{cp.instrument ?? 'Visual'}</td>
+                    {shown.map((s, ci) => {
+                      const ok = byCell.get(cellKey(cp.uid, s))?.ok ?? null;
+                      const photos = photosByCell[cellKey(cp.uid, s)] ?? 0;
+                      return (
+                        <td key={s} className={`px-1 py-1.5 text-center ${s <= n ? 'bg-emerald-50/40' : ''}`}>
+                          <button
+                            type="button"
+                            disabled={readOnly}
+                            data-nav="vis" data-row={ri} data-col={ci + 1} data-cp={cp.uid} data-sample={s}
+                            onKeyDown={(e) => {
+                              const step = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowDown: [1, 0], ArrowUp: [-1, 0] }[e.key];
+                              if (step && moveFocus(e.currentTarget, step[0], step[1], lastCol)) e.preventDefault();
+                            }}
+                            aria-label={`${cp.checkpoint} X${s}: ${ok === true ? 'OK' : ok === false ? 'NOK' : 'empty'}`}
+                            onClick={() => onPatch({ cells: [{ checkpointUid: cp.uid, sampleNo: s, ok: ok === null ? true : ok === true ? false : null }] })}
+                            className={`w-full h-10 rounded-lg border-2 flex items-center justify-center transition-colors cursor-pointer disabled:cursor-default ${
+                              ok === true ? 'border-emerald-400 bg-emerald-100 text-emerald-800' : ok === false ? 'border-rose-500 bg-rose-100 text-rose-800' : 'border-dashed border-slate-300 bg-white text-slate-300'
+                            }`}
+                          >
+                            {ok === true ? <Check className="w-5 h-5" /> : ok === false ? <X className="w-5 h-5" /> : null}
+                          </button>
+                          {photos > 0 && (
+                            <button type="button" onClick={() => onOpenPhotos?.(cp, s)} className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-700 cursor-pointer">
+                              <Paperclip className="w-3 h-3" />{photos}
+                            </button>
+                          )}
+                        </td>
+                      );
+                    })}
+                    {spacer}
+                    <td className="px-2 text-center"><ResultPill result={results[cp.uid]} /></td>
+                        </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        )}
 
-      {vis.length > 0 && (
-        <Section title={SECTION_LABELS.VISUAL} note="Tap once for OK, twice for NOK, three times to clear. Any NOK makes the check NOK." done={visDone} total={vis.length * n}>
-          <thead className="bg-blue-50/70">{header}</thead>
-          <tbody className="divide-y divide-slate-100">
-            {vis.map((cp, ri) => {
-              const emptyRequired = SAMPLES.filter((s) => s <= n && byCell.get(cellKey(cp.uid, s))?.ok == null);
-              return (
-                <tr key={cp.uid}>
-                  <td className="px-2 py-2 align-top">
-                    <div className="font-semibold text-slate-800">{cp.checkpoint}</div>
-                    <div className="text-xs text-slate-500">{cp.specification}</div>
-                    {!readOnly && (
-                      <div className="mt-1 flex gap-1">
-                        {emptyRequired.length > 0 && (
-                          <button type="button" onClick={() => onPatch({ cells: emptyRequired.map((s) => ({ checkpointUid: cp.uid, sampleNo: s, ok: true })) })}
-                            className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 cursor-pointer">
-                            <CheckCheck className="w-3.5 h-3.5" />All OK
-                          </button>
-                        )}
-                        {onAddPhoto && (
-                          <button type="button" onClick={() => onAddPhoto(cp)} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 cursor-pointer">
-                            <Camera className="w-3.5 h-3.5" />Photo
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  {shown.map((s, ci) => {
-                    const ok = byCell.get(cellKey(cp.uid, s))?.ok ?? null;
-                    const photos = photosByCell[cellKey(cp.uid, s)] ?? 0;
-                    return (
-                      <td key={s} className={`px-1 py-1.5 text-center ${s <= n ? 'bg-emerald-50/60' : 'bg-slate-50'}`}>
-                        <button
-                          type="button"
-                          disabled={readOnly}
-                          data-nav="vis" data-row={ri} data-col={ci + 1} data-cp={cp.uid} data-sample={s}
-                          onKeyDown={(e) => {
-                            const step = { ArrowRight: [0, 1], ArrowLeft: [0, -1], ArrowDown: [1, 0], ArrowUp: [-1, 0] }[e.key];
-                            if (step && moveFocus(e.currentTarget, step[0], step[1], lastCol)) e.preventDefault();
-                          }}
-                          aria-label={`${cp.checkpoint} sample ${s}: ${ok === true ? 'OK' : ok === false ? 'NOK' : 'empty'}`}
-                          onClick={() => onPatch({ cells: [{ checkpointUid: cp.uid, sampleNo: s, ok: ok === null ? true : ok === true ? false : null }] })}
-                          className={`w-full h-11 rounded-lg border-2 flex items-center justify-center transition-colors cursor-pointer disabled:cursor-default ${
-                            ok === true ? 'border-emerald-400 bg-emerald-100 text-emerald-700' : ok === false ? 'border-rose-400 bg-rose-100 text-rose-700' : 'border-dashed border-slate-300 bg-white text-slate-300'
-                          }`}
-                        >
-                          {ok === true ? <Check className="w-5 h-5" /> : ok === false ? <X className="w-5 h-5" /> : null}
-                        </button>
-                        {photos > 0 && (
-                          <button type="button" onClick={() => onOpenPhotos?.(cp, s)} className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-600 cursor-pointer">
-                            <Paperclip className="w-3 h-3" />{photos}
-                          </button>
-                        )}
-                      </td>
-                    );
-                  })}
-                  {spacer}
-                  <td className="px-2 text-center"><ResultPill result={results[cp.uid]} /></td>
-                  <td className="px-2"><RemarkInput value={cp.inspectorRemark} incharge={cp.inchargeRemark} readOnly={readOnly} onCommit={(v) => onPatch({ entries: [{ checkpointUid: cp.uid, inspectorRemark: v }] })} /></td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </Section>
-      )}
+        {rel.length > 0 && (
+          <Table title="Reliability test" note="Tests are due by frequency for this item and vendor; a test that is not due can be skipped.">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className={`${th} text-left w-12`}>SR</th>
+                <th className={`${th} text-left min-w-36`}>Check point</th>
+                <th className={`${th} text-left min-w-40`}>Specification</th>
+                <th className={`${th} text-left`}>Frequency</th>
+                <th className={`${th} text-left min-w-64`}>Observation</th>
+                <th className={`${th} text-center w-32`}>OK / NOK</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {rel.map((cp, ri) => <ReliabilityRow key={cp.uid} sr={ri + 1} cp={cp} readOnly={readOnly} onPatch={onPatch} remarks={remarkNote(cp)} />)}
+            </tbody>
+          </Table>
+        )}
+      </div>
+    );
+  }
+  return null;
+}
 
-      {rel.length > 0 && (
-        <section className="card overflow-hidden">
-          <h3 className="px-4 py-2.5 text-sm font-bold text-slate-700 bg-slate-50 border-b border-slate-200">{SECTION_LABELS.RELIABILITY} test</h3>
-          <div className="divide-y divide-slate-100">
-            {rel.map((cp) => <ReliabilityRow key={cp.uid} cp={cp} readOnly={readOnly} onPatch={onPatch} />)}
-          </div>
-        </section>
+const EmptyTab = ({ text }) => <div className="card p-8 text-center text-sm text-slate-500">{text}</div>;
+
+const Table = ({ title, note, children }) => (
+  <section className="card overflow-hidden">
+    {(title || note) && (
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5 border-b border-slate-200">
+        {title && <h3 className="text-sm font-semibold text-slate-900">{title}</h3>}
+        {note && <span className="text-xs text-slate-500">{note}</span>}
+      </div>
+    )}
+    <div className="overflow-x-auto"><table className="w-full text-sm">{children}</table></div>
+  </section>
+);
+
+/**
+ * Remark column: an icon that shows whether there is a remark; opens a small editor (inspector) or
+ * reader (Incharge, whose remarks come from the review).
+ */
+function RemarkButton({ who, value, readOnly, onCommit }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(value ?? '');
+  const ref = useRef(null);
+  useEffect(() => setText(value ?? ''), [value]);
+  useEffect(() => {
+    if (!open) return undefined;
+    const close = (e) => !ref.current?.contains(e.target) && setOpen(false);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  const save = () => {
+    if ((text.trim() || null) !== (value ?? null)) onCommit?.(text.trim() || null);
+    setOpen(false);
+  };
+  if (readOnly && !value) return null;
+  const tone = value ? 'text-blue-800 bg-blue-50 border-blue-200' : 'text-slate-500 border-slate-200 hover:border-slate-400';
+  return (
+    <div ref={ref} className="relative inline-block">
+      <button type="button" onClick={() => setOpen((o) => !o)} title={value ?? 'Add a remark'} aria-label={`${who} remark${value ? `: ${value}` : ''}`}
+        className={`max-w-48 h-7 px-1.5 rounded-md border inline-flex items-center gap-1 text-[11px] cursor-pointer ${tone}`}>
+        <MessageSquareText className="w-3.5 h-3.5 shrink-0" />
+        <span className="truncate">{value ?? 'Remark'}</span>
+      </button>
+      {open && (
+        <div className="animate-fadeIn absolute left-0 top-8 z-30 w-64 card shadow-lift p-3 text-left">
+          <p className="text-xs font-medium text-slate-600 mb-1.5">{who} remark</p>
+          {readOnly ? (
+            <p className="text-sm text-slate-800 whitespace-pre-line">{value}</p>
+          ) : (
+            <>
+              <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} maxLength={500} rows={3}
+                className="w-full px-2.5 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500" />
+              <div className="mt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setOpen(false)} className="px-2.5 py-1 text-xs rounded-md text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button>
+                <button type="button" onClick={save} className="px-2.5 py-1 text-xs rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-700 cursor-pointer">Save remark</button>
+              </div>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
 }
-
-const Section = ({ title, note, done, total, children }) => (
-  <section className="card overflow-hidden">
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 border-b border-slate-200">
-      <h3 className="text-sm font-semibold text-slate-900">{title} test</h3>
-      <span className="text-xs text-slate-500">{note}</span>
-      {total > 0 && (
-        <span className="ml-auto flex items-center gap-2 text-xs text-slate-600" aria-label={`${done} of ${total} required entries filled`}>
-          <span className="w-24 h-1.5 rounded-full bg-slate-100 overflow-hidden"><span className={`block h-full rounded-full ${done === total ? 'bg-emerald-500' : 'bg-blue-500'}`} style={{ width: `${(done / total) * 100}%` }} /></span>
-          <span className="tabular font-medium">{done}/{total}</span>
-        </span>
-      )}
-    </div>
-    <div className="overflow-x-auto"><table className="w-full text-sm">{children}</table></div>
-  </section>
-);
 
 /** Numeric cell: keeps what is typed locally and commits a valid reading on blur / Enter. */
 function DimCell({ cp, sampleNo, row, col, lastCol, value, readOnly, onCommit }) {
@@ -203,7 +297,7 @@ function DimCell({ cp, sampleNo, row, col, lastCol, value, readOnly, onCommit })
   const Dir = high ? ArrowUp : ArrowDown;
   if (readOnly) {
     return (
-      <div title={hint} className={`h-11 flex items-center justify-center gap-0.5 rounded-lg tabular text-sm font-semibold ${decision === 'NOK' ? 'bg-rose-100 text-rose-700' : 'text-slate-800'}`}>
+      <div title={hint} className={`h-10 flex items-center justify-center gap-0.5 rounded-lg tabular text-sm font-semibold ${decision === 'NOK' ? 'bg-rose-100 text-rose-800' : 'text-slate-800'}`}>
         {text || '—'}{decision === 'NOK' && <Dir className="w-3.5 h-3.5" aria-hidden="true" />}
       </div>
     );
@@ -226,16 +320,17 @@ function DimCell({ cp, sampleNo, row, col, lastCol, value, readOnly, onCommit })
         inputMode="decimal"
         enterKeyHint="next"
         data-nav="dim" data-row={row} data-col={col} data-cp={cp.uid} data-sample={sampleNo}
-        aria-label={`${cp.checkpoint} sample ${sampleNo}`}
+        aria-label={`${cp.checkpoint} X${sampleNo}`}
         aria-invalid={!valid || decision === 'NOK'}
         aria-description={hint}
         title={hint}
+        placeholder={`X${sampleNo}`}
         value={text}
         onFocus={(e) => { focused.current = true; e.currentTarget.select(); }}
         onChange={(e) => setText(e.target.value.replace(',', '.').replace(/[^\d.-]/g, ''))}
         onBlur={commit}
         onKeyDown={onKeyDown}
-        className={`w-full h-11 rounded-lg border-2 px-1 text-center text-base tabular font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${
+        className={`w-full h-10 rounded-lg border-2 px-1 text-center text-[15px] tabular font-semibold placeholder:font-normal placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${
           !valid ? 'border-amber-400 bg-amber-50' : decision === 'NOK' ? 'border-rose-500 bg-rose-100 text-rose-800' : decision === 'OK' ? 'border-emerald-400 bg-white text-emerald-800' : 'border-slate-300 bg-white'
         }`}
       />
@@ -244,61 +339,49 @@ function DimCell({ cp, sampleNo, row, col, lastCol, value, readOnly, onCommit })
   );
 }
 
-/** Inspector's remark; the Incharge's remark (from a review) is shown under it. */
-function RemarkInput({ value, incharge, readOnly, onCommit }) {
-  const [text, setText] = useState(value ?? '');
-  useEffect(() => setText(value ?? ''), [value]);
-  const note = incharge && <div className="mt-0.5 text-[11px] text-amber-700">Incharge: {incharge}</div>;
-  if (readOnly) return <><span className="text-xs text-slate-500">{value ?? ''}</span>{note}</>;
-  return (
-    <>
-      <input value={text} onChange={(e) => setText(e.target.value)} onBlur={() => (text || null) !== (value ?? null) && onCommit(text || null)}
-        placeholder="Optional" aria-label="Remark"
-        className="w-full px-2 py-2 rounded-md border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
-      {note}
-    </>
-  );
-}
-
-function ReliabilityRow({ cp, readOnly, onPatch }) {
+function ReliabilityRow({ sr, cp, readOnly, onPatch, remarks }) {
   const [text, setText] = useState(cp.textObservation ?? '');
   useEffect(() => setText(cp.textObservation ?? ''), [cp.textObservation]);
   const due = cp.isRequired;
   return (
-    <div className={`p-4 grid gap-3 lg:grid-cols-[1fr_1.4fr_auto] ${due ? '' : 'bg-slate-50'}`}>
-      <div>
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-slate-800">{cp.checkpoint}</span>
-          {due ? <Badge variant="warning">Due on this lot</Badge> : <Badge variant="neutral">Not due</Badge>}
+    <tr className={due ? '' : 'bg-slate-50/70'}>
+      <td className="px-2 py-2 text-slate-500 tabular align-top pt-3">{sr}</td>
+      <td className="px-2 py-2 align-top">
+        <div className="font-semibold text-slate-900">{cp.checkpoint}</div>
+        <div className="mt-1">{due ? <Badge variant="warning">Due on this lot</Badge> : <Badge variant="neutral">Not due</Badge>}</div>
+        {(!readOnly || cp.inspectorRemark || cp.inchargeRemark) && remarks}
+      </td>
+      <td className="px-2 py-2 text-xs text-slate-600 align-top pt-3">{cp.specification}</td>
+      <td className="px-2 py-2 text-xs text-slate-600 align-top pt-3 whitespace-nowrap">
+        {cp.frequencyMonths ? `Every ${cp.frequencyMonths} months` : 'Every lot'}
+        <div className="text-slate-400">{cp.lastTestedAt ? `last ${formatDate(cp.lastTestedAt)}` : 'never tested'}</div>
+      </td>
+      <td className="px-2 py-2 align-top">
+        <textarea
+          data-cp={cp.uid} data-entry
+          aria-label={`${cp.checkpoint} observation`}
+          disabled={readOnly}
+          value={text}
+          rows={2}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={() => (text || null) !== (cp.textObservation ?? null) && onPatch({ entries: [{ checkpointUid: cp.uid, textObservation: text || null }] })}
+          placeholder={due ? 'What was observed (required)' : 'What was observed (if tested)'}
+          className="w-full px-2.5 py-2 rounded-lg border border-slate-300 text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 disabled:bg-transparent disabled:border-transparent"
+        />
+      </td>
+      <td className="px-2 py-2 align-top">
+        <div className="flex rounded-lg border border-slate-300 overflow-hidden" role="radiogroup" aria-label={`${cp.checkpoint} result`}>
+          {['OK', 'NOK'].map((r) => (
+            <button key={r} type="button" disabled={readOnly} role="radio" aria-checked={cp.manualResult === r}
+              onClick={() => onPatch({ entries: [{ checkpointUid: cp.uid, manualResult: cp.manualResult === r ? null : r }] })}
+              className={`flex-1 h-10 text-sm font-bold cursor-pointer disabled:cursor-default transition-colors ${
+                cp.manualResult === r ? (r === 'OK' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white') : 'bg-white text-slate-400 hover:bg-slate-50'
+              }`}>
+              {r}
+            </button>
+          ))}
         </div>
-        <p className="text-xs text-slate-500 mt-1">{cp.specification}</p>
-        <p className="text-xs text-slate-400 mt-1">
-          {cp.frequencyMonths ? `Every ${cp.frequencyMonths} months` : 'Every lot'}
-          {cp.lastTestedAt ? ` · last tested ${formatDate(cp.lastTestedAt)}` : ' · never tested for this vendor'}
-          {!due && ' · optional now'}
-        </p>
-      </div>
-      <textarea
-        data-cp={cp.uid} data-entry
-        aria-label={`${cp.checkpoint} observation`}
-        disabled={readOnly}
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onBlur={() => (text || null) !== (cp.textObservation ?? null) && onPatch({ entries: [{ checkpointUid: cp.uid, textObservation: text || null }] })}
-        placeholder={due ? 'What was observed (required)' : 'What was observed (if tested)'}
-        className="min-h-20 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-transparent"
-      />
-      <div className="flex lg:flex-col gap-2" role="radiogroup" aria-label={`${cp.checkpoint} result`}>
-        {['OK', 'NOK'].map((r) => (
-          <button key={r} type="button" disabled={readOnly} role="radio" aria-checked={cp.manualResult === r}
-            onClick={() => onPatch({ entries: [{ checkpointUid: cp.uid, manualResult: cp.manualResult === r ? null : r }] })}
-            className={`h-11 min-w-20 rounded-lg border-2 font-bold cursor-pointer disabled:cursor-default ${
-              cp.manualResult === r ? (r === 'OK' ? 'border-emerald-400 bg-emerald-100 text-emerald-700' : 'border-rose-400 bg-rose-100 text-rose-700') : 'border-slate-200 bg-white text-slate-400'
-            }`}>
-            {r}
-          </button>
-        ))}
-      </div>
-    </div>
+      </td>
+    </tr>
   );
 }

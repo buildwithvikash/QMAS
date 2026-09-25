@@ -97,16 +97,11 @@ export const ROUTE_SECTIONS = [
     icon: SlidersHorizontal,
     subgroups: [
       { key: 'org', label: 'Organisation' },
-      { key: 'material', label: 'Material' },
       { key: 'inspection', label: 'Inspection' },
     ],
     items: [
       { path: '/masters/plants', label: 'Plants', group: 'org', permission: P.MASTERS_VIEW, element: <MasterListPage key="plants" resource="plants" /> },
       { path: '/masters/number-series', label: 'Number Series', group: 'org', permission: P.MASTERS_VIEW, element: <NumberSeriesPage /> },
-      { path: '/masters/vendors', label: 'Vendors', group: 'material', permission: P.MASTERS_VIEW, element: <MasterListPage key="vendors" resource="vendors" /> },
-      { path: '/masters/items', label: 'Items', group: 'material', permission: P.MASTERS_VIEW, element: <MasterListPage key="items" resource="items" /> },
-      { path: '/masters/item-categories', label: 'Item Categories', group: 'material', permission: P.MASTERS_VIEW, element: <MasterListPage key="item-categories" resource="item-categories" /> },
-      { path: '/masters/uoms', label: 'Units of Measure', group: 'material', permission: P.MASTERS_VIEW, element: <MasterListPage key="uoms" resource="uoms" /> },
       { path: '/masters/instruments', label: 'Instruments', group: 'inspection', permission: P.MASTERS_VIEW, element: <MasterListPage key="instruments" resource="instruments" /> },
       { path: '/masters/sampling', label: 'Sampling Table', group: 'inspection', permission: P.MASTERS_VIEW, element: <SamplingTablePage /> },
       { path: '/masters/approval-chain', label: 'Deviation Approval', group: 'inspection', permission: P.MASTERS_VIEW, element: <ApprovalChainPage /> },
