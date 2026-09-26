@@ -80,9 +80,13 @@ export const deviationActionSchema = z.discriminatedUnion('action', [
 
 export const deviationListQuery = listQuery.extend({
   stage: z.enum(DEVIATION_STAGES).optional(),
+  stageGroup: z.enum(['DEPARTMENT', 'QUANTITIES']).optional(),
   open: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
   department: z.enum(DEPARTMENTS).optional(),
   plantId: z.coerce.number().int().positive().optional(),
+  vendorId: z.coerce.number().int().positive().optional(),
+  from: z.iso.date().optional(),
+  to: z.iso.date().optional(),
   filter: filterParam.optional(),
 });
 

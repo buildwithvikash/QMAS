@@ -44,7 +44,7 @@ export default function Home() {
         <div className="hidden md:flex flex-wrap justify-end gap-1 max-w-md">
           {user.roles.map((r) => (
             <span key={`${r.roleCode}-${r.plantSapCode ?? ''}`} className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
-              {r.roleName}{r.plantSapCode ? ` · ${r.plantSapCode}` : ''}
+              {r.roleName}{r.plantName ? ` · ${r.plantName}` : ''}
             </span>
           ))}
         </div>

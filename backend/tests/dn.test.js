@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { getPool } from '../src/db/pool.js';
 import { runCapaReminders } from '../src/modules/dn/dn.service.js';
@@ -158,6 +159,28 @@ describe('defect notification', () => {
     ok(await act(A.incharge, dn.id, { action: 'submit_capa', remark: 'One-off handling damage' }));
     const d = ok(await act(A.head, dn.id, { action: 'approve_capa' }));
     expect(d).toMatchObject({ status: 'CLOSED', capas: [] });
+  });
+
+  it('exports the DN and the IMIR in the review-workbook formats as Excel', async () => {
+    const m = await escalatedLot();
+    const dn = ok(await A.incharge.post('/api/v1/dns').send({ imirId: m.id }));
+    await A.incharge.post(`/api/v1/dns/${dn.id}/attachments`).field('kind', 'IMAGE').attach('file', PNG, 'defect.png');
+    const buf = (res, cb) => { const c = []; res.on('data', (x) => c.push(x)); res.on('end', () => cb(null, Buffer.concat(c))); };
+    for (const [url, title, name] of [[`/api/v1/dns/${dn.id}/xlsx`, 'DEFECT NOTIFICATION', dn.dnNo], [`/api/v1/imirs/${m.id}/xlsx`, 'IMIR - INCOMING MATERIAL INSPECTION REPORT', m.imirNo]]) {
+      const res = await A.head.get(url).buffer(true).parse(buf);
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toBe('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      expect(res.headers['content-disposition']).toBe(`attachment; filename="${name}.xlsx"`);
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(res.body);
+      const ws = wb.worksheets[0];
+      const texts = [];
+      ws.eachRow((row) => row.eachCell((c) => { if (!c.isMerged || c.master.address === c.address) texts.push(c.text); }));
+      expect(texts.some((t) => t.includes(title))).toBe(true);
+      expect(texts).toContain(name);
+      expect(ws.getImages().length).toBeGreaterThanOrEqual(1); // the logo (and the DN photo)
+      expect(ws.pageSetup.paperSize).toBe(9); // A4
+    }
   });
 
   it('prints the DN and the IMIR as PDF', async () => {

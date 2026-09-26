@@ -1,18 +1,23 @@
-import { ArrowRight, Clock, CornerDownLeft, FileText, FileWarning, FileX2, Loader2, Package, Search, Truck, X } from 'lucide-react';
+import { PERMISSIONS } from '@qmas/shared';
+import { ArrowRight, Clock, CornerDownLeft, FileText, FileWarning, FileX2, Loader2, Package, Search, Sparkles, Truck, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import { useAiSearchMutation, useGetAiStatusQuery } from '../../api/aiApi.js';
 import { useSearchQuery } from '../../api/searchApi.js';
 import { useAccess } from '../../hooks/useAccess.js';
 import { useDebounced } from '../../hooks/useDebounced.js';
+import { apiError } from '../../utils/apiError.js';
 import { loadPref, savePref } from '../../utils/prefs.js';
 
-const ICONS = { imir: FileText, deviation: FileWarning, dn: FileX2, item: Package, vendor: Truck, page: ArrowRight, recent: Clock };
+const ICONS = { imir: FileText, deviation: FileWarning, dn: FileX2, item: Package, vendor: Truck, page: ArrowRight, recent: Clock, ai: Sparkles };
 const RECENT_KEY = 'recent-search';
 
 /**
  * Search everything from anywhere: pages of the menu, recent records, and documents and masters
- * by number, code or name. Arrow keys move, Enter opens, Esc closes.
+ * by number, code or name. A question in words ("failed lots from ABC last month") can be turned
+ * into list filters with AI (Incharge and above). Arrow keys move, Enter opens, Esc closes.
  */
 export default function CommandPalette({ onClose }) {
   const [q, setQ] = useState('');
@@ -20,7 +25,10 @@ export default function CommandPalette({ onClose }) {
   const input = useRef(null);
   const listRef = useRef(null);
   const navigate = useNavigate();
-  const { menu } = useAccess();
+  const { menu, can } = useAccess();
+  const aiAllowed = can(PERMISSIONS.AI_ASSIST);
+  const { data: aiStatus } = useGetAiStatusQuery(undefined, { skip: !aiAllowed });
+  const [aiSearch, { isLoading: asking }] = useAiSearchMutation();
   const term = useDebounced(q.trim(), 200);
   const { data: groups = [], isFetching } = useSearchQuery(term, { skip: term.length < 2 });
   const recent = useMemo(() => loadPref(RECENT_KEY, []), []);
@@ -34,16 +42,40 @@ export default function CommandPalette({ onClose }) {
       .filter((p) => !needle || `${p.title} ${p.subtitle}`.toLowerCase().includes(needle))
       .slice(0, needle ? 5 : 8);
     const out = [];
+    // Three or more words read as a question: offer to turn it into filters.
+    if (aiAllowed && aiStatus?.configured && q.trim().split(/\s+/).length >= 3) {
+      out.push({ key: 'ai', label: 'Search in words', items: [{ id: 'ai', title: `“${q.trim()}”`, subtitle: 'Find matching lots, deviations or DNs with AI', kind: 'ai' }] });
+    }
     if (!needle && recent.length) out.push({ key: 'recent', label: 'Recent', items: recent });
     if (term.length >= 2) out.push(...groups);
     if (pages.length) out.push({ key: 'page', label: needle ? 'Pages' : 'Go to', items: pages });
     return out;
-  }, [q, term, groups, menu, recent]);
+  }, [q, term, groups, menu, recent, aiAllowed, aiStatus]);
 
   const flat = sections.flatMap((s) => s.items.map((it) => ({ ...it, group: s.key })));
   const current = Math.min(active, Math.max(flat.length - 1, 0));
 
+  const askInWords = async () => {
+    if (asking) return;
+    try {
+      const r = await aiSearch(q.trim()).unwrap();
+      if (!r.filter.rules.length) {
+        toast.error(r.unsupported ?? 'That question could not be turned into filters. Try naming a vendor, item, result or dates.');
+        return;
+      }
+      onClose();
+      navigate(`/${r.target}?filter=${encodeURIComponent(JSON.stringify(r.filter))}`);
+      toast.success(`${r.explanation}${r.unsupported ? ` (not filtered: ${r.unsupported})` : ''}`, { duration: 6000 });
+    } catch (err) {
+      toast.error(apiError(err).message);
+    }
+  };
+
   const open = (it) => {
+    if (it.group === 'ai') {
+      askInWords();
+      return;
+    }
     if (it.group !== 'page') {
       const entry = { id: it.id, title: it.title, subtitle: it.subtitle, link: it.link, kind: it.kind ?? it.group };
       savePref(RECENT_KEY, [entry, ...loadPref(RECENT_KEY, []).filter((r) => r.link !== it.link)].slice(0, 6));
@@ -77,12 +109,12 @@ export default function CommandPalette({ onClose }) {
     <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-start justify-center p-4 pt-[12vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div role="dialog" aria-modal="true" aria-label="Search QMAS" className="animate-fadeIn w-full max-w-xl card shadow-2xl overflow-hidden">
         <div className="flex items-center gap-3 px-4 border-b border-slate-100">
-          {isFetching ? <Loader2 className="w-4 h-4 text-blue-600 animate-spin" /> : <Search className="w-4 h-4 text-slate-400" />}
+          {isFetching || asking ? <Loader2 className={`w-4 h-4 animate-spin ${asking ? 'text-violet-600' : 'text-blue-600'}`} /> : <Search className="w-4 h-4 text-slate-400" />}
           <input
             ref={input}
             value={q}
             onChange={(e) => { setQ(e.target.value); setActive(0); }}
-            placeholder="Search IMIR, DN, deviation, GRN, item, vendor or a page…"
+            placeholder={aiAllowed ? 'Search a number, name or page, or ask: failed lots from ABC last month' : 'Search IMIR, DN, deviation, GRN, item, vendor or a page…'}
             aria-label="Search"
             aria-activedescendant={flat[current] ? `cp-${current}` : undefined}
             className="flex-1 py-4 text-[15px] bg-transparent outline-none focus-visible:outline-none placeholder-slate-400"

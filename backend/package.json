@@ -14,9 +14,12 @@
     "test:watch": "vitest",
     "worker": "node --env-file-if-exists=.env src/worker.js",
     "demo-users": "node --env-file-if-exists=.env scripts/create-demo-users.js",
+    "puter-login": "node --env-file-if-exists=.env scripts/puter-login.js",
     "check-mail": "node --env-file-if-exists=.env scripts/check-mail.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@heyputer/puter.js": "^2.6.3",
     "@node-rs/argon2": "^2.2.1",
     "@qmas/shared": "*",
     "cookie-parser": "^1.4.7",

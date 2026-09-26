@@ -35,28 +35,58 @@ export async function listOpen(db, stages) {
 
 const FILTER_FIELDS = listFieldMap(LIST_FIELDS.deviations, {
   deviationNo: 'd.deviation_no', imirNo: 'm.imir_no', itemCode: 'i.item_code', itemDescription: 'i.description', vendorName: 'v.name', vendorCode: 'v.vendor_code',
-  plant: 'p.sap_code', department: 'd.department', stage: 'd.stage', severity: 'd.severity', action: 'd.action', seniorEffective: 'd.senior_effective',
+  plant: 'p.name', department: 'd.department', stage: 'd.stage', severity: 'd.severity', action: 'd.action', seniorEffective: 'd.senior_effective',
   outcome: 'd.outcome', deviationQty: 'd.deviation_qty', createdAt: { sql: 'd.created_at', tz: true }, closedAt: { sql: 'd.closed_at', tz: true },
 });
 
 const SORTABLE = { createdAt: 'd.created_at', updatedAt: 'd.updated_at', deviationNo: 'd.deviation_no', stage: 'd.stage', itemCode: 'i.item_code' };
 
-export async function list(db, f, scope) {
-  const args = [];
-  const arg = (v) => { args.push(v); return `$${args.length}`; };
+/** WHERE conditions of the list; `withStatus: false` leaves the stage tab out (for the counts). */
+const STAGE_GROUPS = { DEPARTMENT: ['INITIATOR', 'SUB_HEAD', 'HEAD'], QUANTITIES: ['UNDER_DEVIATION', 'QTY_VERIFICATION'] };
+
+function listWhere(f, scope, arg, { withStatus = true } = {}) {
   const where = [];
   if (!scope.all) where.push(`d.plant_id = ANY(${arg(scope.plantIds)})`);
   if (f.plantId) where.push(`d.plant_id = ${arg(f.plantId)}`);
-  if (f.stage) where.push(`d.stage = ${arg(f.stage)}`);
-  if (f.open === true) where.push("d.stage <> 'CLOSED'");
-  if (f.open === false) where.push("d.stage = 'CLOSED'");
+  if (f.vendorId) where.push(`m.vendor_id = ${arg(f.vendorId)}`);
+  if (withStatus && f.stage) where.push(`d.stage = ${arg(f.stage)}`);
+  if (withStatus && f.stageGroup) where.push(`d.stage = ANY(${arg(STAGE_GROUPS[f.stageGroup])})`);
+  if (withStatus && f.open === true) where.push("d.stage <> 'CLOSED'");
+  if (withStatus && f.open === false) where.push("d.stage = 'CLOSED'");
   if (f.department) where.push(`d.department = ${arg(f.department)}`);
+  if (f.from) where.push(`(d.created_at AT TIME ZONE 'Asia/Kolkata')::date >= ${arg(f.from)}::date`);
+  if (f.to) where.push(`(d.created_at AT TIME ZONE 'Asia/Kolkata')::date <= ${arg(f.to)}::date`);
   const dyn = buildDynamicFilter(f.filter, FILTER_FIELDS, arg);
   if (dyn) where.push(dyn);
   if (f.q) {
     const p = arg(likeContains(f.q));
     where.push(`(d.deviation_no ILIKE ${p} OR m.imir_no ILIKE ${p} OR i.item_code ILIKE ${p} OR i.description ILIKE ${p} OR v.name ILIKE ${p})`);
   }
+  return where;
+}
+
+/** The stat cards above the list: deviations by stage for the current filters (all but the tab). */
+export async function counts(db, f, scope) {
+  const args = [];
+  const arg = (v) => { args.push(v); return `$${args.length}`; };
+  const where = listWhere(f, scope, arg, { withStatus: false });
+  const { rows } = await db.query(
+    `SELECT count(*)::int AS total,
+            count(*) FILTER (WHERE x.stage IN ('INITIATOR', 'SUB_HEAD', 'HEAD'))::int AS with_department,
+            count(*) FILTER (WHERE x.stage = 'FINAL')::int AS final_decision,
+            count(*) FILTER (WHERE x.stage = 'SENIOR')::int AS escalated,
+            count(*) FILTER (WHERE x.stage IN ('UNDER_DEVIATION', 'QTY_VERIFICATION'))::int AS quantities,
+            count(*) FILTER (WHERE x.stage = 'CLOSED')::int AS closed
+       FROM (${SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}) x`,
+    args,
+  );
+  return camelRow(rows[0]);
+}
+
+export async function list(db, f, scope) {
+  const args = [];
+  const arg = (v) => { args.push(v); return `$${args.length}`; };
+  const where = listWhere(f, scope, arg);
   const { rows } = await db.query(
     `${SELECT.replace('SELECT d.id,', 'SELECT count(*) OVER () AS total, d.id,')}
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}

@@ -7,6 +7,7 @@ export const imirApi = baseApi
   .injectEndpoints({
     endpoints: (b) => ({
       getImirs: b.query({ query: (params) => ({ url: '/imirs', params }), transformResponse: pagedEnvelope, providesTags: ['Imir'] }),
+      getImirCounts: b.query({ query: (params) => ({ url: '/imirs/counts', params }), transformResponse: envelope, providesTags: ['Imir'] }),
       getImir: b.query({ query: (id) => `/imirs/${id}`, transformResponse: envelope, providesTags: (_r, _e, id) => [imirTag(id)] }),
       // Field-level change history; refreshed whenever the lot changes.
       getImirChanges: b.query({ query: (id) => `/imirs/${id}/changes`, transformResponse: envelope, providesTags: (_r, _e, id) => [imirTag(id), 'Imir'] }),
@@ -59,4 +60,5 @@ export const {
   useGetSapStatusQuery,
   useRunSapSyncMutation,
   useAddMockLotMutation,
+  useGetImirCountsQuery,
 } = imirApi;

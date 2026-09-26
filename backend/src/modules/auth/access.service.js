@@ -15,7 +15,7 @@ export async function loadAccess(userId) {
 
   const pool = getPool();
   const { rows: users } = await pool.query(
-    `SELECT id, employee_code, full_name, email, is_active, must_change_password, token_version
+    `SELECT id, employee_code, full_name, email, is_active, is_locked, must_change_password, token_version
        FROM core.app_user WHERE id = $1`,
     [userId],
   );
@@ -27,7 +27,7 @@ export async function loadAccess(userId) {
             p.sap_code, p.name AS plant_name,
             COALESCE(array_agg(rp.permission_key) FILTER (WHERE rp.permission_key IS NOT NULL), '{}') AS permissions
        FROM core.user_role ur
-       JOIN core.role r ON r.code = ur.role_code
+       JOIN core.role r ON r.code = ur.role_code AND r.is_active
        LEFT JOIN core.plant p ON p.id = ur.plant_id
        LEFT JOIN core.role_permission rp ON rp.role_code = ur.role_code
       WHERE ur.user_id = $1
@@ -55,6 +55,7 @@ export async function loadAccess(userId) {
     fullName: u.full_name,
     email: u.email,
     isActive: u.is_active,
+    isLocked: u.is_locked,
     mustChangePassword: u.must_change_password,
     tokenVersion: u.token_version,
     assignments,

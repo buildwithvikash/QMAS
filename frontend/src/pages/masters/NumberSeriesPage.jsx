@@ -42,7 +42,7 @@ export default function NumberSeriesPage() {
   const columns = [
     { key: 'docType', header: 'Document', render: (s) => <span className="font-semibold text-slate-800">{DOC_LABELS[s.docType]}</span> },
     { key: 'pattern', header: 'Pattern', render: (s) => <code className="text-xs bg-slate-100 rounded px-1.5 py-0.5">{s.pattern}</code> },
-    { key: 'plant', header: 'Applies to', render: (s) => (s.plantId ? `${s.plantSapCode} · ${s.plantName}` : <span className="text-slate-500">All plants (default)</span>) },
+    { key: 'plant', header: 'Applies to', render: (s) => (s.plantId ? s.plantName : <span className="text-slate-500">All plants (default)</span>) },
     { key: 'resetScope', header: 'Counter resets', render: (s) => RESET_LABELS[s.resetScope] },
     { key: 'effectiveFrom', header: 'Effective from', render: (s) => <span className="whitespace-nowrap">{formatDateTime(s.effectiveFrom)}</span> },
     { key: 'issuedCount', header: 'Issued', align: 'right', render: (s) => s.issuedCount },
@@ -138,7 +138,7 @@ function NewSeriesModal({ onClose }) {
       <div className="grid gap-4 sm:grid-cols-2">
         <Select label="Document" required value={v.docType} onChange={(x) => form.set('docType', x ?? 'IMIR')} options={DOC_TYPES.map((d) => ({ value: d, label: DOC_LABELS[d] }))} error={form.error('docType')} />
         <Select label="Applies to" value={v.plantId ? String(v.plantId) : ''} placeholder="All plants (default)" onChange={(x) => form.set('plantId', x ? Number(x) : null)}
-          options={plants.map((p) => ({ value: String(p.id), label: `${p.sapCode} · ${p.name}` }))} hint="A plant-specific series overrides the default for that plant." />
+          options={plants.map((p) => ({ value: String(p.id), label: `${p.name} (${p.sapCode})` }))} hint="A plant-specific series overrides the default for that plant." />
         <div className="sm:col-span-2">
           <TextInput label="Pattern" required className="font-mono" value={v.pattern} onChange={(e) => form.set('pattern', e.target.value.toUpperCase())} error={form.error('pattern') ?? (problems[0] && v.pattern ? problems[0] : undefined)} />
           <div className="mt-2 flex flex-wrap gap-1.5">

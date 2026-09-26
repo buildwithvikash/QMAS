@@ -7,15 +7,18 @@ import { createSlice } from '@reduxjs/toolkit';
  */
 const authSlice = createSlice({
   name: 'auth',
-  initialState: { user: null, status: 'loading' }, // loading | authenticated | anonymous
+  // endedMessage: why the session ended (signed out by an administrator, account locked…), for the sign-in page.
+  initialState: { user: null, status: 'loading', endedMessage: null }, // status: loading | authenticated | anonymous
   reducers: {
     setSession(state, { payload }) {
       state.user = payload;
       state.status = 'authenticated';
+      state.endedMessage = null;
     },
-    sessionEnded(state) {
+    sessionEnded(state, { payload }) {
       state.user = null;
       state.status = 'anonymous';
+      state.endedMessage = typeof payload === 'string' ? payload : null;
     },
   },
 });

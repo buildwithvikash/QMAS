@@ -29,7 +29,7 @@ export async function checkItemRefs(db, data) {
 export async function getLookups() {
   const pool = getPool();
   const q = async (sql) => camelRows((await pool.query(sql)).rows);
-  const [plants, uoms, itemCategories, instruments, deviationActions, deviationSeverities, escalationAuthorities, roles] = await Promise.all([
+  const [plants, uoms, itemCategories, instruments, deviationActions, deviationSeverities, escalationAuthorities, roles, vendors] = await Promise.all([
     q('SELECT id, sap_code, short_code, name, is_active FROM core.plant ORDER BY sap_code'),
     q('SELECT id, code, name FROM mst.uom WHERE is_active ORDER BY code'),
     q('SELECT id, code, name FROM mst.item_category WHERE is_active ORDER BY name'),
@@ -37,7 +37,9 @@ export async function getLookups() {
     q('SELECT code, name FROM mst.deviation_action ORDER BY sort_order'),
     q('SELECT code, name FROM mst.deviation_severity ORDER BY sort_order'),
     q('SELECT e.role_code, r.name, e.rank FROM mst.escalation_authority e JOIN core.role r ON r.code = e.role_code ORDER BY e.rank'),
-    q('SELECT code, name, department, requires_plant FROM core.role ORDER BY sort_order'),
+    q('SELECT code, name, department, requires_plant, is_active FROM core.role ORDER BY sort_order, name'),
+    // Vendors that have lots (the Vendor filter of the lists), by name.
+    q('SELECT v.id, v.vendor_code, v.name FROM mst.vendor v WHERE EXISTS (SELECT 1 FROM qms.imir m WHERE m.vendor_id = v.id) ORDER BY v.name'),
   ]);
-  return { plants, uoms, itemCategories, instruments, deviationActions, deviationSeverities, escalationAuthorities, roles };
+  return { plants, uoms, itemCategories, instruments, deviationActions, deviationSeverities, escalationAuthorities, roles, vendors };
 }
