@@ -2,6 +2,7 @@ import { deviationFormSchema, ESCALATION_RANKS } from '@qmas/shared';
 import { ArrowLeft, CheckCircle2, CornerUpLeft, FileWarning, Gavel, Scale, Send, ShieldAlert, ThumbsDown, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import ExportLinks from '../../components/ui/ExportLinks.jsx';
 import { useDeviationActionMutation, useGetDeviationQuery } from '../../api/workflowApi.js';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
@@ -53,6 +54,7 @@ export default function DeviationPage() {
       <PageHeader icon={FileWarning} title={d.deviationNo} copyTitle subtitle={`${d.itemCode} · ${d.itemDescription}`}>
         <Link to="/deviations" className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />Deviations</Link>
         <DeviationStage stage={d.stage} outcome={d.outcome} />
+        <ExportLinks href={`/api/v1/deviations/${d.id}`} />
       </PageHeader>
 
       <div className="p-5 space-y-4">
@@ -107,7 +109,7 @@ function Facts({ d }) {
         {fact('Vendor', `${d.vendorName} (${d.vendorCode})`)}
         {fact('GRN', `${d.grnNo} · ${formatDate(d.grnDate)}`)}
         {fact('Inward qty', formatQty(d.inwardQty, d.uom))}
-        {fact('Plant', `${d.plantSapCode} · ${d.plantName}`)}
+        {fact('Plant', d.plantName)}
         {fact('Department', d.department)}
         {fact('Suggested', d.suggestedActions.map((a) => ACTION_NAMES[a]).join(', '))}
         {d.qtyDueAt && d.stage !== 'CLOSED' && fact('Quantities due', formatDateTime(d.qtyDueAt))}

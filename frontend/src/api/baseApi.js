@@ -2,7 +2,7 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import { sessionEnded, setSession } from '../app/authSlice.js';
 
 const rawBaseQuery = fetchBaseQuery({ baseUrl: '/api/v1', credentials: 'include' });
-const NO_REFRESH = ['/auth/login', '/auth/refresh', '/auth/logout'];
+const NO_REFRESH = ['/auth/login', '/auth/refresh', '/auth/logout', '/auth/forgot-password', '/auth/reset-password'];
 
 // One refresh at a time; concurrent 401s wait for the same attempt.
 let refreshing = null;
@@ -27,7 +27,9 @@ async function baseQueryWithReauth(args, api, extraOptions) {
   } else {
     // No cache reset here: the app-level /auth/me query would refetch and loop. Cached data from
     // the previous user is dropped when the next user signs in (see authApi login).
-    api.dispatch(sessionEnded());
+    // Ended by an administrator (signed out, locked, password reset): say so on the sign-in page.
+    const why = refreshed.error.data?.code === 'SESSION_ENDED' ? refreshed.error.data.message : null;
+    api.dispatch(sessionEnded(why));
   }
   return result;
 }

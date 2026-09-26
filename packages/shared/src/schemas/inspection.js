@@ -45,6 +45,7 @@ export const imirListQuery = listQuery.extend({
   status: z.enum(IMIR_STATUSES).optional(),
   statusGroup: z.enum(['TO_INSPECT', 'IN_REVIEW', 'CLOSED', 'AWAITING_FORMAT']).optional(),
   plantId: z.coerce.number().int().positive().optional(),
+  vendorId: z.coerce.number().int().positive().optional(),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
   filter: filterParam.optional(),

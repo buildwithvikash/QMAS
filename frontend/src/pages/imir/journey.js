@@ -82,3 +82,15 @@ export function stageRows({ history = [], current, start }) {
   }
   return rows;
 }
+
+/** Raised → CAPA from the vendor → IQC Head review → closed. */
+export function dnSteps(dn) {
+  const at = { OPEN: 1, CAPA_SUBMITTED: 2, CLOSED: 4 }[dn.status];
+  const holder = { 1: dn.capaApplicable ? "IQC Incharge (enter the vendor's CAPA)" : 'IQC Incharge (send for closure)', 2: 'Plant IQC Head' };
+  return [
+    { key: 'raised', label: 'Raised' },
+    { key: 'capa', label: dn.capaApplicable ? 'Vendor CAPA' : 'Send for closure' },
+    { key: 'review', label: 'IQC Head review' },
+    { key: 'closed', label: 'Closed', tone: 'good' },
+  ].map((s, i) => ({ ...s, state: i < at ? 'done' : i === at ? 'current' : 'next', holder: i === at ? holder[i] : null }));
+}

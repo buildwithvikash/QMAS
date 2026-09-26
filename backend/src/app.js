@@ -9,6 +9,7 @@ import { getEnv } from './config/env.js';
 import { logger as defaultLogger } from './config/logger.js';
 import { authenticate, requirePasswordCurrent } from './middlewares/auth.js';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
+import aiRoutes from './modules/ai/ai.routes.js';
 import auditRoutes from './modules/audit/audit.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import deviationRoutes, { chainRouter } from './modules/deviation/deviation.routes.js';
@@ -16,6 +17,7 @@ import dnRoutes from './modules/dn/dn.routes.js';
 import formatsRoutes from './modules/formats/formats.routes.js';
 import healthRoutes from './modules/health/health.routes.js';
 import imirRoutes, { filesRouter } from './modules/imir/imir.routes.js';
+import insightsRoutes from './modules/insights/insights.routes.js';
 import integrationRoutes from './modules/integration/integration.routes.js';
 import mastersRoutes from './modules/masters/masters.routes.js';
 import notificationsRoutes from './modules/notifications/notifications.routes.js';
@@ -80,6 +82,8 @@ export function createApp({ logger = defaultLogger } = {}) {
   api.use('/devices', devicesRouter);
   api.use('/sync', syncRouter);
   api.use('/integration', integrationRoutes);
+  api.use('/insights', insightsRoutes);
+  api.use('/ai', aiRoutes);
   api.use('/audit', auditRoutes);
 
   app.use('/api/v1', api);

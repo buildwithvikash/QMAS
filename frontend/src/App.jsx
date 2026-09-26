@@ -9,6 +9,8 @@ import { ROUTE_SECTIONS } from './config/routes.config.jsx';
 
 const LoginPage = lazy(() => import('./pages/auth/LoginPage.jsx'));
 const ChangePasswordPage = lazy(() => import('./pages/auth/ChangePasswordPage.jsx'));
+const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage.jsx'));
+const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage.jsx'));
 
 const routes = ROUTE_SECTIONS.flatMap((s) => s.items);
 
@@ -22,6 +24,9 @@ export default function App() {
       <Suspense fallback={<Loader fullScreen />}>
         <Routes>
           <Route path="/login" element={status === 'authenticated' ? <Navigate to="/" replace /> : <LoginPage />} />
+          {/* Public: reachable signed in or not (a reset link may be opened on a shared PC). */}
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route element={<RequireAuth />}>
             <Route path="/change-password" element={<ChangePasswordPage />} />
             <Route element={<Layout />}>

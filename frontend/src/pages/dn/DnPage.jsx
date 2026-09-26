@@ -1,13 +1,16 @@
-import { capaSchema, DN_MAX_IMAGES } from '@qmas/shared';
+import { capaSchema, DN_MAX_IMAGES, PERMISSIONS } from '@qmas/shared';
 import { ArrowLeft, CheckCircle2, CornerUpLeft, FileSearch, FileText, FileX2, ImagePlus, Mail, Paperclip, Plus, Printer, Save, Send, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useParams } from 'react-router-dom';
+import { useGetAiStatusQuery } from '../../api/aiApi.js';
 import { useDeleteDnFileMutation, useDnActionMutation, useGetDnQuery, useMailDnToSelfMutation, useUpdateDnMutation, useUploadDnFileMutation } from '../../api/dnApi.js';
 import Button from '../../components/ui/Button.jsx';
+import ExportLinks from '../../components/ui/ExportLinks.jsx';
 import { FormError, TextArea, TextInput, Toggle } from '../../components/ui/fields.jsx';
 import Loader from '../../components/ui/Loader.jsx';
 import PageHeader from '../../components/ui/PageHeader.jsx';
+import { useAccess } from '../../hooks/useAccess.js';
 import { useZodForm } from '../../hooks/useZodForm.js';
 import { apiError } from '../../utils/apiError.js';
 import { done } from '../../utils/notify.jsx';
@@ -15,9 +18,10 @@ import { useUnsavedWarning } from '../../hooks/useUnsavedWarning.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import HistoryPanel from '../deviation/HistoryPanel.jsx';
 import { ActivityLayout, KeyFacts, LinkedRecords, StageHistory } from '../deviation/RecordSide.jsx';
+import { CapaAssessment, RootCauseSuggestions } from './DnAi.jsx';
 import { ImirStatus } from '../imir/imirUi.jsx';
 import { DeviationStage, DnStatus } from '../deviation/workflowUi.jsx';
-import { currentStage, stageRows } from '../imir/journey.js';
+import { currentStage, dnSteps, stageRows } from '../imir/journey.js';
 import { Stepper } from '../imir/LotJourney.jsx';
 import FetchFromReport from './FetchFromReport.jsx';
 
@@ -25,6 +29,9 @@ export default function DnPage() {
   const { id } = useParams();
   const { data: dn, isLoading, error } = useGetDnQuery(id);
   const [mail, { isLoading: mailing }] = useMailDnToSelfMutation();
+  const { can } = useAccess();
+  const { data: aiStatus } = useGetAiStatusQuery(undefined, { skip: !can(PERMISSIONS.AI_ASSIST) });
+  const ai = can(PERMISSIONS.AI_ASSIST) && !!aiStatus?.configured;
   if (isLoading) return <Loader />;
   if (error) return <p className="p-6 text-sm text-rose-600">{apiError(error).message}</p>;
   const editable = dn.allowedActions.includes('edit');
@@ -43,7 +50,7 @@ export default function DnPage() {
       <PageHeader icon={FileX2} title={dn.dnNo} copyTitle subtitle={`${dn.itemCode} · ${dn.itemDescription}`}>
         <Link to="/dns" className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />Defect notifications</Link>
         <DnStatus status={dn.status} overdue={dn.capaOverdue} />
-        <a href={`/api/v1/dns/${dn.id}/pdf`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"><Printer className="w-4 h-4" />PDF</a>
+        <ExportLinks href={`/api/v1/dns/${dn.id}`} />
         <Button size="sm" variant="secondary" icon={Mail} loading={mailing} onClick={mailMe}>Mail to me</Button>
       </PageHeader>
 
@@ -54,7 +61,9 @@ export default function DnPage() {
           <Facts dn={dn} />
           {editable ? <DnForm key={dn.rowVersion} dn={dn} /> : <DnView dn={dn} />}
           <Images dn={dn} editable={editable} />
+          {ai && <RootCauseSuggestions dn={dn} />}
           <CapaSection dn={dn} />
+          {ai && dn.capas.length > 0 && <CapaAssessment key={dn.capas.at(-1).id} dn={dn} />}
           <ActivityLayout history={<HistoryPanel imirId={dn.imirId} history={dn.history} owner="DN" current={currentStage(dnSteps(dn))} />}>
             <LinkedRecords items={[
               dn.imirId && { kind: 'imir', label: dn.imirNo, sub: `Inspection report, ${dn.itemCode}`, to: `/imirs/${dn.imirId}`, badge: <ImirStatus status={dn.imirStatus} /> },
@@ -73,18 +82,6 @@ export default function DnPage() {
   );
 }
 
-/** Raised → CAPA from the vendor → IQC Head review → closed. */
-function dnSteps(dn) {
-  const at = { OPEN: 1, CAPA_SUBMITTED: 2, CLOSED: 4 }[dn.status];
-  const holder = { 1: dn.capaApplicable ? "IQC Incharge (enter the vendor's CAPA)" : 'IQC Incharge (send for closure)', 2: 'Plant IQC Head' };
-  return [
-    { key: 'raised', label: 'Raised' },
-    { key: 'capa', label: dn.capaApplicable ? 'Vendor CAPA' : 'Send for closure' },
-    { key: 'review', label: 'IQC Head review' },
-    { key: 'closed', label: 'Closed', tone: 'good' },
-  ].map((s, i) => ({ ...s, state: i < at ? 'done' : i === at ? 'current' : 'next', holder: i === at ? holder[i] : null }));
-}
-
 const fact = (label, value) => <div><dt className="text-[11px] font-medium text-slate-400">{label}</dt><dd className="text-sm text-slate-800">{value ?? '—'}</dd></div>;
 
 function Facts({ dn }) {
@@ -97,7 +94,7 @@ function Facts({ dn }) {
         {fact('Vendor', `${dn.vendorName} (${dn.vendorCode})`)}
         {fact('GRN', `${dn.grnNo} · ${formatDate(dn.grnDate)}`)}
         {fact('Invoice', dn.invoiceNo)}
-        {fact('Plant', `${dn.plantSapCode} · ${dn.plantName}`)}
+        {fact('Plant', dn.plantName)}
         {fact('Drawing', dn.drawingNo ? `${dn.drawingNo}${dn.drawingRev ? ` rev ${dn.drawingRev}` : ''}` : null)}
         {dn.capaApplicable && fact('CAPA due', <span className={dn.capaOverdue ? 'text-rose-600 font-semibold' : ''}>{formatDateTime(dn.capaDueAt)}</span>)}
         {fact('Raised by', dn.createdByName)}

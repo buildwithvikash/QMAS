@@ -6,6 +6,7 @@ export const dnApi = baseApi
   .injectEndpoints({
     endpoints: (b) => ({
       getDns: b.query({ query: (params) => ({ url: '/dns', params }), transformResponse: pagedEnvelope, providesTags: ['Dn'] }),
+      getDnCounts: b.query({ query: (params) => ({ url: '/dns/counts', params }), transformResponse: envelope, providesTags: ['Dn'] }),
       getDn: b.query({ query: (id) => `/dns/${id}`, transformResponse: envelope, providesTags: (_r, _e, id) => [{ type: 'Dn', id }] }),
       getDnSource: b.query({ query: (id) => `/dns/${id}/source`, transformResponse: envelope, keepUnusedDataFor: 0 }),
       createDn: b.mutation({ query: (body) => ({ url: '/dns', method: 'POST', body }), transformResponse: envelope, invalidatesTags: ['Dn', 'Imir', 'Dashboard'] }),
@@ -53,4 +54,5 @@ export const {
   useGetReportsQuery,
   useGetReportQuery,
   useGetDashboardQuery,
+  useGetDnCountsQuery,
 } = dnApi;

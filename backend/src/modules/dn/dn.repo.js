@@ -35,20 +35,20 @@ export async function summaryForImir(db, imirId) {
 
 const FILTER_FIELDS = listFieldMap(LIST_FIELDS.dns, {
   dnNo: 'n.dn_no', imirNo: 'm.imir_no', itemCode: 'i.item_code', itemDescription: 'i.description', vendorName: 'v.name', vendorCode: 'v.vendor_code',
-  plant: 'p.sap_code', status: 'n.status', capaApplicable: 'n.capa_applicable', defectiveQty: 'n.defective_qty',
+  plant: 'p.name', status: 'n.status', capaApplicable: 'n.capa_applicable', defectiveQty: 'n.defective_qty',
   dnDate: { sql: 'n.dn_date', tz: true }, capaDueAt: { sql: 'n.capa_due_at', tz: true }, closedAt: { sql: 'n.closed_at', tz: true },
 });
 
 const SORTABLE = { dnDate: 'n.dn_date', dnNo: 'n.dn_no', status: 'n.status', itemCode: 'i.item_code', capaDueAt: 'n.capa_due_at' };
 
-export async function list(db, f, scope) {
-  const args = [];
-  const arg = (v) => { args.push(v); return `$${args.length}`; };
+/** WHERE conditions of the list; `withStatus: false` leaves the status tab out (for the counts). */
+function listWhere(f, scope, arg, { withStatus = true } = {}) {
   const where = [];
   if (!scope.all) where.push(`n.plant_id = ANY(${arg(scope.plantIds)})`);
   if (f.plantId) where.push(`n.plant_id = ${arg(f.plantId)}`);
-  if (f.status) where.push(`n.status = ${arg(f.status)}`);
-  if (f.overdue === true) where.push("n.status = 'OPEN' AND n.capa_applicable AND n.capa_due_at < now()");
+  if (f.vendorId) where.push(`n.vendor_id = ${arg(f.vendorId)}`);
+  if (withStatus && f.status) where.push(`n.status = ${arg(f.status)}`);
+  if (withStatus && f.overdue === true) where.push("n.status = 'OPEN' AND n.capa_applicable AND n.capa_due_at < now()");
   if (f.from) where.push(`n.dn_date >= ${arg(f.from)}::date`);
   if (f.to) where.push(`n.dn_date < ${arg(f.to)}::date + 1`);
   const dyn = buildDynamicFilter(f.filter, FILTER_FIELDS, arg);
@@ -57,6 +57,30 @@ export async function list(db, f, scope) {
     const p = arg(likeContains(f.q));
     where.push(`(n.dn_no ILIKE ${p} OR m.imir_no ILIKE ${p} OR i.item_code ILIKE ${p} OR i.description ILIKE ${p} OR v.name ILIKE ${p} OR v.vendor_code ILIKE ${p})`);
   }
+  return where;
+}
+
+/** The stat cards above the list: DNs by status for the current filters (all but the tab). */
+export async function counts(db, f, scope) {
+  const args = [];
+  const arg = (v) => { args.push(v); return `$${args.length}`; };
+  const where = listWhere(f, scope, arg, { withStatus: false });
+  const { rows } = await db.query(
+    `SELECT count(*)::int AS total,
+            count(*) FILTER (WHERE x.status = 'OPEN')::int AS capa_awaited,
+            count(*) FILTER (WHERE x.capa_overdue)::int AS overdue,
+            count(*) FILTER (WHERE x.status = 'CAPA_SUBMITTED')::int AS with_head,
+            count(*) FILTER (WHERE x.status = 'CLOSED')::int AS closed
+       FROM (${SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}) x`,
+    args,
+  );
+  return camelRow(rows[0]);
+}
+
+export async function list(db, f, scope) {
+  const args = [];
+  const arg = (v) => { args.push(v); return `$${args.length}`; };
+  const where = listWhere(f, scope, arg);
   const { rows } = await db.query(
     `${SELECT.replace('SELECT n.id,', 'SELECT count(*) OVER () AS total, n.id,')}
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}

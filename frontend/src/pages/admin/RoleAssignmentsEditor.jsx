@@ -8,8 +8,11 @@ import { Select, TextInput } from '../../components/ui/fields.jsx';
  * errors: field errors keyed "roles.<i>.<field>" from the API.
  */
 export default function RoleAssignmentsEditor({ value, onChange, roles = [], plants = [], errors = {} }) {
-  const roleOptions = roles.map((r) => ({ value: r.code, label: `${r.name} (${r.department})` }));
-  const plantOptions = plants.filter((p) => p.isActive).map((p) => ({ value: String(p.id), label: `${p.sapCode} · ${p.name}` }));
+  // Inactive roles cannot be given; one the user already holds still shows so it can be removed.
+  const roleOptions = roles
+    .filter((r) => r.isActive !== false || value.some((v) => v.roleCode === r.code))
+    .map((r) => ({ value: r.code, label: `${r.name} (${r.department})${r.isActive === false ? ' · inactive' : ''}` }));
+  const plantOptions = plants.filter((p) => p.isActive).map((p) => ({ value: String(p.id), label: `${p.name} (${p.sapCode})` }));
   const byCode = Object.fromEntries(roles.map((r) => [r.code, r]));
 
   const update = (i, patch) => onChange(value.map((row, j) => (j === i ? { ...row, ...patch } : row)));

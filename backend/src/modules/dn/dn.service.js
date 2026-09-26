@@ -27,6 +27,11 @@ const MAX_CAPA_FILES = 10;
 
 // ── Reading ───────────────────────────────────────────────────────────────────
 
+/** Counts for the stat cards above the list, with the list's filters (not its status tab). */
+export async function counts(user, filters) {
+  return repo.counts(getPool(), filters, plantScope(user, P.DN_VIEW, 'view'));
+}
+
 export async function list(user, filters) {
   const scope = plantScope(user, P.DN_VIEW, 'view');
   const { rows, total } = await repo.list(getPool(), filters, scope);

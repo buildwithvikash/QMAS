@@ -1,14 +1,17 @@
-import { MAX_SAMPLES } from '@qmas/shared';
+import { MAX_SAMPLES, PERMISSIONS } from '@qmas/shared';
 import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardCheck, CloudOff, FileText, Loader2, Printer, Save, Send, Tablet, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useGetAiStatusQuery, useGetLotInsightsQuery } from '../../api/aiApi.js';
 import { useDeleteAttachmentMutation, useGetImirQuery, useSaveInspectionMutation, useSubmitImirMutation, useUploadAttachmentMutation } from '../../api/imirApi.js';
 import Button from '../../components/ui/Button.jsx';
+import ExportLinks from '../../components/ui/ExportLinks.jsx';
 import { Select, TextInput } from '../../components/ui/fields.jsx';
 import Loader from '../../components/ui/Loader.jsx';
 import Modal, { ConfirmDialog, ModalFooter } from '../../components/ui/Modal.jsx';
 import PageHeader from '../../components/ui/PageHeader.jsx';
+import { useAccess } from '../../hooks/useAccess.js';
 import * as engine from '../../offline/engine.js';
 import { applyPatch, evaluateSheet } from '../../offline/sheetModel.js';
 import * as store from '../../offline/store.js';
@@ -18,6 +21,7 @@ import { ImirResult, ImirStatus } from './imirUi.jsx';
 import InspectionSheet from './InspectionSheet.jsx';
 import { focusFirstMissing, sheetProgress } from './sheetNav.js';
 import { currentStage, journeySteps, stageRows } from './journey.js';
+import LotInsights, { AiSummary } from './LotInsights.jsx';
 import LotJourney from './LotJourney.jsx';
 import ReviewPanel from './ReviewPanel.jsx';
 import HistoryPanel from '../deviation/HistoryPanel.jsx';
@@ -70,6 +74,11 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
   const [save] = useSaveInspectionMutation();
   const navigate = useNavigate();
   const readOnly = mode === 'view' || !!sheet.pendingSubmit;
+  // History, drift, focus and supplier risk (no AI); unavailable offline, where the sheet works without it.
+  const { data: insights } = useGetLotInsightsQuery(sheet.id, { skip: sheet.status === 'AWAITING_FORMAT' });
+  const { can } = useAccess();
+  const aiAllowed = can(PERMISSIONS.AI_ASSIST);
+  const { data: aiStatus } = useGetAiStatusQuery(undefined, { skip: !aiAllowed });
 
   // Keep in step with the server copy when nothing is waiting to be saved.
   useEffect(() => {
@@ -146,7 +155,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
         <Link to={mode === 'tablet' ? '/tablet' : '/imirs'} className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />{mode === 'tablet' ? 'This tablet' : 'Incoming lots'}</Link>
         <ImirStatus status={sheet.status} />
         {mode === 'tablet' && <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700"><Tablet className="w-3.5 h-3.5" />On this tablet</span>}
-        {mode === 'view' && sheet.imirNo && <a href={`/api/v1/imirs/${sheet.id}/pdf`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"><Printer className="w-4 h-4" />PDF</a>}
+        {mode !== 'tablet' && sheet.imirNo && <ExportLinks href={`/api/v1/imirs/${sheet.id}`} />}
       </PageHeader>
 
       <div className="p-5 space-y-4">
@@ -156,8 +165,10 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
         {sheet.status === 'AWAITING_FORMAT' && <Banner tone="warning">{sheet.awaitingReason} It opens automatically once that is fixed.</Banner>}
 
         {mode !== 'tablet' && <ReviewPanel imir={sheet} />}
+        {mode !== 'tablet' && aiAllowed && aiStatus?.configured && sheet.submittedAt && <AiSummary imirId={sheet.id} />}
         <LotJourney status={sheet.status} history={sheet.history ?? []} deviation={sheet.deviation} dn={sheet.dn} />
         <GeneralInfo sheet={sheet} readOnly={readOnly} onPatch={onPatch} progress={opened ? progress.pct : null} />
+        {opened && <LotInsights insights={insights} />}
 
         {opened && sheet.checkpoints?.length > 0 && (
           <>
@@ -177,7 +188,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
             </div>
             {tab === 'signoff'
               ? <SignOff sheet={sheet} readOnly={readOnly} onPatch={onPatch} />
-              : <InspectionSheet sheet={sheet} tab={tab} readOnly={readOnly} onPatch={onPatch} photosByCell={photosByCell}
+              : <InspectionSheet sheet={sheet} tab={tab} readOnly={readOnly} onPatch={onPatch} photosByCell={photosByCell} insights={insights}
                   onAddPhoto={readOnly ? undefined : (cp) => setDialog({ type: 'photo', cp })}
                   onOpenPhotos={(cp, s) => setDialog({ type: 'photos', cp, sampleNo: s })} />}
           </>
@@ -275,10 +286,9 @@ function GeneralInfo({ sheet, readOnly, onPatch, progress }) {
         <Field label="Item description" span>{sheet.itemDescription}</Field>
         <Field label="Item category">{sheet.itemCategory}</Field>
         <Field label="Drawing no. / rev">{sheet.drawingNo ? `${sheet.drawingNo}${sheet.drawingRev ? ` / ${sheet.drawingRev}` : ''}` : null}</Field>
-        <Field label="Plant">{`${sheet.plantSapCode} · ${sheet.plantName}`}</Field>
+        <Field label="Plant">{sheet.plantName}</Field>
         <Field label="Invoice no.">{sheet.invoiceNo}</Field>
         <Field label="Inward qty">{formatQty(sheet.inwardQty, sheet.uom)}</Field>
-        <Field label="SAP lot">{sheet.sapLotNo}</Field>
         <Field label="Format no.">{sheet.formatVersionNo ? `${sheet.formatNo ?? '—'} (v${sheet.formatVersionNo})` : null}</Field>
         <Field label="Common format no.">{sheet.commonFormatNo}</Field>
         <Field label="Ref. standard">{sheet.refStandard}</Field>

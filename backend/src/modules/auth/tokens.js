@@ -7,9 +7,10 @@ export const REFRESH_COOKIE = 'qmas_rt';
 const ISSUER = 'qmas';
 const AUDIENCE = 'qmas-app';
 
-export function signAccessToken(user) {
+/** `sid` is the session (sign-in) the token belongs to, so ending the session stops the token. */
+export function signAccessToken(user, sid = null) {
   const env = getEnv();
-  return jwt.sign({ tv: user.tokenVersion }, env.JWT_ACCESS_SECRET, {
+  return jwt.sign({ tv: user.tokenVersion, ...(sid ? { sid } : {}) }, env.JWT_ACCESS_SECRET, {
     algorithm: 'HS256',
     subject: user.id,
     issuer: ISSUER,
@@ -18,11 +19,11 @@ export function signAccessToken(user) {
   });
 }
 
-/** Returns { sub, tv } or null when the token is missing, expired or forged. */
+/** Returns { sub, tv, sid } or null when the token is missing, expired or forged. */
 export function verifyAccessToken(token) {
   try {
     const payload = jwt.verify(token, getEnv().JWT_ACCESS_SECRET, { algorithms: ['HS256'], issuer: ISSUER, audience: AUDIENCE });
-    return { sub: payload.sub, tv: payload.tv };
+    return { sub: payload.sub, tv: payload.tv, sid: payload.sid ?? null };
   } catch {
     return null;
   }

@@ -75,7 +75,7 @@ function TabletHome({ s }) {
 
   return (
     <div>
-      <PageHeader icon={Tablet} title={`This tablet · ${s.device.code}`} subtitle={`${s.device.name} · ${s.device.plantSapCode} ${s.device.plantName}`}>
+      <PageHeader icon={Tablet} title={`This tablet · ${s.device.code}`} subtitle={`${s.device.name} · ${s.device.plantName}`}>
         {s.online ? <Badge variant="success"><Wifi className="w-3 h-3" />Online</Badge> : <Badge variant="warning"><CloudOff className="w-3 h-3" />Offline</Badge>}
         <Button size="sm" variant="secondary" icon={RefreshCw} loading={syncing} disabled={!s.online} onClick={syncNow}>Sync now</Button>
       </PageHeader>

@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { getPool } from '../src/db/pool.js';
 import { runAutoClose, runEscalationTimeouts } from '../src/modules/deviation/deviation.service.js';
@@ -76,6 +77,27 @@ async function atFinal(form = FORM) {
 }
 
 const tasksOf = async (agent) => ok(await agent.get('/api/v1/tasks/me'));
+
+describe('deviation form export', () => {
+  it('gives the Deviation Form as PDF and Excel, with the chosen severity and action marked', async () => {
+    const { devId } = await atFinal();
+    const d = ok(await A.head.get(`/api/v1/deviations/${devId}`));
+    const buf = (res, cb) => { const c = []; res.on('data', (x) => c.push(x)); res.on('end', () => cb(null, Buffer.concat(c))); };
+    const pdf = await A.head.get(`/api/v1/deviations/${devId}/pdf`).buffer(true).parse(buf);
+    expect(pdf.status).toBe(200);
+    expect(pdf.body.subarray(0, 5).toString()).toBe('%PDF-');
+    const xlsx = await A.head.get(`/api/v1/deviations/${devId}/xlsx`).buffer(true).parse(buf);
+    expect(xlsx.headers['content-disposition']).toBe(`attachment; filename="${d.deviationNo}.xlsx"`);
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(xlsx.body);
+    const texts = [];
+    wb.worksheets[0].eachRow((row) => row.eachCell((c) => { if (!c.isMerged || c.master.address === c.address) texts.push(c.text); }));
+    expect(texts.some((t) => t.includes(`DEVIATION FORM NO: ${d.deviationNo}`))).toBe(true);
+    expect(texts).toContain('[X] SEGREGATION');
+    expect(texts.some((t) => t.includes('[X] MAJOR'))).toBe(true);
+    expect((await A.head.get(`/api/v1/deviations/${devId}/doc`)).status).toBe(422);
+  });
+});
 
 describe('Incharge review', () => {
   it('approves a passed lot and records the history', async () => {

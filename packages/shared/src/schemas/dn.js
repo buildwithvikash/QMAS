@@ -62,6 +62,7 @@ export const dnActionSchema = z.discriminatedUnion('action', [
 export const dnListQuery = listQuery.extend({
   status: z.enum(DN_STATUSES).optional(),
   plantId: z.coerce.number().int().positive().optional(),
+  vendorId: z.coerce.number().int().positive().optional(),
   overdue: booleanQuery.optional(),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),

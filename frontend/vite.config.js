@@ -42,7 +42,8 @@ export default defineConfig({
   ],
   server: {
     port: 5173,
-    proxy: { '/api': { target: process.env.QMAS_API_URL ?? 'http://localhost:4000', changeOrigin: false } },
+    // xfwd: pass the browser's IP on as X-Forwarded-For, so sessions show the real client address.
+    proxy: { '/api': { target: process.env.QMAS_API_URL ?? 'http://localhost:4000', changeOrigin: false, xfwd: true } },
   },
   test: { environment: 'node' },
   build: {
