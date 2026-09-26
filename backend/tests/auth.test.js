@@ -1,3 +1,4 @@
+import { getEnv, setEnv } from '../src/config/env.js';
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { getPool } from '../src/db/pool.js';
@@ -83,8 +84,11 @@ describe('sign-in', () => {
 describe('temporary password', () => {
   it('blocks the app until the password is changed, then ends other sessions', async () => {
     const user = await createUser({ roles: [{ roleCode: 'AUDITOR' }], mustChangePassword: true });
+    // Two devices at once: allowed here only to check that a password change ends the other one.
+    const settings = getEnv();
+    setEnv({ ...settings, SINGLE_SESSION: false });
     const agent = await signIn(user);
-    const other = await signIn(user);
+    const other = await signIn(user).finally(() => setEnv(settings));
 
     const blocked = await agent.get('/api/v1/users');
     expect(blocked.status).toBe(403);

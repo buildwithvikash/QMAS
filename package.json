@@ -20,6 +20,7 @@
     "build:web": "npm -w frontend run build",
     "lint": "npm -w frontend run lint",
     "demo-users": "npm -w backend run demo-users",
+    "puter-login": "npm -w backend run puter-login",
     "check-mail": "npm -w backend run check-mail"
   }
 }

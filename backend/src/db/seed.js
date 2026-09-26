@@ -41,12 +41,14 @@ export async function seedReferenceData(pool) {
 
     for (const [i, r] of ROLE_DEFINITIONS.entries()) {
       await client.query(
-        `INSERT INTO core.role (code, name, department, view_scope, action_scope, requires_plant, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        // Built-in roles follow the code; a description edited on the Roles screen is kept.
+        `INSERT INTO core.role (code, name, department, view_scope, action_scope, requires_plant, sort_order, description, is_system, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, true)
          ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name, department = EXCLUDED.department,
            view_scope = EXCLUDED.view_scope, action_scope = EXCLUDED.action_scope,
-           requires_plant = EXCLUDED.requires_plant, sort_order = EXCLUDED.sort_order`,
-        [r.code, r.name, r.department, r.viewScope, r.actionScope, r.requiresPlant, i],
+           requires_plant = EXCLUDED.requires_plant, sort_order = EXCLUDED.sort_order,
+           description = COALESCE(core.role.description, EXCLUDED.description), is_system = true, is_active = true`,
+        [r.code, r.name, r.department, r.viewScope, r.actionScope, r.requiresPlant, i, r.description ?? null],
       );
     }
 

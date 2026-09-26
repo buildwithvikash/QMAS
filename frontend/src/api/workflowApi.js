@@ -11,6 +11,7 @@ export const workflowApi = baseApi
         invalidatesTags: (_r, _e, { id }) => ['Imir', { type: 'Imir', id }, 'Deviation', 'Tasks'],
       }),
       getDeviations: b.query({ query: (params) => ({ url: '/deviations', params }), transformResponse: pagedEnvelope, providesTags: ['Deviation'] }),
+      getDeviationCounts: b.query({ query: (params) => ({ url: '/deviations/counts', params }), transformResponse: envelope, providesTags: ['Deviation'] }),
       getDeviation: b.query({ query: (id) => `/deviations/${id}`, transformResponse: envelope, providesTags: (_r, _e, id) => [{ type: 'Deviation', id }] }),
       deviationAction: b.mutation({
         query: ({ id, ...body }) => ({ url: `/deviations/${id}/actions`, method: 'POST', body }),
@@ -37,4 +38,5 @@ export const {
   useGetDeptChainsQuery,
   useUpdateDeptChainMutation,
   useGetMyRecentQuery,
+  useGetDeviationCountsQuery,
 } = workflowApi;

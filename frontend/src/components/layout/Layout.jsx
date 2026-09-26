@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { Outlet, useLocation } from 'react-router-dom';
 import * as engine from '../../offline/engine.js';
 import Loader from '../ui/Loader.jsx';
+import IdleSignOut from './IdleSignOut.jsx';
 import Navbar from './Navbar.jsx';
 import Sidebar from './Sidebar.jsx';
 
@@ -42,6 +43,7 @@ export default function Layout() {
   return (
     <div className="flex flex-col h-screen">
       <Navbar />
+      <IdleSignOut />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar expanded={expanded} onToggle={toggle} isMobile={isMobile} />
         <main className={`flex-1 overflow-auto transition-all duration-300 ${isMobile ? 'ml-0' : expanded ? 'ml-64' : 'ml-[56px]'}`}>

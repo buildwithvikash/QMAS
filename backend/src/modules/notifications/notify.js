@@ -63,7 +63,7 @@ export async function notifyUsers(db, users, { kind, title, body = null, link = 
 async function context(db, { imirId, deviationId, dnId, actorId, actingRole }) {
   const { rows: m } = await db.query(
     `SELECT m.id, m.imir_no, m.plant_id, m.result, m.status, m.inspected_by, m.grn_no, m.grn_date, m.invoice_no, m.inward_qty, m.uom,
-            m.defective_samples, m.sample_size, l.sap_lot_no, p.sap_code AS plant_code, p.name AS plant_name,
+            m.defective_samples, m.sample_size, p.sap_code AS plant_code, p.name AS plant_name,
             i.item_code, i.description, v.vendor_code, v.name AS vendor_name
        FROM qms.imir m JOIN mst.item i ON i.id = m.item_id JOIN mst.vendor v ON v.id = m.vendor_id
        JOIN core.plant p ON p.id = m.plant_id LEFT JOIN intg.sap_inspection_lot l ON l.id = m.sap_lot_id
@@ -120,8 +120,7 @@ function factsOf({ imir, dev, dn }) {
     ['IMIR no.', imir.imir_no, true],
     ['Item', `${imir.item_code} — ${imir.description}`, true],
     ['Vendor', `${imir.vendor_name} (${imir.vendor_code})`],
-    ['Plant', `${imir.plant_code} · ${imir.plant_name}`],
-    ['SAP lot', imir.sap_lot_no],
+    ['Plant', imir.plant_name],
     ['GRN', `${imir.grn_no} · ${DAY.format(new Date(imir.grn_date))}${imir.invoice_no ? ` · Invoice ${imir.invoice_no}` : ''}`],
     ['Inward qty', `${num(imir.inward_qty)}${imir.uom ? ` ${imir.uom}` : ''}`],
     ['Inspection result', imir.result ? `${imir.result === 'NOK' ? 'Not OK' : 'OK'}${nok}` : null, imir.result === 'NOK'],
@@ -160,7 +159,7 @@ export async function notifyForAction(db, entry) {
   const stakeholders = () => usersById(db, [imir.inspected_by, dev?.initiator_id, dn?.created_by]);
   const by = actor ? `${actor.full_name}${actor.role_name ? `, ${actor.role_name}` : ''}` : 'QMAS';
   const common = {
-    plant: `Plant ${imir.plant_code} · ${imir.plant_name}`,
+    plant: `Plant ${imir.plant_name}`,
     record: dn?.dn_no ?? dev?.deviation_no ?? imir.imir_no,
     remark: remark ? { text: remark, by } : null,
     facts: factsOf(ctx),

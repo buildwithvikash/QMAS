@@ -77,7 +77,7 @@ export default function MyTasks({ tasks, isLoading, error, kind, onClearKind }) 
                       {t.vendorName && <> · {t.vendorName}</>}
                       {t.department && <> · {t.department}</>}
                       {t.qty && <> · {Number(t.qty).toLocaleString('en-IN')} {t.uom ?? ''}</>}
-                      {t.plantSapCode && <> · {t.plantSapCode}</>}
+                      {(t.plantName ?? t.plantSapCode) && <> · {t.plantName ?? t.plantSapCode}</>}
                     </p>
                     {t.note && <p className={`text-xs truncate ${t.sentBack ? 'text-amber-800' : 'text-slate-500'}`}>{t.sentBack ? `“${t.note}”` : t.note}</p>}
                   </div>

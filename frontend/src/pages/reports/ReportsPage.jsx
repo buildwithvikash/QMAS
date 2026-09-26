@@ -142,7 +142,7 @@ export default function ReportsPage() {
             {dated && <TextInput className="w-40" label={`${current?.dated ?? 'Date'} from`} type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} />}
             {dated && <TextInput className="w-40" label="To" type="date" value={to} min={from} onChange={(e) => e.target.value && setTo(e.target.value)} />}
             <Select className="w-56" label="Plant" placeholder="All my plants" value={plantId ?? ''} onChange={setPlantId}
-              options={(lookups?.plants ?? []).map((p) => ({ value: String(p.id), label: `${p.sapCode} · ${p.name}` }))} />
+              options={(lookups?.plants ?? []).map((p) => ({ value: String(p.id), label: `${p.name} (${p.sapCode})` }))} />
             <span className="text-xs text-slate-600 pb-3">
               {current ? `${rows.length.toLocaleString('en-IN')}${rows.length !== current.rows.length ? ` of ${current.rows.length.toLocaleString('en-IN')}` : ''} row${current.rows.length === 1 ? '' : 's'}${current.truncated ? ' (first 20,000; narrow the period)' : ''}` : ''}
             </span>
