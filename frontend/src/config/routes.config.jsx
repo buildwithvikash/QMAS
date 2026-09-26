@@ -27,6 +27,8 @@ const ReportsPage = lazy(() => import('../pages/reports/ReportsPage.jsx'));
 const ApprovalChainPage = lazy(() => import('../pages/masters/ApprovalChainPage.jsx'));
 const DevicesPage = lazy(() => import('../pages/admin/DevicesPage.jsx'));
 const SapSyncPage = lazy(() => import('../pages/admin/SapSyncPage.jsx'));
+const InsightsPage = lazy(() => import('../pages/ai/InsightsPage.jsx'));
+const AskPage = lazy(() => import('../pages/ai/AskPage.jsx'));
 
 /**
  * Sidebar sections and routes, filtered by the user's permissions (same idea as WRL's
@@ -72,9 +74,13 @@ export const ROUTE_SECTIONS = [
   },
   {
     key: 'reports',
-    label: 'Reports',
+    label: 'Reports & Insights',
     icon: BarChart3,
-    items: [{ path: '/reports', label: 'Registers & KPIs', permission: P.REPORTS_VIEW, element: <ReportsPage /> }],
+    items: [
+      { path: '/reports', label: 'Registers & KPIs', permission: P.REPORTS_VIEW, element: <ReportsPage /> },
+      { path: '/insights', label: 'Quality Insights', permission: P.AI_ASSIST, element: <InsightsPage /> },
+      { path: '/ask', label: 'Ask QMAS', permission: P.AI_ASSIST, element: <AskPage /> },
+    ],
   },
   {
     key: 'formats',

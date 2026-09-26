@@ -35,6 +35,37 @@ export async function get(db, id, { forUpdate = false } = {}) {
   return fix(camelRow(rows[0]));
 }
 
+/**
+ * The stat cards above the list: lots by stage for the current filters (all but the status tab),
+ * and lots received this month against last month for the trend.
+ */
+export async function counts(db, f, scope) {
+  const args = [];
+  const arg = (v) => { args.push(v); return `$${args.length}`; };
+  const where = listWhere(f, scope, arg, { withStatus: false });
+  const { rows } = await db.query(
+    `SELECT count(*)::int AS total,
+            count(*) FILTER (WHERE x.status = 'AWAITING_FORMAT')::int AS awaiting_format,
+            count(*) FILTER (WHERE x.status = 'OPEN')::int AS to_inspect,
+            count(*) FILTER (WHERE x.status = 'IN_INSPECTION')::int AS inspecting,
+            count(*) FILTER (WHERE x.status IN ('SUBMITTED', 'WITH_IQC_HEAD', 'DEPT_REVIEW', 'IQC_HEAD_FINAL', 'SENIOR_ESCALATION', 'UNDER_DEVIATION', 'QTY_VERIFICATION'))::int AS in_review,
+            count(*) FILTER (WHERE x.status IN ('CLOSED_ACCEPTED', 'CLOSED_REJECTED', 'CLOSED_UNDER_DEVIATION', 'AUTO_CLOSED'))::int AS closed,
+            count(*) FILTER (WHERE x.result = 'NOK')::int AS nok
+       FROM (${IMIR_SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}) x`,
+    args,
+  );
+  const targs = [];
+  const targ = (v) => { targs.push(v); return `$${targs.length}`; };
+  const twhere = listWhere(f, scope, targ, { withStatus: false, withDates: false });
+  const { rows: trend } = await db.query(
+    `SELECT count(*) FILTER (WHERE x.created_at >= date_trunc('month', now()))::int AS this_month,
+            count(*) FILTER (WHERE x.created_at >= date_trunc('month', now()) - interval '1 month' AND x.created_at < date_trunc('month', now()))::int AS last_month
+       FROM (${IMIR_SELECT} ${twhere.length ? `WHERE ${twhere.join(' AND ')}` : ''}) x`,
+    targs,
+  );
+  return { ...camelRow(rows[0]), ...camelRow(trend[0]) };
+}
+
 const GROUPS = {
   TO_INSPECT: "m.status IN ('OPEN', 'IN_INSPECTION')",
   AWAITING_FORMAT: "m.status = 'AWAITING_FORMAT'",
@@ -43,7 +74,7 @@ const GROUPS = {
 };
 const FILTER_FIELDS = listFieldMap(LIST_FIELDS.imirs, {
   imirNo: 'm.imir_no', grnNo: 'm.grn_no', sapLotNo: 'l.sap_lot_no', invoiceNo: 'm.invoice_no', itemCode: 'i.item_code', itemDescription: 'i.description',
-  itemCategory: 'c.name', vendorCode: 'v.vendor_code', vendorName: 'v.name', model: 'm.model', plant: 'p.sap_code', inspectedBy: 'iu.full_name',
+  itemCategory: 'c.name', vendorCode: 'v.vendor_code', vendorName: 'v.name', model: 'm.model', plant: 'p.name', inspectedBy: 'iu.full_name',
   status: 'm.status', result: 'm.result', grnDate: 'm.grn_date', receivedAt: { sql: 'm.created_at', tz: true }, submittedAt: { sql: 'm.submitted_at', tz: true },
   inwardQty: 'm.inward_qty', sampleSize: 'm.sample_size',
   hasDeviation: 'EXISTS (SELECT 1 FROM qms.deviation dx WHERE dx.imir_id = m.id)', hasDn: 'EXISTS (SELECT 1 FROM qms.defect_notification nx WHERE nx.imir_id = m.id)',
@@ -51,25 +82,33 @@ const FILTER_FIELDS = listFieldMap(LIST_FIELDS.imirs, {
 
 const SORTABLE = { createdAt: 'm.created_at', imirNo: 'm.imir_no', grnDate: 'm.grn_date', itemCode: 'i.item_code', status: 'm.status' };
 
-/** List restricted to the plants in `scope` ({ all } or { plantIds }). */
-export async function list(db, f, scope) {
-  const args = [];
-  const arg = (v) => { args.push(v); return `$${args.length}`; };
+/** WHERE conditions of the list; `withStatus: false` leaves the status tab out (for the counts). */
+function listWhere(f, scope, arg, { withStatus = true, withDates = true } = {}) {
   const where = [];
   if (!scope.all) where.push(`m.plant_id = ANY(${arg(scope.plantIds)})`);
   if (f.plantId) where.push(`m.plant_id = ${arg(f.plantId)}`);
-  if (f.status) where.push(`m.status = ${arg(f.status)}`);
-  if (f.statusGroup) where.push(GROUPS[f.statusGroup]);
-  if (f.from) where.push(`m.grn_date >= ${arg(f.from)}`);
-  if (f.to) where.push(`m.grn_date <= ${arg(f.to)}`);
+  if (f.vendorId) where.push(`m.vendor_id = ${arg(f.vendorId)}`);
+  if (withStatus && f.status) where.push(`m.status = ${arg(f.status)}`);
+  if (withStatus && f.statusGroup) where.push(GROUPS[f.statusGroup]);
+  if (withDates && f.from) where.push(`m.grn_date >= ${arg(f.from)}`);
+  if (withDates && f.to) where.push(`m.grn_date <= ${arg(f.to)}`);
   const dyn = buildDynamicFilter(f.filter, FILTER_FIELDS, arg);
   if (dyn) where.push(dyn);
   if (f.q) {
     const p = arg(likeContains(f.q));
     where.push(`(m.imir_no ILIKE ${p} OR m.grn_no ILIKE ${p} OR i.item_code ILIKE ${p} OR i.description ILIKE ${p} OR v.name ILIKE ${p} OR v.vendor_code ILIKE ${p} OR l.sap_lot_no ILIKE ${p})`);
   }
+  return where;
+}
+
+export async function list(db, f, scope) {
+  const args = [];
+  const arg = (v) => { args.push(v); return `$${args.length}`; };
+  const where = listWhere(f, scope, arg);
   const { rows } = await db.query(
-    `${IMIR_SELECT.replace('SELECT m.id,', 'SELECT count(*) OVER () AS total, m.id,')}
+    `${IMIR_SELECT.replace('SELECT m.id,', `SELECT count(*) OVER () AS total,
+        (SELECT dx.id FROM qms.deviation dx WHERE dx.imir_id = m.id ORDER BY dx.id DESC LIMIT 1) AS deviation_id,
+        (SELECT nx.id FROM qms.defect_notification nx WHERE nx.imir_id = m.id ORDER BY nx.id DESC LIMIT 1) AS dn_id, m.id,`)}
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ${orderBy(SORTABLE, f.sort, f.order, 'createdAt')}
       LIMIT ${arg(f.pageSize)} OFFSET ${arg(offsetOf(f))}`,

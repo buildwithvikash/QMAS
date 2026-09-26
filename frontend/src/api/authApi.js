@@ -64,6 +64,11 @@ export const authApi = baseApi.injectEndpoints({
       transformResponse: envelope,
       onQueryStarted: storeSession,
     }),
+    sessionPolicy: b.query({ query: () => '/auth/session-policy', transformResponse: envelope }),
+    reportActivity: b.mutation({ query: () => ({ url: '/auth/activity', method: 'POST' }) }),
+    forgotPassword: b.mutation({ query: (body) => ({ url: '/auth/forgot-password', method: 'POST', body }), transformResponse: envelope }),
+    checkResetLink: b.query({ query: (token) => ({ url: '/auth/reset-password', params: { token } }), transformResponse: envelope, keepUnusedDataFor: 0 }),
+    resetPassword: b.mutation({ query: (body) => ({ url: '/auth/reset-password', method: 'POST', body }), transformResponse: envelope }),
     logout: b.mutation({
       query: () => ({ url: '/auth/logout', method: 'POST' }),
       async onQueryStarted(_arg, { dispatch, queryFulfilled }) {
@@ -75,4 +80,7 @@ export const authApi = baseApi.injectEndpoints({
   }),
 });
 
-export const { useMeQuery, useLoginMutation, useChangePasswordMutation, useLogoutMutation } = authApi;
+export const {
+  useMeQuery, useLoginMutation, useChangePasswordMutation, useLogoutMutation, useForgotPasswordMutation, useCheckResetLinkQuery, useResetPasswordMutation,
+  useSessionPolicyQuery, useReportActivityMutation,
+} = authApi;

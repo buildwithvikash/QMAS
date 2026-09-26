@@ -82,7 +82,7 @@ function SimulateLot({ onClose }) {
       <FormError message={error && !Object.keys(apiError(error).fieldErrors).length ? apiError(error).message : ''} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Select label="Plant" required value={form.values.plantSapCode} onChange={(v) => form.set('plantSapCode', v)} error={form.error('plantSapCode')}
-          options={(lookups?.plants ?? []).map((p) => ({ value: p.sapCode, label: `${p.sapCode} · ${p.name}` }))} />
+          options={(lookups?.plants ?? []).map((p) => ({ value: p.sapCode, label: `${p.name} (${p.sapCode})` }))} />
         {f('grnNo', 'GRN no.')}
         {f('grnDate', 'GRN date', { type: 'date' })}
         {f('invoiceNo', 'Invoice no.')}

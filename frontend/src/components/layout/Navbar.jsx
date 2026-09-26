@@ -24,7 +24,7 @@ export default function Navbar() {
   const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 
   const primaryRole = user?.roles[0];
-  const roleText = primaryRole ? `${primaryRole.roleName}${primaryRole.plantSapCode ? ` · ${primaryRole.plantSapCode}` : ''}` : 'No role assigned';
+  const roleText = primaryRole ? `${primaryRole.roleName}${primaryRole.plantName ? ` · ${primaryRole.plantName}` : ''}` : 'No role assigned';
   const moreRoles = (user?.roles.length ?? 0) - 1;
 
   // Unsent tablet entries stay on the tablet and are sent when their inspector signs in again;
@@ -93,7 +93,7 @@ export default function Navbar() {
                   {user?.roles.map((r) => (
                     <li key={`${r.roleCode}-${r.plantId}`} className="text-xs text-slate-600">
                       {r.roleName}
-                      {r.plantName && <span className="text-slate-400"> · {r.plantName} ({r.plantSapCode})</span>}
+                      {r.plantName && <span className="text-slate-400"> · {r.plantName}</span>}
                     </li>
                   ))}
                 </ul>

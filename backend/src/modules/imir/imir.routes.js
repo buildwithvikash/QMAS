@@ -10,7 +10,7 @@ import { body, created, noContent, ok, params, query } from '../../shared/http.j
 import * as files from './attachments.service.js';
 import * as imir from './imir.service.js';
 import { changes } from './changes.service.js';
-import { renderImirPdf } from './imir.pdf.js';
+import { renderImirPdf, renderImirXlsx } from './imir.pdf.js';
 import { review } from './review.service.js';
 
 const router = Router();
@@ -32,6 +32,7 @@ const attachmentFields = z.object({
   deviceId: z.uuid().optional(),
 });
 
+router.get('/counts', canView, validate({ query: imirListQuery }), async (req, res) => ok(res, await imir.counts(req.user, query(req))));
 router.get('/', canView, validate({ query: imirListQuery }), async (req, res) => {
   const { data, meta } = await imir.list(req.user, query(req));
   ok(res, data, meta);
@@ -42,12 +43,22 @@ router.get('/:id/changes', canView, validate({ params: uuidParam }), async (req,
 router.get('/:id/pdf', canView, validate({ params: uuidParam }), async (req, res) => {
   const m = await imir.detail(params(req).id, req.user);
   if (m.status === 'AWAITING_FORMAT') throw AppError.conflict('This IMIR is not open yet, so there is nothing to print.');
-  const pdf = await renderImirPdf(m);
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${m.imirNo}.pdf"`);
-  res.setHeader('Cache-Control', 'private, no-store');
-  res.end(pdf);
+  sendFile(res, await renderImirPdf(m), m.imirNo, 'pdf');
 });
+router.get('/:id/xlsx', canView, validate({ params: uuidParam }), async (req, res) => {
+  const m = await imir.detail(params(req).id, req.user);
+  if (m.status === 'AWAITING_FORMAT') throw AppError.conflict('This IMIR is not open yet, so there is nothing to export.');
+  sendFile(res, await renderImirXlsx(m), m.imirNo, 'xlsx');
+});
+
+/** Sends a generated file: PDF shown in the browser, Excel downloaded. */
+function sendFile(res, buffer, name, kind) {
+  res.setHeader('Content-Type', kind === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `${kind === 'pdf' ? 'inline' : 'attachment'}; filename="${name}.${kind}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.end(buffer);
+}
+
 
 router.put('/:id/inspection', canInspect, validate({ params: uuidParam, body: inspectionSaveSchema }), async (req, res) => {
   ok(res, await imir.saveProgress(txContext(req), req.user, params(req).id, body(req)));

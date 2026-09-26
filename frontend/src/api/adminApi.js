@@ -36,8 +36,22 @@ export const adminApi = baseApi.injectEndpoints({
     unlockUser: b.mutation({
       query: (id) => ({ url: `/users/${id}/unlock`, method: 'POST' }),
       transformResponse: envelope,
-      invalidatesTags: (_r, _e, id) => ['Users', { type: 'Users', id }],
+      invalidatesTags: (_r, _e, id) => ['Users', { type: 'Users', id }, 'Audit'],
     }),
+
+    // ── Sessions, locks, sign-outs ───────────────────────────────────────────
+    getUserSummary: b.query({ query: () => '/users/summary', transformResponse: envelope, providesTags: ['Users'] }),
+    getActiveSessions: b.query({ query: () => '/users/sessions', transformResponse: envelope, providesTags: ['Users'] }),
+    getUserSessions: b.query({ query: (id) => `/users/${id}/sessions`, transformResponse: envelope, providesTags: (_r, _e, id) => [{ type: 'Users', id }] }),
+    lockUser: b.mutation({
+      query: ({ id, reason }) => ({ url: `/users/${id}/lock`, method: 'POST', body: { reason } }),
+      transformResponse: envelope,
+      invalidatesTags: ['Users', 'Audit'],
+    }),
+    forceLogoutUser: b.mutation({ query: (id) => ({ url: `/users/${id}/force-logout`, method: 'POST' }), transformResponse: envelope, invalidatesTags: ['Users', 'Audit'] }),
+    endSession: b.mutation({ query: (sessionId) => ({ url: `/users/sessions/${sessionId}/end`, method: 'POST' }), transformResponse: envelope, invalidatesTags: ['Users', 'Audit'] }),
+    endAllSessions: b.mutation({ query: () => ({ url: '/users/sessions/end-all', method: 'POST' }), transformResponse: envelope, invalidatesTags: ['Users', 'Audit'] }),
+    sendResetLink: b.mutation({ query: (id) => ({ url: `/users/${id}/send-reset-link`, method: 'POST' }), transformResponse: envelope, invalidatesTags: ['Audit'] }),
 
     // ── Roles & permissions ──────────────────────────────────────────────────
     getRoles: b.query({ query: () => '/roles', transformResponse: envelope, providesTags: ['Roles'] }),
@@ -46,6 +60,21 @@ export const adminApi = baseApi.injectEndpoints({
       query: ({ code, permissions }) => ({ url: `/roles/${code}/permissions`, method: 'PUT', body: { permissions } }),
       transformResponse: envelope,
       invalidatesTags: ['Roles', 'Me'],
+    }),
+    createRole: b.mutation({
+      query: (body) => ({ url: '/roles', method: 'POST', body }),
+      transformResponse: envelope,
+      invalidatesTags: ['Roles', 'Lookups'],
+    }),
+    updateRole: b.mutation({
+      query: ({ code, ...body }) => ({ url: `/roles/${code}`, method: 'PATCH', body }),
+      transformResponse: envelope,
+      invalidatesTags: ['Roles', 'Lookups', 'Me'],
+    }),
+    deleteRole: b.mutation({
+      query: (code) => ({ url: `/roles/${code}`, method: 'DELETE' }),
+      transformResponse: envelope,
+      invalidatesTags: ['Roles', 'Lookups'],
     }),
 
     // ── Audit ────────────────────────────────────────────────────────────────
@@ -71,9 +100,20 @@ export const {
   useSetUserRolesMutation,
   useResetPasswordMutation,
   useUnlockUserMutation,
+  useGetUserSummaryQuery,
+  useGetActiveSessionsQuery,
+  useGetUserSessionsQuery,
+  useLockUserMutation,
+  useForceLogoutUserMutation,
+  useEndSessionMutation,
+  useEndAllSessionsMutation,
+  useSendResetLinkMutation,
   useGetRolesQuery,
   useGetPermissionsQuery,
   useSetRolePermissionsMutation,
+  useCreateRoleMutation,
+  useUpdateRoleMutation,
+  useDeleteRoleMutation,
   useGetAuditChangesQuery,
   useGetAuthEventsQuery,
   useGetAuditTablesQuery,

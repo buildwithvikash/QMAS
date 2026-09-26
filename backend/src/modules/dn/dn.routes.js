@@ -10,7 +10,7 @@ import { AppError } from '../../shared/AppError.js';
 import { body, created, ok, params, query } from '../../shared/http.js';
 import { MAX_ATTACHMENT_BYTES } from '../imir/attachments.service.js';
 import './dn.mail.js';
-import { renderDnPdf } from './dn.pdf.js';
+import { renderDnPdf, renderDnXlsx } from './dn.pdf.js';
 import * as dn from './dn.service.js';
 
 const router = Router();
@@ -26,6 +26,7 @@ const receiveFile = (req, res, next) =>
     next();
   });
 
+router.get('/counts', canView, validate({ query: dnListQuery }), async (req, res) => ok(res, await dn.counts(req.user, query(req))));
 router.get('/', canView, validate({ query: dnListQuery }), async (req, res) => {
   const { data, meta } = await dn.list(req.user, query(req));
   ok(res, data, meta);
@@ -41,11 +42,20 @@ router.post('/:id/attachments', canManage, validate({ params: uuidParam }), rece
 router.post('/:id/mail-self', canView, validate({ params: uuidParam }), async (req, res) => ok(res, await dn.mailToSelf(txContext(req), req.user, params(req).id)));
 router.get('/:id/pdf', canView, validate({ params: uuidParam }), async (req, res) => {
   const detail = await dn.detail(params(req).id, req.user);
-  const pdf = await renderDnPdf(detail, getPool());
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${detail.dnNo}.pdf"`);
-  res.setHeader('Cache-Control', 'private, no-store');
-  res.end(pdf);
+  sendFile(res, await renderDnPdf(detail, getPool()), detail.dnNo, 'pdf');
 });
+router.get('/:id/xlsx', canView, validate({ params: uuidParam }), async (req, res) => {
+  const detail = await dn.detail(params(req).id, req.user);
+  sendFile(res, await renderDnXlsx(detail, getPool()), detail.dnNo, 'xlsx');
+});
+
+/** Sends a generated file: PDF shown in the browser, Excel downloaded. */
+function sendFile(res, buffer, name, kind) {
+  res.setHeader('Content-Type', kind === 'pdf' ? 'application/pdf' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `${kind === 'pdf' ? 'inline' : 'attachment'}; filename="${name}.${kind}"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.end(buffer);
+}
+
 
 export default router;

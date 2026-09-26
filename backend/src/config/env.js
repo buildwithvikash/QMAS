@@ -20,6 +20,10 @@ const schema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(20).default(5),
   LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(15),
+  // One sign-in per user: a new sign-in ends the user's sessions on other devices.
+  SINGLE_SESSION: bool.default(true),
+  // Sign out after this many minutes without user activity (0 = never). Tablets are exempt.
+  IDLE_TIMEOUT_MIN: z.coerce.number().int().min(0).max(24 * 60).default(30),
   SERVE_WEB_DIST: z.string().optional(),
   // Mail: 'log' keeps mail on this machine (logged, marked sent); 'smtp' sends through SES SMTP or any relay.
   MAIL_TRANSPORT: z.enum(['log', 'smtp']).default('log'),
@@ -32,6 +36,15 @@ const schema = z.object({
   // Testing: every mail goes to this one address instead (the intended recipient is named in the
   // subject). Leave empty in production.
   MAIL_REDIRECT_TO: z.union([z.literal(''), z.string().email()]).optional().transform((v) => v || undefined),
+  // Claude (AI features). Without a key the AI features say they are not set up; everything
+  // else, including the non-AI quality insights, works as before.
+  ANTHROPIC_BASE_URL: z.union([z.literal(''), z.string().url()]).optional().transform((v) => v || undefined),
+  ANTHROPIC_API_KEY: z.string().optional().transform((v) => v || undefined),
+  ANTHROPIC_MODEL: z.string().optional().transform((v) => v || undefined),
+  // Trial only (demo data): Claude through Puter with a Puter account token from `npm run puter-login`.
+  AI_PROVIDER: z.union([z.literal(''), z.enum(['anthropic', 'puter'])]).optional().transform((v) => v || undefined),
+  PUTER_AUTH_TOKEN: z.string().optional().transform((v) => v || undefined),
+  PUTER_MODEL: z.string().optional().transform((v) => v || undefined),
   // Links in mails point here (the web app's public address).
   APP_BASE_URL: z.string().url().default('http://localhost:5173'),
 });

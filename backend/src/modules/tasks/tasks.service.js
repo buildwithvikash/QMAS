@@ -25,7 +25,7 @@ export async function myTasks(user) {
   // Lots to inspect (Inspector), including lots sent back and lots checked out to a tablet.
   if (holds(user, P.IMIR_INSPECT)) {
     const { rows } = await db.query(
-      `SELECT m.id, m.imir_no, m.status, m.plant_id, p.sap_code AS plant_sap_code, i.item_code, i.description AS item_description,
+      `SELECT m.id, m.imir_no, m.status, m.plant_id, p.sap_code AS plant_sap_code, p.name AS plant_name, i.item_code, i.description AS item_description,
               v.name AS vendor_name, m.inward_qty, m.uom, m.created_at, m.updated_at, d.device_code AS tablet,
               (SELECT a.action FROM qms.imir_action a WHERE a.imir_id = m.id ORDER BY a.at DESC, a.id DESC LIMIT 1) AS last_action,
               (SELECT a.remark FROM qms.imir_action a WHERE a.imir_id = m.id ORDER BY a.at DESC, a.id DESC LIMIT 1) AS last_remark
@@ -40,7 +40,7 @@ export async function myTasks(user) {
         kind: 'inspect', entity: 'IMIR', id: m.id, docNo: m.imirNo, link: `/imirs/${m.id}`,
         task: sentBack ? 'Correct and resubmit' : m.status === 'IN_INSPECTION' ? 'Continue inspection' : 'Inspect lot',
         status: m.status, sentBack, note: sentBack ? m.lastRemark : null, tablet: m.tablet,
-        qty: m.inwardQty, uom: m.uom, plantSapCode: m.plantSapCode, itemCode: m.itemCode, itemDescription: m.itemDescription, vendorName: m.vendorName,
+        qty: m.inwardQty, uom: m.uom, plantSapCode: m.plantSapCode, plantName: m.plantName, itemCode: m.itemCode, itemDescription: m.itemDescription, vendorName: m.vendorName,
         since: sentBack ? m.updatedAt : m.createdAt,
       });
     }
@@ -48,7 +48,7 @@ export async function myTasks(user) {
 
   // Inspections to review (Incharge) and escalated lots to decide (IQC Head).
   const { rows: reviews } = await db.query(
-    `SELECT m.id, m.imir_no, m.status, m.result, m.plant_id, p.sap_code AS plant_sap_code, i.item_code, i.description AS item_description,
+    `SELECT m.id, m.imir_no, m.status, m.result, m.plant_id, p.sap_code AS plant_sap_code, p.name AS plant_name, i.item_code, i.description AS item_description,
             v.name AS vendor_name, m.submitted_at, m.updated_at
        FROM qms.imir m JOIN core.plant p ON p.id = m.plant_id JOIN mst.item i ON i.id = m.item_id JOIN mst.vendor v ON v.id = m.vendor_id
       WHERE m.status = ANY($1) ORDER BY m.updated_at LIMIT 1000`,
@@ -59,7 +59,7 @@ export async function myTasks(user) {
     if (!actions.length) continue;
     tasks.push({
       kind: 'review', entity: 'IMIR', id: m.id, docNo: m.imirNo, link: `/imirs/${m.id}`, task: IMIR_TASK[m.status], status: m.status, result: m.result, actions,
-      plantSapCode: m.plantSapCode, itemCode: m.itemCode, itemDescription: m.itemDescription, vendorName: m.vendorName, since: m.updatedAt,
+      plantSapCode: m.plantSapCode, plantName: m.plantName, itemCode: m.itemCode, itemDescription: m.itemDescription, vendorName: m.vendorName, since: m.updatedAt,
     });
   }
 
@@ -72,7 +72,7 @@ export async function myTasks(user) {
     if (!actions.some((a) => a !== 'override')) continue; // overriding is a right, not a task
     tasks.push({
       kind: 'deviation', entity: 'DEVIATION', id: d.id, docNo: d.deviationNo, imirNo: d.imirNo, link: `/deviations/${d.id}`, task: STAGE_LABEL[d.stage],
-      stage: d.stage, department: d.department, actions, plantSapCode: d.plantSapCode, itemCode: d.itemCode, itemDescription: d.itemDescription,
+      stage: d.stage, department: d.department, actions, plantSapCode: d.plantSapCode, plantName: d.plantName, itemCode: d.itemCode, itemDescription: d.itemDescription,
       vendorName: d.vendorName, since: d.updatedAt, dueAt: d.stage === 'UNDER_DEVIATION' ? d.qtyDueAt : (round?.steps ?? []).filter((x) => x.status === 'PENDING' && x.dueAt).map((x) => x.dueAt).sort()[0] ?? null,
     });
   }
@@ -80,7 +80,7 @@ export async function myTasks(user) {
   // Defect notifications: the vendor's CAPA to enter (Incharge) or to review (IQC Head).
   if (holds(user, P.DN_MANAGE) || holds(user, P.DN_APPROVE_CAPA)) {
     const { rows } = await db.query(
-      `SELECT n.id, n.dn_no, n.status, n.plant_id, n.capa_applicable, n.capa_due_at, n.created_at, n.updated_at, p.sap_code AS plant_sap_code,
+      `SELECT n.id, n.dn_no, n.status, n.plant_id, n.capa_applicable, n.capa_due_at, n.created_at, n.updated_at, p.sap_code AS plant_sap_code, p.name AS plant_name,
               i.item_code, i.description AS item_description, v.name AS vendor_name
          FROM qms.defect_notification n JOIN core.plant p ON p.id = n.plant_id JOIN mst.item i ON i.id = n.item_id JOIN mst.vendor v ON v.id = n.vendor_id
         WHERE n.status IN ('OPEN', 'CAPA_SUBMITTED') ORDER BY n.created_at LIMIT 1000`,
@@ -92,7 +92,7 @@ export async function myTasks(user) {
       tasks.push({
         kind: 'capa', entity: 'DN', id: n.id, docNo: n.dnNo, link: `/dns/${n.id}`,
         task: submit ? (n.capaApplicable ? "Enter vendor's CAPA" : 'Send DN for closure') : 'Review CAPA', status: n.status, actions,
-        plantSapCode: n.plantSapCode, itemCode: n.itemCode, itemDescription: n.itemDescription, vendorName: n.vendorName,
+        plantSapCode: n.plantSapCode, plantName: n.plantName, itemCode: n.itemCode, itemDescription: n.itemDescription, vendorName: n.vendorName,
         since: submit ? n.createdAt : n.updatedAt, dueAt: submit && n.capaApplicable ? n.capaDueAt : null,
       });
     }

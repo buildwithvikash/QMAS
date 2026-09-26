@@ -89,6 +89,11 @@ export async function openAwaitingForItem(db, itemId, opts) {
 
 // ── Reading ───────────────────────────────────────────────────────────────────
 
+/** Counts for the stat cards above the list, with the list's filters (not its status tab). */
+export async function counts(user, filters) {
+  return repo.counts(getPool(), filters, plantScope(user, PERMISSIONS.IMIR_VIEW, 'view'));
+}
+
 export async function list(user, filters) {
   const scope = plantScope(user, PERMISSIONS.IMIR_VIEW, 'view');
   const { rows, total } = await repo.list(getPool(), filters, scope);

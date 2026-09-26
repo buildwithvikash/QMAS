@@ -22,7 +22,7 @@ export default function DevicesPage() {
   const columns = [
     { key: 'deviceCode', header: 'Device code', className: 'font-mono text-xs font-semibold' },
     { key: 'name', header: 'Name' },
-    { key: 'plant', header: 'Plant', render: (d) => `${d.plantSapCode} · ${d.plantName}` },
+    { key: 'plant', header: 'Plant', render: (d) => d.plantName },
     { key: 'checkedOut', header: 'Lots on it', align: 'right' },
     { key: 'lastSeenAt', header: 'Last seen', render: (d) => (d.lastSeenAt ? `${formatRelative(d.lastSeenAt)}${d.lastUserName ? ` · ${d.lastUserName}` : ''}` : 'never') },
     { key: 'isActive', header: 'Status', render: (d) => <ActiveBadge active={d.isActive} /> },
@@ -62,7 +62,7 @@ function AddDevice({ onClose }) {
         <TextInput label="Device code" required value={form.values.deviceCode} onChange={(e) => form.set('deviceCode', e.target.value.toUpperCase())} error={form.error('deviceCode')} hint="Write it on a label on the tablet, e.g. TAB-SJN-01" />
         <TextInput label="Name" required value={form.values.name} onChange={(e) => form.set('name', e.target.value)} error={form.error('name')} placeholder="Stores tablet 1" />
         <Select label="Plant" required value={form.values.plantId ? String(form.values.plantId) : ''} onChange={(v) => form.set('plantId', v ? Number(v) : null)} error={form.error('plantId')}
-          options={(lookups?.plants ?? []).filter((p) => p.isActive).map((p) => ({ value: String(p.id), label: `${p.sapCode} · ${p.name}` }))} />
+          options={(lookups?.plants ?? []).filter((p) => p.isActive).map((p) => ({ value: String(p.id), label: `${p.name} (${p.sapCode})` }))} />
       </div>
     </Modal>
   );
