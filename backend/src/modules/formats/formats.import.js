@@ -244,6 +244,10 @@ export async function commit(ctx, user, buffer, fileName) {
         await repo.replaceCheckpoints(db, id, item.checkpoints);
         await repo.updateVersion(db, id, null, { decidedAt: new Date(), decidedBy: user.id, decisionRemark: `Imported from ${fileName}` });
         await repo.setCurrent(db, format.id, id);
+        await repo.addEvent(db, {
+          formatId: format.id, versionId: id, action: 'IMPORTED', userId: user.id,
+          detail: { file: fileName, sheet: analysis.sheet, rows: [item.firstRow, item.lastRow], checkpoints: item.checkpoints.length, versionNo: 1 },
+        });
         await openAwaitingForItem(db, rows[0].id, { userId: user.id });
       });
       item.status = 'IMPORTED';

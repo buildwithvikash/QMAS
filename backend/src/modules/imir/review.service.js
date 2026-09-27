@@ -1,3 +1,4 @@
+import { perLot, sampleText } from '@qmas/shared';
 import { withTransaction } from '../../db/tx.js';
 import { AppError } from '../../shared/AppError.js';
 import { issueNumber } from '../numbering/numbering.service.js';
@@ -74,9 +75,9 @@ async function failedCheckpointSummary(db, imir) {
   const specification = failed.map((c) => `${c.checkpoint}: ${c.specification}`).join('\n');
   const observation = failed
     .map((c) => {
-      if (c.section === 'RELIABILITY') return `${c.checkpoint}: ${states.get(c.uid).textObservation ?? 'NOK'}`;
+      if (perLot(c)) return `${c.checkpoint}: ${states.get(c.uid).textObservation ?? 'NOK'}`;
       const bad = cells.filter((o) => o.checkpointUid === c.uid && o.decision === 'NOK');
-      const readings = bad.map((o) => (c.section === 'DIMENSIONAL' ? `S${o.sampleNo} ${o.value}${c.uom ? ` ${c.uom}` : ''}` : `S${o.sampleNo} NOK`));
+      const readings = bad.map((o) => `S${o.sampleNo} ${c.section === 'VISUAL' && c.inputType !== 'CHOICE' ? 'NOK' : sampleText(c, o)}`);
       return `${c.checkpoint}: ${readings.join(', ')}`;
     })
     .join('\n');

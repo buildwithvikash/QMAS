@@ -1,6 +1,7 @@
 import { ClipboardList, ExternalLink, FileSpreadsheet, FileWarning, FileX2, Image, Info, Play, Printer, SearchCheck } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { perLot, sampleText } from '@qmas/shared';
 import { useGetImirQuery } from '../../api/imirApi.js';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
@@ -11,7 +12,7 @@ import { currentStage, journeySteps, stageRows } from './journey.js';
 import { ImirResult, ImirStatus } from './imirUi.jsx';
 
 const TABS = [{ key: 'details', label: 'Details' }, { key: 'result', label: 'Inspection Result' }, { key: 'docs', label: 'Documents' }, { key: 'history', label: 'History' }];
-const SECTIONS = [['DIMENSIONAL', 'Dimensional'], ['VISUAL', 'Visual'], ['RELIABILITY', 'Reliability']];
+const SECTIONS = [['RECORD', 'Lot details'], ['DIMENSIONAL', 'Dimensional'], ['VISUAL', 'Visual'], ['RELIABILITY', 'Reliability']];
 
 /** Quick look at a lot from the Incoming Lots list: details, result, documents and history. */
 export default function ImirPreview({ id, onClose }) {
@@ -87,8 +88,8 @@ export default function ImirPreview({ id, onClose }) {
                   action={<span className="text-xs"><span className="text-emerald-700 font-semibold">{ok} OK</span>{nok.length > 0 && <span className="ml-2 text-rose-700 font-semibold">{nok.length} NOK</span>}{cps.length - ok - nok.length > 0 && <span className="ml-2 text-slate-500">{cps.length - ok - nok.length} pending</span>}</span>}>
                   <ul className="px-4 pb-3 space-y-1">
                     {cps.map((c) => {
-                      const vals = m.cells.filter((x) => x.checkpointUid === c.uid).sort((a, b) => a.sampleNo - b.sampleNo)
-                        .map((x) => (x.value ?? (x.ok === true ? 'OK' : x.ok === false ? 'NOK' : null))).filter((v) => v !== null);
+                      const vals = perLot(c) ? [c.textObservation].filter(Boolean)
+                        : m.cells.filter((x) => x.checkpointUid === c.uid).sort((a, b) => a.sampleNo - b.sampleNo).map((x) => sampleText(c, x)).filter(Boolean);
                       const r = results[c.uid];
                       return (
                         <li key={c.uid} className="flex items-baseline gap-2 text-sm">

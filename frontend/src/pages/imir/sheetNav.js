@@ -18,6 +18,21 @@ export function moveFocus(from, dRow, dCol, lastCol) {
   return false;
 }
 
+/** Which sheet tab holds a checkpoint's entries. */
+export const tabOf = (cp) => (cp?.section === 'RECORD' ? 'lot' : cp?.section === 'DIMENSIONAL' ? 'dim' : 'visrel');
+
+/** A section's checkpoints split by their headings (format builder): [{ label, items, custom }]. */
+export function groupsOf(checkpoints, fallback) {
+  const out = [];
+  for (const cp of checkpoints) {
+    const label = cp.groupLabel || fallback;
+    const g = out.find((x) => x.label === label);
+    if (g) g.items.push(cp);
+    else out.push({ label, items: [cp], custom: !!cp.groupLabel });
+  }
+  return out;
+}
+
 /** Focuses the first empty required entry (used by the "Next empty" button). */
 export function focusFirstMissing(missing) {
   const m = missing?.[0];
@@ -45,13 +60,22 @@ export function sheetProgress(sheet) {
   const dims = cps.filter((c) => c.section === 'DIMENSIONAL');
   const vis = cps.filter((c) => c.section === 'VISUAL');
   const rel = cps.filter((c) => c.section === 'RELIABILITY' && c.isRequired);
+  const recs = cps.filter((c) => c.section === 'RECORD');
   const dim = { done: count(dims, (c) => c?.value != null), total: dims.length * n, nok: dims.some((c) => results[c.uid] === 'NOK') };
   const visrel = {
-    done: count(vis, (c) => c?.ok != null) + rel.filter((c) => c.textObservation && c.manualResult).length,
+    done: count(vis.filter((c) => c.inputType !== 'CHOICE'), (c) => c?.ok != null) + count(vis.filter((c) => c.inputType === 'CHOICE'), (c) => c?.value != null)
+      + rel.filter((c) => c.textObservation && c.manualResult).length,
     total: vis.length * n + rel.length,
     nok: [...vis, ...cps.filter((c) => c.section === 'RELIABILITY')].some((c) => results[c.uid] === 'NOK'),
   };
-  const total = dim.total + visrel.total + 1;
-  const done = dim.done + visrel.done + (sheet.model ? 1 : 0);
-  return { dim, visrel, pct: total ? Math.round((done / total) * 100) : 0 };
+  // Lot details: required ones count towards progress; any answered one that fails marks the tab.
+  const lot = {
+    done: recs.filter((c) => c.isRequired !== false && c.textObservation).length,
+    total: recs.filter((c) => c.isRequired !== false).length,
+    nok: recs.some((c) => results[c.uid] === 'NOK'),
+    present: recs.length > 0,
+  };
+  const total = lot.total + dim.total + visrel.total + 1;
+  const done = lot.done + dim.done + visrel.done + (sheet.model ? 1 : 0);
+  return { lot, dim, visrel, present: { dim: dims.length > 0, visrel: vis.length + cps.filter((c) => c.section === 'RELIABILITY').length > 0 }, pct: total ? Math.round((done / total) * 100) : 0 };
 }

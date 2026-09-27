@@ -63,7 +63,10 @@ export async function tryOpen(db, imirId, { userId = null, at = new Date() } = {
   const lastTest = new Map(tests.map((t) => [t.checkpoint_uid, t]));
   for (const cp of checkpoints) {
     const t = lastTest.get(cp.uid);
-    const required = cp.section !== 'RELIABILITY' || reliabilityDue({ frequencyMonths: cp.frequencyMonths, lastTestedAt: t?.tested_at, lastResult: t?.result }, at);
+    // Reliability: only when due. Lot details: as the format says. Sample checks: always.
+    const required = cp.section === 'RELIABILITY'
+      ? reliabilityDue({ frequencyMonths: cp.frequencyMonths, lastTestedAt: t?.tested_at, lastResult: t?.result }, at)
+      : cp.section === 'RECORD' ? cp.formatRequired !== false : true;
     await db.query(
       'INSERT INTO qms.imir_checkpoint (imir_id, checkpoint_uid, section, is_required, last_tested_at) VALUES ($1, $2, $3, $4, $5)',
       [imirId, cp.uid, cp.section, required, t?.tested_at ?? null],
@@ -178,6 +181,18 @@ async function lockForInspection(db, user, id, deviceId) {
   return imir;
 }
 
+/** Why a lot-details answer is not acceptable for its field type, or null. Empty answers are allowed while saving. */
+function recordAnswerProblem(cp, answer) {
+  if (answer === undefined || answer === null || answer === '') return null;
+  const a = String(answer).trim();
+  if (cp.inputType === 'NUMBER' && !/^[-+]?\d+(\.\d{1,3})?$/.test(a)) return `${cp.checkpoint}: enter a number (up to 3 decimals).`;
+  if (cp.inputType === 'DATE' && (!/^\d{4}-\d{2}-\d{2}$/.test(a) || Number.isNaN(Date.parse(a)))) return `${cp.checkpoint}: enter a date.`;
+  if ((cp.inputType === 'CHOICE' || cp.inputType === 'YES_NO') && !(cp.options ?? []).some((o) => o.label.toLowerCase() === a.toLowerCase())) {
+    return `${cp.checkpoint}: choose one of ${(cp.options ?? []).map((o) => o.label).join(', ')}.`;
+  }
+  return null;
+}
+
 /**
  * Saves inspection progress: only the cells and entries sent change (autosave cell by cell, or a
  * batch from an offline tablet). Decisions are recomputed here; the client's own are never trusted.
@@ -192,21 +207,32 @@ export async function saveProgress(ctx, user, id, body, { clientTime = null } = 
     for (const [i, cell] of body.cells.entries()) {
       const cp = byUid.get(cell.checkpointUid);
       if (!cp) { errors.push({ path: `cells.${i}.checkpointUid`, message: 'Not a checkpoint of this format.' }); continue; }
-      if (cp.section === 'RELIABILITY') { errors.push({ path: `cells.${i}`, message: 'Reliability tests take a text observation, not sample readings.' }); continue; }
-      if (cp.section === 'DIMENSIONAL' && cell.ok !== undefined && cell.ok !== null) errors.push({ path: `cells.${i}.ok`, message: 'Dimensional checks take a measured value.' });
-      if (cp.section === 'VISUAL' && cell.value !== undefined && cell.value !== null) errors.push({ path: `cells.${i}.value`, message: 'Visual checks take OK or NOK.' });
+      if (cp.section === 'RELIABILITY' || cp.section === 'RECORD') { errors.push({ path: `cells.${i}`, message: `${cp.checkpoint} is recorded once per lot, not per sample.` }); continue; }
+      const choice = cp.section === 'VISUAL' && cp.inputType === 'CHOICE';
+      if ((cp.section === 'DIMENSIONAL' || choice) && cell.ok !== undefined && cell.ok !== null) errors.push({ path: `cells.${i}.ok`, message: `${cp.checkpoint} takes ${choice ? 'one of its options' : 'a measured value'}.` });
+      if (cp.section === 'VISUAL' && !choice && cell.value !== undefined && cell.value !== null) errors.push({ path: `cells.${i}.value`, message: 'Visual checks take OK or NOK.' });
+      if (choice && cell.value !== undefined && cell.value !== null && !(Number.isInteger(cell.value) && cp.options?.[cell.value])) {
+        errors.push({ path: `cells.${i}.value`, message: `Choose one of the options of ${cp.checkpoint}.` });
+      }
     }
     for (const [i, e] of body.entries.entries()) {
       const cp = byUid.get(e.checkpointUid);
       if (!cp) errors.push({ path: `entries.${i}.checkpointUid`, message: 'Not a checkpoint of this format.' });
-      else if (cp.section !== 'RELIABILITY' && (e.textObservation || e.manualResult)) errors.push({ path: `entries.${i}`, message: 'Only reliability tests take a text observation and manual result.' });
+      else if (cp.section === 'RECORD') {
+        if (e.manualResult) errors.push({ path: `entries.${i}.manualResult`, message: `${cp.checkpoint} is decided from its answer.` });
+        const problem = recordAnswerProblem(cp, e.textObservation);
+        if (problem) errors.push({ path: `entries.${i}.textObservation`, message: problem });
+      } else if (cp.section !== 'RELIABILITY' && (e.textObservation || e.manualResult)) {
+        errors.push({ path: `entries.${i}`, message: 'Only reliability tests and lot details take an observation.' });
+      }
     }
     if (errors.length) throw AppError.unprocessable(errors[0].message, errors);
 
     for (const cell of body.cells) {
       const cp = byUid.get(cell.checkpointUid);
-      const value = cp.section === 'DIMENSIONAL' ? (cell.value ?? null) : null;
-      const ok = cp.section === 'VISUAL' ? (cell.ok ?? null) : null;
+      const choice = cp.section === 'VISUAL' && cp.inputType === 'CHOICE';
+      const value = cp.section === 'DIMENSIONAL' || choice ? (cell.value ?? null) : null;
+      const ok = cp.section === 'VISUAL' && !choice ? (cell.ok ?? null) : null;
       if (value === null && ok === null) {
         await db.query('DELETE FROM qms.imir_observation WHERE imir_id = $1 AND checkpoint_uid = $2 AND sample_no = $3', [id, cell.checkpointUid, cell.sampleNo]);
         continue;

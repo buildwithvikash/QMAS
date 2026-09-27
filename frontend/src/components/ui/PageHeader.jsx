@@ -1,5 +1,5 @@
 import { Check, ChevronRight, Copy, Home, Search, X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, matchPath, useLocation } from 'react-router-dom';
 import { ROUTE_SECTIONS } from '../../config/routes.config.jsx';
 
@@ -51,8 +51,19 @@ export function CopyButton({ text, label = 'Copy' }) {
  */
 export default function PageHeader({ icon: Icon, title, subtitle, search, onSearch, searchPlaceholder = 'Search…', copyTitle = false, children }) {
   const crumbs = useCrumbs();
+  // Publish the header's height as --page-header-h, so parts of a page can stick just below it.
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const set = () => document.documentElement.style.setProperty('--page-header-h', `${el.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
-    <div className="sticky top-0 z-20 bg-white/85 backdrop-blur-md border-b border-slate-200/80">
+    <div ref={ref} className="sticky top-0 z-20 bg-white/85 backdrop-blur-md border-b border-slate-200/80">
       <div className="px-5 pt-2.5 pb-3">
         {crumbs.length > 0 && (
           <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-[11px] text-slate-400 mb-1.5 min-w-0">

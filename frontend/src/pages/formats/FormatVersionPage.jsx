@@ -1,16 +1,21 @@
-import { AlertTriangle, ArrowLeft, CheckCircle2, GitMerge, Info, PencilLine, Send, Trash2, Undo2, XCircle } from 'lucide-react';
+import { SECTION_LABELS } from '@qmas/shared';
+import {
+  AlertTriangle, ArrowLeft, BookOpen, CheckCircle2, Clock, FileText, GitCompare, GitMerge, Hash, History, Info, Layers, MessageSquareText, PencilLine, Send, Trash2,
+  Undo2, UserRound, XCircle,
+} from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useCompareVersionsQuery, useFormatActionMutation, useGetFormatVersionQuery, useGetMergePreviewQuery } from '../../api/formatsApi.js';
+import { useCompareVersionsQuery, useFormatActionMutation, useGetFormatVersionQuery, useGetMergePreviewQuery, useGetVersionHistoryQuery } from '../../api/formatsApi.js';
 import Button from '../../components/ui/Button.jsx';
 import { FormError, TextArea } from '../../components/ui/fields.jsx';
 import Loader from '../../components/ui/Loader.jsx';
 import Modal, { ConfirmDialog, ModalFooter } from '../../components/ui/Modal.jsx';
-import PageHeader, { Tabs } from '../../components/ui/PageHeader.jsx';
+import PageHeader from '../../components/ui/PageHeader.jsx';
 import { apiError } from '../../utils/apiError.js';
 import { formatDateTime } from '../../utils/format.js';
-import { fieldLabel, fmtValue, SOURCE } from './formatHelpers.js';
+import { fieldLabel, fmtValue, groupCheckpoints, SOURCE } from './formatHelpers.js';
+import FormatHistory from './FormatHistory.jsx';
 import { DiffSummary, FormatContent, StatusBadge, VersionTag } from './formatUi.jsx';
 
 function Banner({ tone = 'info', icon: Icon = Info, children }) {
@@ -21,15 +26,17 @@ function Banner({ tone = 'info', icon: Icon = Info, children }) {
 export default function FormatVersionPage() {
   const { id } = useParams();
   const { data: v, isLoading, error } = useGetFormatVersionQuery(id);
-  const [tab, setTab] = useState('changes');
+  const [tab, setTab] = useState(null);
   const [dialog, setDialog] = useState(null);
   const navigate = useNavigate();
   const compareWith = v?.baseVersionId;
   const { data: cmp } = useCompareVersionsQuery({ a: compareWith, b: id }, { skip: !compareWith });
+  const { data: events, isFetching: loadingHistory } = useGetVersionHistoryQuery(id);
 
   if (isLoading) return <Loader />;
   if (error) return <p className="p-6 text-sm text-rose-600">{apiError(error).message}</p>;
   const can = (a) => v.allowedActions?.includes(a);
+  const shown = tab ?? (compareWith ? 'changes' : 'content');
   const title = v.versionNo ? `v${v.versionNo}` : v.status === 'DISCARDED' ? 'Discarded draft' : 'Draft';
 
   return (
@@ -45,18 +52,7 @@ export default function FormatVersionPage() {
       </PageHeader>
 
       <div className="p-5 space-y-4">
-        <dl className="grid gap-x-6 gap-y-2 card p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <Meta label="Status"><StatusBadge status={v.status} /></Meta>
-          <Meta label="Source">{SOURCE[v.source]}{v.sourceRef?.reference ? ` · ${v.sourceRef.reference}` : ''}{v.sourceRef?.itemCode ? ` · ${v.sourceRef.itemCode} v${v.sourceRef.versionNo}` : ''}</Meta>
-          <Meta label="Based on">{v.baseVersionNo ? <VersionTag no={v.baseVersionNo} /> : 'Nothing (first format)'}</Meta>
-          <Meta label="Prepared by">{v.createdByName} · {formatDateTime(v.createdAt)}</Meta>
-          <Meta label="Format no.">{v.formatNo ?? '—'}</Meta>
-          <Meta label="Common format no.">{v.commonFormatNo ?? '—'}</Meta>
-          <Meta label="Reference standard">{v.refStandard ?? '—'}</Meta>
-          <Meta label="Submitted">{formatDateTime(v.submittedAt)}</Meta>
-          {v.decidedAt && <Meta label={v.status === 'REJECTED' ? 'Returned by' : 'Approved by'}>{v.decidedByName} · {formatDateTime(v.decidedAt)}</Meta>}
-          {v.remarks && <Meta label="Remarks" wide>{v.remarks}</Meta>}
-        </dl>
+        <VersionSummary v={v} diff={compareWith ? cmp?.diff : null} />
 
         {v.status === 'REJECTED' && <Banner tone="warning" icon={Undo2}>Returned for rework: <b>{v.decisionRemark}</b>. Edit and submit again.</Banner>}
         {v.status === 'CONFLICT' && <Banner tone="danger" icon={AlertTriangle}>{v.conflicts.length} field{v.conflicts.length > 1 ? 's were' : ' was'} changed differently here and in the approved version. Resolve {v.conflicts.length > 1 ? 'them' : 'it'} before approval.</Banner>}
@@ -66,18 +62,36 @@ export default function FormatVersionPage() {
         )}
         {v.mergeNote && <Banner tone="success" icon={GitMerge}>{v.mergeNote}</Banner>}
 
-        {compareWith ? (
-          <>
-            <Tabs tabs={[{ key: 'changes', label: `Changes from v${v.baseVersionNo}` }, { key: 'content', label: 'Full format' }]} active={tab} onChange={setTab} />
-            {tab === 'changes' && <p className="text-sm text-slate-500"><DiffSummary diff={cmp?.diff} /></p>}
-            {cmp?.diff.header.length > 0 && tab === 'changes' && (
-              <ul className="text-sm">{cmp.diff.header.map((h) => <li key={h.field}>{fieldLabel(h.field)}: <s className="text-rose-500">{fmtValue(h.field, h.from)}</s> → <b>{fmtValue(h.field, h.to)}</b></li>)}</ul>
-            )}
-            <FormatContent checkpoints={v.checkpoints} diff={tab === 'changes' ? cmp?.diff : undefined} />
-          </>
-        ) : (
-          <FormatContent checkpoints={v.checkpoints} />
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="tablist" className="flex flex-wrap gap-2">
+            {[
+              ...(compareWith ? [['changes', `Changes from v${v.baseVersionNo}`, GitCompare, cmp ? cmp.diff.added.length + cmp.diff.changed.length + cmp.diff.removed.length + cmp.diff.header.length : null]] : []),
+              ['content', 'Full format', FileText, v.checkpoints.length],
+              ['history', 'History', History, events?.length ?? null],
+            ].map(([k, label, Icon, n]) => (
+              <button key={k} type="button" role="tab" aria-selected={shown === k} onClick={() => setTab(k)}
+                className={`inline-flex items-center gap-1.5 h-9 px-3.5 rounded-lg border text-sm font-medium cursor-pointer ${shown === k ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                <Icon className="w-4 h-4" />{label}
+                {n !== null && <span className={`rounded-full px-1.5 text-[11px] tabular ${shown === k ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'}`}>{n}</span>}
+              </button>
+            ))}
+          </div>
+          {shown === 'changes' && cmp && (
+            <span className="ml-auto flex flex-wrap gap-1.5 text-xs">
+              {[['added', 'bg-emerald-50 text-emerald-700'], ['changed', 'bg-amber-50 text-amber-800'], ['removed', 'bg-rose-50 text-rose-700']].map(([k, tone]) => (
+                <span key={k} className={`rounded-md px-2 py-0.5 font-medium ${tone}`}>{cmp.diff[k].length} {k}</span>
+              ))}
+            </span>
+          )}
+        </div>
+        {shown === 'changes' && cmp?.diff.header.length > 0 && (
+          <section className="card px-4 py-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Header</p>
+            <ul className="text-sm space-y-0.5">{cmp.diff.header.map((h) => <li key={h.field}>{fieldLabel(h.field)}: <s className="text-rose-500">{fmtValue(h.field, h.from)}</s> → <b>{fmtValue(h.field, h.to)}</b></li>)}</ul>
+          </section>
         )}
+        {shown !== 'history' && <FormatContent checkpoints={v.checkpoints} diff={shown === 'changes' ? cmp?.diff : undefined} />}
+        {shown === 'history' && <FormatHistory events={events} loading={loadingHistory && !events} showVersion={false} />}
       </div>
 
       {dialog === 'approve' && <ApproveDialog v={v} onClose={() => setDialog(null)} />}
@@ -87,12 +101,71 @@ export default function FormatVersionPage() {
   );
 }
 
-const Meta = ({ label, wide, children }) => (
-  <div className={wide ? 'sm:col-span-2 lg:col-span-4' : ''}>
-    <dt className="text-[11px] font-medium text-slate-400">{label}</dt>
-    <dd className="text-slate-700">{children}</dd>
+const Fact = ({ icon: Icon, label, children }) => (
+  <div className="min-w-0">
+    <p className="flex items-center gap-1 text-[11px] text-slate-500">{Icon && <Icon className="w-3 h-3" />}{label}</p>
+    <div className="mt-0.5 text-sm text-slate-800">{children}</div>
   </div>
 );
+
+/** The version at a glance: status and source, size and change against its base, who did what, header fields. */
+function VersionSummary({ v, diff }) {
+  const groups = groupCheckpoints(v.checkpoints);
+  const byKind = Object.fromEntries(['RECORD', 'DIMENSIONAL', 'VISUAL', 'RELIABILITY'].map((k) => [k, v.checkpoints.filter((c) => c.section === k).length]));
+  return (
+    <section className="card">
+      <div className="px-5 py-4 flex flex-wrap items-center gap-x-6 gap-y-4">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <span className="w-12 h-12 shrink-0 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center"><FileText className="w-6 h-6" /></span>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-xl font-bold text-slate-900">{v.versionNo ? `Version ${v.versionNo}` : v.status === 'DISCARDED' ? 'Discarded draft' : 'Draft'}</h2>
+              <StatusBadge status={v.status} />
+              <span className="rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-[11px] font-medium text-slate-600">{SOURCE[v.source]}</span>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              {v.baseVersionNo ? <>Based on <VersionTag no={v.baseVersionNo} /></> : 'First format of this item'}
+              {v.sourceRef?.reference ? ` · SAN/SIR ${v.sourceRef.reference}` : ''}{v.sourceRef?.itemCode ? ` · copied from ${v.sourceRef.itemCode} v${v.sourceRef.versionNo}` : ''}
+            </p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-xl font-bold text-slate-900 tabular">{v.checkpoints.length}</p>
+          <p className="text-[11px] text-slate-500">checks in {groups.length} section{groups.length === 1 ? '' : 's'}</p>
+        </div>
+        {diff && (
+          <div className="border-l border-slate-200 pl-6">
+            <p className="text-[11px] text-slate-500">Against v{v.baseVersionNo}</p>
+            <p className="mt-0.5 text-sm tabular"><span className="font-semibold text-emerald-700">+{diff.added.length}</span> <span className="font-semibold text-amber-700">~{diff.changed.length}</span> <span className="font-semibold text-rose-700">−{diff.removed.length}</span></p>
+          </div>
+        )}
+        <div className="border-l border-slate-200 pl-6">
+          <p className="flex items-center gap-1 text-[11px] text-slate-500"><UserRound className="w-3 h-3" />Prepared</p>
+          <p className="mt-0.5 text-sm font-semibold text-slate-800">{v.createdByName}</p>
+          <p className="text-[11px] text-slate-500">{formatDateTime(v.createdAt)}</p>
+        </div>
+        {(v.decidedAt || v.submittedAt) && (
+          <div className="border-l border-slate-200 pl-6">
+            <p className="flex items-center gap-1 text-[11px] text-slate-500"><Clock className="w-3 h-3" />{v.decidedAt ? (v.status === 'REJECTED' ? 'Returned' : 'Approved') : 'Submitted'}</p>
+            <p className="mt-0.5 text-sm font-semibold text-slate-800">{v.decidedAt ? v.decidedByName : 'Waiting for approval'}</p>
+            <p className="text-[11px] text-slate-500">{formatDateTime(v.decidedAt ?? v.submittedAt)}</p>
+          </div>
+        )}
+      </div>
+      <div className="px-5 py-3 border-t border-slate-100 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <Fact icon={Hash} label="Format no.">{v.formatNo ?? '—'}</Fact>
+        <Fact icon={Hash} label="Common format no.">{v.commonFormatNo ?? '—'}</Fact>
+        <Fact icon={BookOpen} label="Reference standard">{v.refStandard ?? '—'}</Fact>
+        <Fact icon={Layers} label="By kind">
+          <span className="flex flex-wrap gap-1">
+            {Object.entries(byKind).filter(([, n]) => n).map(([k, n]) => <span key={k} className="rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-700">{SECTION_LABELS[k]} {n}</span>)}
+          </span>
+        </Fact>
+        <Fact icon={MessageSquareText} label="Remarks for the approver">{v.remarks ?? '—'}</Fact>
+      </div>
+    </section>
+  );
+}
 
 function SimpleAction({ v, action, onClose }) {
   const [run, { isLoading }] = useFormatActionMutation();

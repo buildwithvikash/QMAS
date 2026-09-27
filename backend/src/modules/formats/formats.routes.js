@@ -41,6 +41,9 @@ router.get('/', canView, validate({ query: formatListQuery }), async (req, res) 
   ok(res, data, meta);
 });
 router.get('/queue', canView, async (_req, res) => ok(res, await formats.approvalQueue()));
+router.get('/counts', canView, async (_req, res) => ok(res, await formats.libraryCounts()));
+router.get('/items/:itemId/history', canView, validate({ params: itemParam }), async (req, res) => ok(res, await formats.itemHistory(params(req).itemId)));
+router.get('/versions/:id/history', canView, validate({ params: uuidParam }), async (req, res) => ok(res, await formats.versionHistory(params(req).id)));
 router.get('/compare', canView, validate({ query: compareQuery }), async (req, res) => ok(res, await formats.compare(query(req).a, query(req).b)));
 router.get('/items/:itemId', canView, validate({ params: itemParam }), async (req, res) => ok(res, await formats.itemFormat(params(req).itemId)));
 

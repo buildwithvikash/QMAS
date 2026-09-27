@@ -6,23 +6,60 @@
  * per checkpoint and per field — never by row position.
  */
 
-export const SECTIONS = Object.freeze(['DIMENSIONAL', 'VISUAL', 'RELIABILITY']);
-export const SECTION_LABELS = Object.freeze({ DIMENSIONAL: 'Dimensional', VISUAL: 'Visual', RELIABILITY: 'Reliability' });
+export const SECTIONS = Object.freeze(['DIMENSIONAL', 'VISUAL', 'RELIABILITY', 'RECORD']);
+export const SECTION_LABELS = Object.freeze({ DIMENSIONAL: 'Dimensional', VISUAL: 'Visual', RELIABILITY: 'Reliability', RECORD: 'Lot details' });
+/** Order in which sections appear on screens and on the inspection sheet (lot details first). */
+export const DISPLAY_SECTIONS = Object.freeze(['RECORD', 'DIMENSIONAL', 'VISUAL', 'RELIABILITY']);
+
+/**
+ * Field types a checkpoint can take (format builder). The section decides how it is inspected:
+ *   DIMENSIONAL  per sample, a reading against limits      MEASURE
+ *   VISUAL       per sample, a check                        OK_NOK | CHOICE (options marked pass / fail)
+ *   RELIABILITY  per lot, observation + OK / Not OK, periodic  LOT_TEST
+ *   RECORD       per lot, a value the inspector records     TEXT | NUMBER (optional limits) | DATE | YES_NO | CHOICE
+ * A RECORD field with a pass rule (limits, or an option marked fail) can make the lot Not OK.
+ */
+export const INPUT_TYPES = Object.freeze({
+  DIMENSIONAL: ['MEASURE'],
+  VISUAL: ['OK_NOK', 'CHOICE'],
+  RELIABILITY: ['LOT_TEST'],
+  RECORD: ['TEXT', 'NUMBER', 'DATE', 'YES_NO', 'CHOICE'],
+});
+export const ALL_INPUT_TYPES = Object.freeze([...new Set(Object.values(INPUT_TYPES).flat())]);
+export const DEFAULT_INPUT_TYPE = Object.freeze({ DIMENSIONAL: 'MEASURE', VISUAL: 'OK_NOK', RELIABILITY: 'LOT_TEST', RECORD: 'TEXT' });
+export const INPUT_TYPE_LABELS = Object.freeze({
+  MEASURE: 'Measurement', OK_NOK: 'OK / Not OK', CHOICE: 'Multiple choice', LOT_TEST: 'Lot test',
+  TEXT: 'Text', NUMBER: 'Number', DATE: 'Date', YES_NO: 'Yes / No',
+});
+export const inputTypeOf = (c) => c.inputType ?? DEFAULT_INPUT_TYPE[c.section] ?? null;
+/** Yes / No is a two-option choice; which answer passes is marked like any option. */
+export const yesNoOptions = (passOn = 'YES') => [{ label: 'Yes', pass: passOn !== 'NO' }, { label: 'No', pass: passOn !== 'YES' }];
+/** Whether the options of a choice decide OK / Not OK (at least one option marked fail). */
+export const optionsDecide = (options) => Array.isArray(options) && options.some((o) => o.pass === false);
 
 export const HEADER_FIELDS = Object.freeze(['formatNo', 'commonFormatNo', 'refStandard']);
-export const CHECKPOINT_FIELDS = Object.freeze(['section', 'checkpoint', 'specification', 'nominal', 'lsl', 'usl', 'uom', 'instrument', 'frequencyMonths']);
+export const CHECKPOINT_FIELDS = Object.freeze([
+  'section', 'groupLabel', 'inputType', 'checkpoint', 'specification', 'nominal', 'lsl', 'usl', 'uom', 'instrument', 'frequencyMonths',
+  'options', 'isRequired', 'helpText',
+]);
 const NUMERIC_FIELDS = new Set(['nominal', 'lsl', 'usl', 'frequencyMonths']);
 
 export const FIELD_LABELS = Object.freeze({
   formatNo: 'Format no.', commonFormatNo: 'Common format no.', refStandard: 'Reference standard',
-  section: 'Section', checkpoint: 'Check point', specification: 'Specification', nominal: 'Nominal',
-  lsl: 'LSL', usl: 'USL', uom: 'Unit', instrument: 'Instrument / method', frequencyMonths: 'Frequency (months)',
+  section: 'Section', groupLabel: 'Section name', inputType: 'Field type', checkpoint: 'Check point', specification: 'Specification',
+  nominal: 'Nominal', lsl: 'LSL', usl: 'USL', uom: 'Unit', instrument: 'Instrument / method', frequencyMonths: 'Frequency (months)',
+  options: 'Options', isRequired: 'Required', helpText: 'Help for the inspector',
   _presence: 'Checkpoint',
 });
 
 /** Canonical value for comparison: numbers as numbers, blank strings as null. */
 export function normalizeValue(field, value) {
+  if (field === 'isRequired') return value !== false; // missing means required
   if (value === undefined || value === null) return null;
+  if (field === 'options') {
+    if (!Array.isArray(value) || !value.length) return null;
+    return JSON.stringify(value.map((o) => ({ label: String(o.label ?? '').trim(), pass: o.pass !== false })));
+  }
   if (NUMERIC_FIELDS.has(field)) {
     if (value === '') return null;
     const n = Number(value);
@@ -214,11 +251,15 @@ export function parseSpec(text) {
 export function submitProblems(version) {
   const problems = [];
   if (!version.checkpoints.length) problems.push('Add at least one checkpoint before submitting.');
+  // Lot details alone cannot decide a lot: at least one inspected check is needed.
+  if (version.checkpoints.length && version.checkpoints.every((c) => c.section === 'RECORD')) {
+    problems.push('Add at least one inspection check (measurement, visual or lot test), not only lot details.');
+  }
   // The same check point name may repeat ("Dimensions" ×9) as long as the requirement differs.
   const seen = new Set();
   for (const c of version.checkpoints) {
-    const key = [c.section, ...['checkpoint', 'specification', 'nominal', 'lsl', 'usl'].map((f) => String(normalizeValue(f, c[f])).toLowerCase())].join('|');
-    if (seen.has(key)) problems.push(`${SECTION_LABELS[c.section]}: "${c.checkpoint}" appears twice with the same requirement.`);
+    const key = [c.section, ...['groupLabel', 'checkpoint', 'specification', 'nominal', 'lsl', 'usl'].map((f) => String(normalizeValue(f, c[f])).toLowerCase())].join('|');
+    if (seen.has(key)) problems.push(`${c.groupLabel || SECTION_LABELS[c.section]}: "${c.checkpoint}" appears twice with the same requirement.`);
     seen.add(key);
   }
   return [...new Set(problems)];

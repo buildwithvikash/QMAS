@@ -19,7 +19,7 @@ import { apiError } from '../../utils/apiError.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { ImirResult, ImirStatus } from './imirUi.jsx';
 import InspectionSheet from './InspectionSheet.jsx';
-import { focusFirstMissing, sheetProgress } from './sheetNav.js';
+import { focusFirstMissing, sheetProgress, tabOf } from './sheetNav.js';
 import { currentStage, journeySteps, stageRows } from './journey.js';
 import LotInsights, { AiSummary } from './LotInsights.jsx';
 import LotJourney from './LotJourney.jsx';
@@ -129,12 +129,12 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
   const canSubmit = !readOnly && ev && ev.missing.length === 0 && !!sheet.model;
 
   const progress = sheetProgress(sheet);
-  const [tab, setTab] = useState('dim');
+  const [tabChoice, setTab] = useState(null);
   const goToMissing = () => {
     const m = ev?.missing?.[0];
     if (!m) return;
     const cp = sheet.checkpoints.find((c) => c.uid === m.checkpointUid);
-    setTab(cp?.section === 'DIMENSIONAL' ? 'dim' : 'visrel');
+    setTab(tabOf(cp));
     setTimeout(() => focusFirstMissing(ev.missing), 60);
   };
   const saveDraft = async () => {
@@ -143,11 +143,14 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
     toast.success(mode === 'tablet' ? 'Saved on this tablet' : 'Draft saved');
   };
   const opened = sheet.status !== 'AWAITING_FORMAT';
+  // Only the parts the format has (a custom format may have lot details and no dimensions).
   const tabs = [
-    { key: 'dim', label: 'Dimensional test', ...progress.dim },
-    { key: 'visrel', label: 'Visual & reliability tests', ...progress.visrel },
+    progress.lot.present && { key: 'lot', label: 'Lot details', ...progress.lot },
+    progress.present.dim && { key: 'dim', label: 'Dimensional test', ...progress.dim },
+    progress.present.visrel && { key: 'visrel', label: 'Visual & reliability tests', ...progress.visrel },
     { key: 'signoff', label: 'Sign-off & decision' },
-  ];
+  ].filter(Boolean);
+  const tab = tabs.some((t) => t.key === tabChoice) ? tabChoice : tabs[0].key;
 
   return (
     <div>
