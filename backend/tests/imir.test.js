@@ -106,11 +106,11 @@ describe('inspection', () => {
     const m = (await agent.get(`/api/v1/imirs/${imirId}`)).body.data;
     const [dim, vis, rel] = ['DIMENSIONAL', 'VISUAL', 'RELIABILITY'].map((s) => m.checkpoints.find((c) => c.section === s).uid);
     const bad = async (payload) => (await agent.put(`/api/v1/imirs/${imirId}/inspection`).send(payload)).body.message;
-    expect(await bad({ cells: [{ checkpointUid: rel, sampleNo: 1, value: 1 }] })).toBe('Reliability tests take a text observation, not sample readings.');
+    expect(await bad({ cells: [{ checkpointUid: rel, sampleNo: 1, value: 1 }] })).toBe('Static load is recorded once per lot, not per sample.');
     expect(await bad({ cells: [{ checkpointUid: vis, sampleNo: 1, value: 1 }] })).toBe('Visual checks take OK or NOK.');
     expect(await bad({ cells: [{ checkpointUid: dim, sampleNo: 1, value: 10.0001 }] })).toBe('Some fields need attention.');
     expect(await bad({ cells: [{ checkpointUid: dim, sampleNo: 9, value: 10 }] })).toBe('Some fields need attention.');
-    expect(await bad({ entries: [{ checkpointUid: dim, textObservation: 'x' }] })).toBe('Only reliability tests take a text observation and manual result.');
+    expect(await bad({ entries: [{ checkpointUid: dim, textObservation: 'x' }] })).toBe('Only reliability tests and lot details take an observation.');
   });
 
   it('asks for reliability tests only when due for the item and vendor', async () => {

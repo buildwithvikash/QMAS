@@ -1,163 +1,230 @@
-import { PERMISSIONS } from '@qmas/shared';
-import { ArrowLeft, Copy, Database, FilePlus2, GitBranch, PencilLine } from 'lucide-react';
+import { PERMISSIONS, SECTION_LABELS } from '@qmas/shared';
+import {
+  ArrowLeft, Boxes, Copy, ExternalLink, FileCheck2, GitBranch, GitCompare, Hammer, History, Hourglass, Layers, Pencil, PencilLine, Plus,
+} from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useCreateDraftMutation, useGetFormatLibraryQuery, useGetItemFormatQuery, useLazySanLookupQuery } from '../../api/formatsApi.js';
+import { useCreateDraftMutation, useGetItemFormatHistoryQuery, useGetItemFormatQuery } from '../../api/formatsApi.js';
+import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
 import DataTable from '../../components/ui/DataTable.jsx';
-import { FormError, Select, TextInput } from '../../components/ui/fields.jsx';
 import Loader from '../../components/ui/Loader.jsx';
-import Modal, { ModalFooter } from '../../components/ui/Modal.jsx';
+import { ConfirmDialog } from '../../components/ui/Modal.jsx';
 import PageHeader from '../../components/ui/PageHeader.jsx';
 import { useAccess } from '../../hooks/useAccess.js';
-import { useDebounced } from '../../hooks/useDebounced.js';
+import { useClientTable } from '../../hooks/useClientTable.js';
 import { apiError } from '../../utils/apiError.js';
-import { formatDateTime } from '../../utils/format.js';
-import { SOURCE } from './formatHelpers.js';
+import { formatDateTime, formatRelative } from '../../utils/format.js';
+import FormatHistory from './FormatHistory.jsx';
+import { groupCheckpoints, SOURCE } from './formatHelpers.js';
 import { FormatContent, StatusBadge, VersionTag } from './formatUi.jsx';
+import StartDraftModal from './StartDraftModal.jsx';
 
+const TABS = [['current', 'Current Format', FileCheck2], ['versions', 'Drafts & Versions', GitBranch], ['history', 'History', History]];
+const PILL = {
+  DIMENSIONAL: 'border-blue-200 bg-blue-50 text-blue-800',
+  VISUAL: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  RELIABILITY: 'border-amber-200 bg-amber-50 text-amber-800',
+  RECORD: 'border-slate-200 bg-slate-50 text-slate-700',
+};
+const TILE = {
+  green: ['border-emerald-100 bg-emerald-50/50', 'bg-emerald-100 text-emerald-600'],
+  blue: ['border-blue-100 bg-blue-50/40', 'bg-blue-100 text-blue-600'],
+  amber: ['border-amber-100 bg-amber-50/50', 'bg-amber-100 text-amber-600'],
+  violet: ['border-violet-100 bg-violet-50/50', 'bg-violet-100 text-violet-600'],
+  sky: ['border-sky-100 bg-sky-50/40', 'bg-sky-100 text-sky-600'],
+};
+
+function Tile({ icon: Icon, tone, value, label, note, onClick }) {
+  const [card, tile] = TILE[tone];
+  return (
+    <button type="button" onClick={onClick} className={`flex items-center gap-4 text-left rounded-xl border px-4 py-3.5 transition-all hover:shadow-md hover:-translate-y-px cursor-pointer ${card}`}>
+      <span className={`w-12 h-12 shrink-0 rounded-xl flex items-center justify-center ${tile}`}><Icon className="w-6 h-6" /></span>
+      <span className="min-w-0">
+        <span className="block text-sm font-medium text-slate-700">{label}</span>
+        <span className="block text-2xl font-bold text-slate-900 tabular leading-tight">{value}</span>
+        <span className="block text-xs text-slate-500 truncate">{note}</span>
+      </span>
+    </button>
+  );
+}
+
+/** A boxed fact of the format header (Format No., Standard, …). */
+const Fact = ({ label, sub, children }) => (
+  <div className="min-w-0 rounded-xl border border-slate-200 bg-white px-4 py-3">
+    <p className="text-xs text-slate-500">{label}</p>
+    <div className="mt-1 text-base font-bold text-slate-900 truncate">{children}</div>
+    {sub && <p className="text-[11px] text-slate-500 truncate">{sub}</p>}
+  </div>
+);
+
+/** One item's inspection format: details and figures, the approved format by section, drafts and versions, and history. */
 export default function FormatItemPage() {
   const { itemId } = useParams();
-  const { can } = useAccess();
+  const { user, can } = useAccess();
   const { data, isLoading, error } = useGetItemFormatQuery(Number(itemId));
-  const [starting, setStarting] = useState(false);
+  const { data: events, isFetching: loadingHistory } = useGetItemFormatHistoryQuery(Number(itemId));
+  const [createDraft, { isLoading: opening }] = useCreateDraftMutation();
+  const [modal, setModal] = useState(null); // { from, cloneFrom? }
+  const [removing, setRemoving] = useState(null);
+  const [tab, setTab] = useState('current');
   const navigate = useNavigate();
+  const versions = data?.versions ?? [];
+  const tables = {
+    open: useClientTable(versions.filter((v) => ['DRAFT', 'REJECTED', 'PENDING_APPROVAL', 'CONFLICT'].includes(v.status)), { sort: 'createdAt', order: 'desc', pageSize: 10 }),
+    approved: useClientTable(versions.filter((v) => v.versionNo), { sort: 'versionNo', order: 'desc', pageSize: 10 }),
+  };
 
   if (isLoading) return <Loader />;
   if (error) return <p className="p-6 text-sm text-rose-600">{apiError(error).message}</p>;
-  const { item, current, versions } = data;
+  const { item, current, stats } = data;
+  const canCreate = can(PERMISSIONS.FORMATS_CREATE);
   const open = versions.filter((v) => ['DRAFT', 'REJECTED', 'PENDING_APPROVAL', 'CONFLICT'].includes(v.status));
-  const history = versions.filter((v) => v.versionNo);
+  const approvedVersions = versions.filter((v) => v.versionNo);
+  const groups = current ? groupCheckpoints(current.checkpoints) : [];
+  const kinds = ['DIMENSIONAL', 'VISUAL', 'RELIABILITY', 'RECORD'].map((k) => [k, current?.checkpoints.filter((c) => c.section === k).length ?? 0]).filter(([, n]) => n);
+  const ownDraft = open.find((v) => ['DRAFT', 'REJECTED'].includes(v.status) && v.createdBy === user?.id);
+  const itemRef = { id: item.id, itemCode: item.itemCode, description: item.description };
 
-  const historyCols = [
-    { key: 'versionNo', header: 'Version', render: (v) => <VersionTag no={v.versionNo} /> },
-    { key: 'status', header: 'Status', render: (v) => <StatusBadge status={v.status} /> },
-    { key: 'source', header: 'Source', render: (v) => SOURCE[v.source] },
-    { key: 'createdByName', header: 'Prepared by' },
-    { key: 'decided', header: 'Approved', render: (v) => <span className="whitespace-nowrap">{v.decidedByName ?? '—'} · {formatDateTime(v.decidedAt)}</span> },
+  /** Changes to an approved format go into a draft: the user's own open one, or a new one from the current version. */
+  const openDraft = async (query = '') => {
+    try {
+      let id = ownDraft?.id;
+      if (!id) {
+        id = (await createDraft({ itemId: item.id, from: current ? 'CURRENT' : 'CUSTOM' }).unwrap()).id;
+        toast.success(current ? `Draft started from v${current.versionNo}` : 'Draft started');
+      }
+      navigate(`/formats/versions/${id}/edit${query}`);
+    } catch (err) {
+      toast.error(apiError(err).message);
+    }
+  };
+  const scrollTo = (key) => document.getElementById(`fmt-${encodeURIComponent(key)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const openCols = [
+    { key: 'status', header: 'Status', sortable: true, text: (v) => v.status, render: (v) => <StatusBadge status={v.status} /> },
+    { key: 'createdByName', header: 'Started by', sortable: true, render: (v) => <span className="font-medium text-slate-800">{v.createdByName}{v.createdBy === user?.id && <span className="ml-1 text-[10px] text-blue-700">(you)</span>}</span> },
+    { key: 'source', header: 'Source', text: (v) => SOURCE[v.source], render: (v) => SOURCE[v.source] },
+    { key: 'baseVersionNo', header: 'Based on', sortable: true, text: (v) => (v.baseVersionNo ? `v${v.baseVersionNo}` : 'first format'), render: (v) => (v.baseVersionNo ? <VersionTag no={v.baseVersionNo} /> : <span className="text-xs text-slate-400">first format</span>) },
+    { key: 'checkpointCount', header: 'Checks', sortable: true, align: 'right' },
+    { key: 'createdAt', header: 'Started', sortable: true, text: (v) => formatDateTime(v.createdAt), render: (v) => <span className="text-xs text-slate-600 whitespace-nowrap" title={formatDateTime(v.createdAt)}>{formatRelative(v.createdAt)}</span> },
+    { key: 'submittedAt', header: 'Submitted', sortable: true, text: (v) => formatDateTime(v.submittedAt), render: (v) => <span className="text-xs text-slate-600 whitespace-nowrap">{v.submittedAt ? formatRelative(v.submittedAt) : '—'}</span> },
+  ];
+  const approvedCols = [
+    { key: 'versionNo', header: 'Version', sortable: true, text: (v) => `v${v.versionNo}`, render: (v) => <Link to={`/formats/versions/${v.id}`} onClick={(e) => e.stopPropagation()} className="font-mono text-xs font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2">v{v.versionNo}</Link> },
+    { key: 'status', header: 'Status', text: (v) => v.status, render: (v) => (v.status === 'APPROVED' ? <Badge variant="success">Current</Badge> : <StatusBadge status={v.status} />) },
+    { key: 'source', header: 'Source', text: (v) => SOURCE[v.source], render: (v) => SOURCE[v.source] },
+    { key: 'checkpointCount', header: 'Checks', sortable: true, align: 'right' },
+    { key: 'createdByName', header: 'Prepared by', sortable: true },
+    { key: 'decidedByName', header: 'Approved by', sortable: true },
+    { key: 'decidedAt', header: 'Approved on', sortable: true, text: (v) => formatDateTime(v.decidedAt), render: (v) => <span className="text-xs text-slate-600 whitespace-nowrap">{formatDateTime(v.decidedAt)}</span> },
     { key: 'mergeNote', header: 'Note', render: (v) => <span className="text-xs text-slate-500">{v.mergeNote ?? v.decisionRemark ?? ''}</span> },
   ];
-  const openCols = [
-    { key: 'status', header: 'Status', render: (v) => <StatusBadge status={v.status} /> },
-    { key: 'createdByName', header: 'Started by' },
-    { key: 'createdAt', header: 'Started', render: (v) => formatDateTime(v.createdAt) },
-    { key: 'base', header: 'Based on', render: (v) => (v.baseVersionNo ? <VersionTag no={v.baseVersionNo} /> : 'nothing (first format)') },
-    { key: 'submittedAt', header: 'Submitted', render: (v) => formatDateTime(v.submittedAt) },
+  const versionMenu = (v) => [
+    { label: 'Open', icon: ExternalLink, onClick: () => navigate(`/formats/versions/${v.id}`) },
+    ...(current && v.id !== current.id && v.versionNo ? [{ label: `Compare with v${current.versionNo}`, icon: GitCompare, onClick: () => navigate(`/formats/versions/${v.id}`) }] : []),
+    ...(canCreate && v.versionNo ? [{ label: 'Duplicate to another item', icon: Copy, onClick: () => setModal({ from: 'CLONE', cloneFrom: { versionId: v.id, itemCode: item.itemCode, versionNo: v.versionNo, itemId: item.id } }) }] : []),
   ];
 
   return (
     <div>
-      <PageHeader icon={GitBranch} title={`${item.itemCode} · ${item.description}`} subtitle={`Drawing ${item.drawingNo ?? '—'}${item.drawingRev ? ` rev ${item.drawingRev}` : ''} · ${item.categoryName ?? 'no category'}`}>
-        <Link to="/formats" className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />Library</Link>
-        {can(PERMISSIONS.FORMATS_CREATE) && <Button size="sm" icon={PencilLine} onClick={() => setStarting(true)}>{current ? 'Start a change' : 'Create format'}</Button>}
+      <PageHeader icon={GitBranch} title={<span className="inline-flex items-center gap-2">{item.itemCode} - {item.description}<Badge variant={item.isActive ? 'success' : 'neutral'}>{item.isActive ? 'Active' : 'Inactive'}</Badge></span>}
+        subtitle={<span className="inline-flex flex-wrap items-center gap-2">Drawing {item.drawingNo ?? '—'}{item.drawingRev ? ` rev ${item.drawingRev}` : ''}{item.categoryName && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[11px] font-medium text-blue-700">Item Category : {item.categoryName}</span>}</span>}>
+        <Link to="/formats" className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50"><ArrowLeft className="w-3.5 h-3.5" />Back to Library</Link>
+        {canCreate && current && <Button size="sm" variant="secondary" icon={Pencil} loading={opening} onClick={() => openDraft()} className="text-blue-700! border-blue-300!">{ownDraft ? 'Continue editing' : 'Edit Format'}</Button>}
+        {canCreate && current && <Button size="sm" variant="secondary" icon={Copy} onClick={() => setModal({ from: 'CLONE', cloneFrom: { versionId: current.id, itemCode: item.itemCode, versionNo: current.versionNo, itemId: item.id } })} className="text-blue-700! border-blue-300!">Duplicate</Button>}
+        {canCreate && <Button size="sm" icon={current ? PencilLine : Hammer} onClick={() => setModal({ from: current ? 'CURRENT' : 'CUSTOM' })}>{current ? 'Start a change' : 'Create format'}<Plus className="w-4 h-4" /></Button>}
       </PageHeader>
-      <div className="p-5 space-y-6">
-        {open.length > 0 && (
-          <section>
-            <h2 className="text-sm font-bold text-slate-800 mb-2">Open drafts ({open.length})</h2>
-            <DataTable columns={openCols} rows={open} onRowClick={(v) => navigate(`/formats/versions/${v.id}`)} />
-          </section>
-        )}
-        <section>
-          <div className="flex items-baseline gap-2 mb-2">
-            <h2 className="text-sm font-bold text-slate-800">Approved format</h2>
-            {current && (
-              <span className="text-xs text-slate-500">
-                <VersionTag no={current.versionNo} /> · format no. {current.formatNo ?? '—'} · common no. {current.commonFormatNo ?? '—'} · {current.refStandard ?? ''} · approved {formatDateTime(current.decidedAt)} by {current.decidedByName}
-              </span>
-            )}
+
+      <div className="p-5 space-y-4">
+        {current ? (
+          <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-[repeat(5,minmax(0,1fr))_minmax(0,1.4fr)]">
+            <Fact label="Format No.">{current.formatNo ?? '—'}</Fact>
+            <Fact label="Common Format No.">{current.commonFormatNo ?? '—'}</Fact>
+            <Fact label="Standard">{current.refStandard ?? '—'}</Fact>
+            <Fact label="Current Version">
+              {approvedVersions.length > 1 ? (
+                <select value={current.id} onChange={(e) => e.target.value !== current.id && navigate(`/formats/versions/${e.target.value}`)} aria-label="Open a version"
+                  className="-ml-1 rounded-md border border-transparent bg-transparent px-1 font-bold hover:border-slate-200 cursor-pointer">
+                  {approvedVersions.map((v) => <option key={v.id} value={v.id}>v{v.versionNo}{v.id === current.id ? ' (current)' : ''}</option>)}
+                </select>
+              ) : `v${current.versionNo}`}
+            </Fact>
+            <Fact label="Source">{SOURCE[current.source]}</Fact>
+            <Fact label="Approved On" sub={current.decidedByName ? `By ${current.decidedByName}` : null}>{formatDateTime(current.decidedAt)}</Fact>
           </div>
-          {current ? <FormatContent checkpoints={current.checkpoints} /> : <p className="rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">No approved format yet. IMIRs for this item cannot be opened until one is approved.</p>}
-        </section>
-        {history.length > 0 && (
-          <section>
-            <h2 className="text-sm font-bold text-slate-800 mb-2">Version history</h2>
-            <DataTable columns={historyCols} rows={history} onRowClick={(v) => navigate(`/formats/versions/${v.id}`)} />
+        ) : (
+          <section className="card p-5 flex flex-wrap items-center gap-3">
+            <p className="text-sm text-slate-600 flex-1">No approved format yet. Lots of this item cannot be inspected until one is approved{stats?.lotsWaiting ? ` (${stats.lotsWaiting} waiting)` : ''}.</p>
+            {canCreate && <Button icon={Hammer} onClick={() => setModal({ from: 'CUSTOM' })}>Build the format</Button>}
           </section>
         )}
-      </div>
-      {starting && <StartDraftModal item={item} hasCurrent={!!current} onClose={() => setStarting(false)} />}
-    </div>
-  );
-}
 
-const SOURCES = [
-  { value: 'CURRENT', label: 'Edit the current version', icon: PencilLine, help: 'Best for changes: your edits merge with any other approved change.' },
-  { value: 'SAN', label: 'Fetch from SAN/SIR', icon: Database, help: 'Checkpoints from the SAN/SIR application for a vendor and this item.' },
-  { value: 'CLONE', label: 'Copy another format', icon: Copy, help: 'Start from an approved format of a similar item.' },
-  { value: 'BLANK', label: 'Blank format', icon: FilePlus2, help: 'Build the format from scratch.' },
-];
-
-function StartDraftModal({ item, hasCurrent, onClose }) {
-  const [from, setFrom] = useState(hasCurrent ? 'CURRENT' : 'SAN');
-  const [vendorCode, setVendorCode] = useState('');
-  const [cloneVersionId, setCloneVersionId] = useState(null);
-  const [error, setError] = useState(null);
-  const [create, { isLoading }] = useCreateDraftMutation();
-  const [sanLookup, san] = useLazySanLookupQuery();
-  const navigate = useNavigate();
-  const options = SOURCES.filter((s) => s.value !== 'CURRENT' || hasCurrent);
-
-  const start = async () => {
-    setError(null);
-    try {
-      const draft = await create({
-        itemId: item.id,
-        from,
-        vendorCode: from === 'SAN' ? vendorCode.trim().toUpperCase() : undefined,
-        cloneFromVersionId: from === 'CLONE' ? (cloneVersionId ?? undefined) : undefined,
-      }).unwrap();
-      toast.success('Draft started');
-      navigate(`/formats/versions/${draft.id}/edit`);
-    } catch (err) {
-      setError(apiError(err));
-    }
-  };
-
-  return (
-    <Modal title={hasCurrent ? 'Start a change' : 'Create the format'} subtitle={`${item.itemCode} · ${item.description}`} onClose={onClose}
-      footer={<ModalFooter onCancel={onClose} onSave={start} saving={isLoading} saveLabel="Start draft" />}>
-      <FormError message={error && !Object.keys(error.fieldErrors).length ? error.message : ''} />
-      <div role="radiogroup" className="grid gap-2">
-        {options.map((o) => (
-          <label key={o.value} className={`flex gap-3 rounded-xl border p-3 cursor-pointer ${from === o.value ? 'border-blue-300 bg-blue-50/60' : 'border-slate-200 hover:bg-slate-50'}`}>
-            <input type="radio" name="from" className="mt-1 accent-blue-600" checked={from === o.value} onChange={() => setFrom(o.value)} />
-            <o.icon className="w-5 h-5 mt-0.5 text-blue-600 shrink-0" />
-            <span>
-              <span className="block text-sm font-semibold text-slate-800">{o.label}</span>
-              <span className="block text-xs text-slate-500">{o.help}</span>
-            </span>
-          </label>
-        ))}
-      </div>
-      {from === 'SAN' && (
-        <div className="mt-4 flex items-end gap-2">
-          <TextInput className="flex-1" label="Vendor code" required value={vendorCode} onChange={(e) => setVendorCode(e.target.value.toUpperCase())} error={error?.fieldErrors?.vendorCode} />
-          <Button variant="secondary" disabled={!vendorCode.trim()} loading={san.isFetching} onClick={() => sanLookup({ vendorCode: vendorCode.trim(), itemCode: item.itemCode })}>Check SAN/SIR</Button>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <Tile icon={FileCheck2} tone="green" value={current ? `v${current.versionNo}` : '—'} label="Approved version" note={current ? `approved ${formatRelative(current.decidedAt)}` : 'no format yet'} onClick={() => setTab('current')} />
+          <Tile icon={Layers} tone="blue" value={current?.checkpoints.length ?? 0} label="Total Checkpoints" note={`${groups.length} section${groups.length === 1 ? '' : 's'}${kinds.length ? ` · ${kinds.map(([k, n]) => `${SECTION_LABELS[k]} ${n}`).join(', ')}` : ''}`} onClick={() => setTab('current')} />
+          <Tile icon={GitBranch} tone="amber" value={open.length} label="Open drafts" note={open.some((v) => v.status === 'PENDING_APPROVAL') ? 'awaiting approval' : open.length ? 'in progress' : 'none'} onClick={() => setTab('versions')} />
+          <Tile icon={Hourglass} tone="violet" value={stats?.lotsWaiting ?? 0} label="Lots waiting for format" note={stats?.lotsWaiting ? 'open once approved' : 'none'} onClick={() => navigate(`/imirs?q=${encodeURIComponent(item.itemCode)}`)} />
+          <Tile icon={Boxes} tone="sky" value={stats?.lotsTotal ?? 0} label="Lots received" note={stats?.lotsOnCurrent ? `${stats.lotsOnCurrent} on the current version` : stats?.lastLotAt ? `last ${formatRelative(stats.lastLotAt)}` : 'none yet'} onClick={() => navigate(`/imirs?q=${encodeURIComponent(item.itemCode)}`)} />
         </div>
-      )}
-      {from === 'SAN' && san.data && (
-        <p className={`mt-2 text-sm ${san.data.found ? 'text-emerald-700' : 'text-amber-700'}`}>
-          {san.data.found ? `Found ${san.data.checkpoints.length} checkpoints (${san.data.reference}).` : 'SAN/SIR has no record for this vendor and item. Choose another way to start.'}
-        </p>
-      )}
-      {from === 'CLONE' && <CloneSource value={cloneVersionId} onChange={setCloneVersionId} error={error?.fieldErrors?.cloneFromVersionId} />}
-      {hasCurrent && from !== 'CURRENT' && <p className="mt-4 text-xs text-amber-700">Starting from something other than the current version replaces its content; approval will show what changes.</p>}
-    </Modal>
-  );
-}
 
-/** Pick an item with an approved format; the value is that format's current version id. */
-function CloneSource({ value, onChange, error }) {
-  const [q, setQ] = useState('');
-  const debounced = useDebounced(q);
-  const { data } = useGetFormatLibraryQuery({ q: debounced || undefined, status: 'APPROVED', pageSize: 20 });
-  return (
-    <div className="mt-4 grid gap-2">
-      <TextInput label="Find the item to copy" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Item code or description" />
-      <Select label="Item with an approved format" value={value ?? ''} onChange={(v) => onChange(v)} error={error}
-        options={(data?.rows ?? []).map((r) => ({ value: r.currentVersionId, label: `${r.itemCode} · ${r.description} (v${r.versionNo})` }))} placeholder="Choose…" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div role="tablist" className="flex flex-wrap gap-2">
+            {TABS.map(([k, label, Icon]) => {
+              const n = k === 'versions' ? open.length : k === 'history' ? events?.length ?? 0 : null;
+              return (
+                <button key={k} type="button" role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+                  className={`inline-flex items-center gap-2 h-10 px-4 rounded-xl border text-sm font-semibold cursor-pointer ${tab === k ? 'border-emerald-400 bg-emerald-50 text-emerald-800 ring-1 ring-emerald-400' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
+                  <Icon className="w-4 h-4" />{label}
+                  {n ? <span className={`rounded-full px-1.5 text-[11px] tabular ${k === 'versions' ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-600'}`}>{n}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+          {tab === 'current' && groups.length > 0 && (
+            <div className="ml-auto flex flex-wrap gap-2">
+              {groups.map((g) => (
+                <button key={g.key} type="button" onClick={() => scrollTo(g.key)} className={`inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border text-sm font-semibold cursor-pointer ${PILL[g.section]}`}>
+                  {g.label}<span className="rounded-full bg-white/80 px-1.5 text-[11px] tabular">{g.items.length}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {tab === 'current' && current && (
+          <FormatContent checkpoints={current.checkpoints} toolbar={false}
+            onAdd={canCreate ? (g) => openDraft(`?add=${g.section}&group=${encodeURIComponent(g.custom ? g.label : '')}`) : undefined}
+            onEdit={canCreate ? (c) => openDraft(`?focus=${c.uid}`) : undefined}
+            onRemove={canCreate ? (c) => setRemoving(c) : undefined} />
+        )}
+        {tab === 'current' && !current && <p className="card p-8 text-center text-sm text-slate-500">Nothing to show until a format is approved.</p>}
+
+        {tab === 'versions' && (
+          <div className="space-y-5">
+            <section>
+              <h2 className="text-sm font-bold text-slate-800 mb-2">Open drafts ({open.length})</h2>
+              <DataTable tableId="format-drafts" columns={openCols} rows={tables.open.rows} sort={tables.open.sort} onSort={tables.open.onSort} pagination={tables.open.pagination}
+                onRowClick={(v) => navigate(`/formats/versions/${v.id}`)} rowMenu={versionMenu} empty="No draft in progress." />
+            </section>
+            <section>
+              <h2 className="text-sm font-bold text-slate-800 mb-2">Approved versions ({approvedVersions.length})</h2>
+              <DataTable tableId="format-versions" columns={approvedCols} rows={tables.approved.rows} sort={tables.approved.sort} onSort={tables.approved.onSort} pagination={tables.approved.pagination}
+                onRowClick={(v) => navigate(`/formats/versions/${v.id}`)} rowMenu={versionMenu} selectable exportName={`${item.itemCode}-versions`} empty="No version approved yet." />
+            </section>
+          </div>
+        )}
+
+        {tab === 'history' && <FormatHistory events={events} loading={loadingHistory} empty={`No history yet for ${item.itemCode}.`} />}
+      </div>
+
+      {modal && <StartDraftModal item={modal.cloneFrom ? undefined : itemRef} hasCurrent={!!current} initialFrom={modal.from} cloneFrom={modal.cloneFrom} onClose={() => setModal(null)} />}
+      {removing && (
+        <ConfirmDialog title={`Remove ${removing.checkpoint}?`} confirmLabel="Open draft" variant="danger" busy={opening}
+          message={`${ownDraft ? 'Your open draft' : `A new draft from v${current.versionNo}`} opens in the builder without ${removing.checkpoint}. Save and submit it; the check point is removed once the draft is approved.`}
+          onCancel={() => setRemoving(null)} onConfirm={() => { const c = removing; setRemoving(null); openDraft(`?remove=${c.uid}`); }} />
+      )}
     </div>
   );
 }

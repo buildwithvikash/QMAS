@@ -8,6 +8,9 @@ export const formatsApi = baseApi
     endpoints: (b) => ({
       getFormatLibrary: b.query({ query: (params) => ({ url: '/formats', params }), transformResponse: pagedEnvelope, providesTags: ['Formats'] }),
       getApprovalQueue: b.query({ query: () => '/formats/queue', transformResponse: envelope, providesTags: ['Formats'] }),
+      getFormatCounts: b.query({ query: () => '/formats/counts', transformResponse: envelope, providesTags: ['Formats'] }),
+      getItemFormatHistory: b.query({ query: (itemId) => `/formats/items/${itemId}/history`, transformResponse: envelope, providesTags: ['Formats'] }),
+      getVersionHistory: b.query({ query: (id) => `/formats/versions/${id}/history`, transformResponse: envelope, providesTags: ['Formats'] }),
       getItemFormat: b.query({ query: (itemId) => `/formats/items/${itemId}`, transformResponse: envelope, providesTags: ['Formats'] }),
       getFormatVersion: b.query({ query: (id) => `/formats/versions/${id}`, transformResponse: envelope, providesTags: (_r, _e, id) => [versionTag(id)] }),
       compareVersions: b.query({ query: ({ a, b: bId }) => ({ url: '/formats/compare', params: { a, b: bId } }), transformResponse: envelope, providesTags: ['Formats'] }),
@@ -43,6 +46,9 @@ export const formatsApi = baseApi
 export const {
   useGetFormatLibraryQuery,
   useGetApprovalQueueQuery,
+  useGetFormatCountsQuery,
+  useGetItemFormatHistoryQuery,
+  useGetVersionHistoryQuery,
   useGetItemFormatQuery,
   useGetFormatVersionQuery,
   useCompareVersionsQuery,

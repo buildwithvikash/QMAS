@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SECTIONS } from '../logic/formats.js';
+import { ALL_INPUT_TYPES, DEFAULT_INPUT_TYPE, INPUT_TYPE_LABELS, INPUT_TYPES, SECTION_LABELS, SECTIONS } from '../logic/formats.js';
 import { listQuery, optionalTrimmed, rowVersion, trimmed } from './common.js';
 
 /** Measurement or limit: up to 3 decimals (blueprint slide 6), within numeric(12,3). */
@@ -10,10 +10,16 @@ const limit = z
   .nullable()
   .optional();
 
+/** An option of a multiple-choice or yes / no field: its text and whether choosing it passes. */
+const optionSchema = z.object({ label: trimmed('Option', 60), pass: z.boolean() });
+
 export const checkpointSchema = z
   .object({
     uid: z.uuid().optional(),
     section: z.enum(SECTIONS),
+    // Format builder: own section headings, field types, choices, required flag and help text.
+    groupLabel: optionalTrimmed('Section name', 60),
+    inputType: z.enum(ALL_INPUT_TYPES).nullable().optional(),
     checkpoint: trimmed('Check point', 200),
     specification: optionalTrimmed('Specification', 500),
     nominal: limit,
@@ -22,23 +28,41 @@ export const checkpointSchema = z
     uom: optionalTrimmed('Unit', 20),
     instrument: optionalTrimmed('Instrument / method', 100),
     frequencyMonths: z.number().int('Whole months only.').min(1, 'At least 1 month.').max(60, 'At most 60 months.').nullable().optional(),
+    options: z.array(optionSchema).max(12, 'At most 12 options.').nullable().optional(),
+    isRequired: z.boolean().nullable().optional(),
+    helpText: optionalTrimmed('Help text', 300),
   })
+  .transform((c) => ({ ...c, inputType: c.inputType ?? DEFAULT_INPUT_TYPE[c.section], isRequired: c.isRequired !== false }))
   .superRefine((c, ctx) => {
     const has = (v) => v !== null && v !== undefined;
-    if (c.section === 'DIMENSIONAL') {
-      if (!has(c.lsl) && !has(c.usl)) ctx.addIssue({ code: 'custom', path: ['lsl'], message: 'Give LSL, USL or both.' });
-      if (has(c.lsl) && has(c.usl) && c.lsl > c.usl) ctx.addIssue({ code: 'custom', path: ['usl'], message: 'USL must not be below LSL.' });
-      if (has(c.nominal) && ((has(c.lsl) && c.nominal < c.lsl) || (has(c.usl) && c.nominal > c.usl))) {
-        ctx.addIssue({ code: 'custom', path: ['nominal'], message: 'Nominal must lie between LSL and USL.' });
-      }
-    } else {
-      if (!c.specification) ctx.addIssue({ code: 'custom', path: ['specification'], message: 'Describe what is checked.' });
-      for (const f of ['nominal', 'lsl', 'usl']) {
-        if (has(c[f])) ctx.addIssue({ code: 'custom', path: [f], message: 'Limits apply to dimensional checkpoints only.' });
-      }
+    const issue = (path, message) => ctx.addIssue({ code: 'custom', path: [path], message });
+    if (!INPUT_TYPES[c.section].includes(c.inputType)) {
+      issue('inputType', `${INPUT_TYPE_LABELS[c.inputType] ?? c.inputType} cannot be used in a ${SECTION_LABELS[c.section].toLowerCase()} section.`);
+      return;
     }
-    if (c.section !== 'RELIABILITY' && has(c.frequencyMonths)) {
-      ctx.addIssue({ code: 'custom', path: ['frequencyMonths'], message: 'Frequency applies to reliability tests only.' });
+    const limitsAllowed = c.section === 'DIMENSIONAL' || c.inputType === 'NUMBER';
+    if (limitsAllowed) {
+      if (c.section === 'DIMENSIONAL' && !has(c.lsl) && !has(c.usl)) issue('lsl', 'Give LSL, USL or both.');
+      if (has(c.lsl) && has(c.usl) && c.lsl > c.usl) issue('usl', 'USL must not be below LSL.');
+      if (has(c.nominal) && ((has(c.lsl) && c.nominal < c.lsl) || (has(c.usl) && c.nominal > c.usl))) issue('nominal', 'Nominal must lie between LSL and USL.');
+    } else {
+      for (const f of ['nominal', 'lsl', 'usl']) if (has(c[f])) issue(f, 'Limits apply to measurements and number fields only.');
+    }
+    // Visual checks and lot tests say what is checked; lot details are self-explanatory (e.g. "Batch no.").
+    if ((c.section === 'VISUAL' || c.section === 'RELIABILITY') && !c.specification) issue('specification', 'Describe what is checked.');
+    if (c.section !== 'RELIABILITY' && has(c.frequencyMonths)) issue('frequencyMonths', 'Frequency applies to reliability tests only.');
+
+    const choice = c.inputType === 'CHOICE' || c.inputType === 'YES_NO';
+    if (choice) {
+      const opts = c.options ?? [];
+      if (opts.length < 2) issue('options', 'Give at least two options.');
+      const labels = opts.map((o) => o.label.toLowerCase());
+      if (new Set(labels).size !== labels.length) issue('options', 'Each option must be different.');
+      if (opts.length && !opts.some((o) => o.pass)) issue('options', 'Mark at least one option as passing, or every lot fails.');
+      if (c.section === 'VISUAL' && opts.length && !opts.some((o) => !o.pass)) issue('options', 'Mark at least one option as failing: a visual check must be able to fail.');
+      if (c.inputType === 'YES_NO' && (opts.length !== 2 || labels[0] !== 'yes' || labels[1] !== 'no')) issue('options', 'A yes / no field has the options Yes and No.');
+    } else if (c.options?.length) {
+      issue('options', 'Options apply to multiple-choice and yes / no fields only.');
     }
   });
 
@@ -57,7 +81,7 @@ export const formatDraftSchema = z
     if (new Set(uids).size !== uids.length) ctx.addIssue({ code: 'custom', path: ['checkpoints'], message: 'A checkpoint appears twice.' });
   });
 
-export const FORMAT_DRAFT_SOURCES = Object.freeze(['CURRENT', 'BLANK', 'SAN', 'CLONE']);
+export const FORMAT_DRAFT_SOURCES = Object.freeze(['CURRENT', 'BLANK', 'SAN', 'CLONE', 'CUSTOM']);
 
 export const createDraftSchema = z
   .object({
@@ -80,7 +104,7 @@ export const formatActionSchema = z
 
 export const resolveConflictsSchema = z.object({
   resolutions: z
-    .array(z.object({ conflictId: z.number().int().positive(), choice: z.enum(['THEIRS', 'MINE', 'CUSTOM']), value: z.unknown().optional() }))
+    .array(z.object({ conflictId: z.number().int().positive(), choice: z.enum(['THEIRS', 'MINE', 'CUSTOM']), value: z.unknown().optional(), remark: optionalTrimmed('Remark', 300) }))
     .min(1),
   rowVersion,
 });

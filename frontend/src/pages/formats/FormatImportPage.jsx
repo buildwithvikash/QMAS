@@ -1,16 +1,32 @@
-import { Download, FileUp, Upload } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, FileUp, Layers, SkipForward, Upload, UploadCloud } from 'lucide-react';
+import { useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
+import { Link } from 'react-router-dom';
 import { downloadImportTemplate, useCheckImportMutation, useRunImportMutation } from '../../api/formatsApi.js';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
 import DataTable from '../../components/ui/DataTable.jsx';
 import { FormError } from '../../components/ui/fields.jsx';
+import { SearchBox } from '../../components/ui/ListFilters.jsx';
 import { ConfirmDialog } from '../../components/ui/Modal.jsx';
-import PageHeader, { Tabs } from '../../components/ui/PageHeader.jsx';
+import PageHeader from '../../components/ui/PageHeader.jsx';
+import StatCards from '../../components/ui/StatCards.jsx';
+import { useClientTable } from '../../hooks/useClientTable.js';
 import { apiError } from '../../utils/apiError.js';
 
-const ITEM_STATUS = { READY: ['Ready', 'success'], SKIP: ['Skipped', 'neutral'], ERROR: ['Needs fixing', 'danger'], IMPORTED: ['Imported', 'primary'] };
+const ITEM_STATUS = { READY: ['Ready', 'success'], SKIP: ['Skipped', 'neutral'], ERROR: ['Needs fixing', 'danger'], IMPORTED: ['Imported', 'info'] };
+
+function Step({ n, title, done, children }) {
+  return (
+    <section className={`card p-4 flex gap-3 ${done ? 'border-emerald-200' : ''}`}>
+      <span className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center text-sm font-bold ${done ? 'bg-emerald-600 text-white' : 'bg-blue-600 text-white'}`}>{done ? <CheckCircle2 className="w-4 h-4" /> : n}</span>
+      <div className="min-w-0 flex-1">
+        <h2 className="text-sm font-bold text-slate-900">{title}</h2>
+        <div className="mt-1 text-sm text-slate-600">{children}</div>
+      </div>
+    </section>
+  );
+}
 
 /**
  * Bulk import of existing formats. Step 1 checks the file and saves nothing; step 2 imports every
@@ -19,7 +35,8 @@ const ITEM_STATUS = { READY: ['Ready', 'success'], SKIP: ['Skipped', 'neutral'],
 export default function FormatImportPage() {
   const [file, setFile] = useState(null);
   const [result, setResult] = useState(null);
-  const [tab, setTab] = useState('ERROR');
+  const [tab, setTab] = useState(null);
+  const [q, setQ] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [check, checkState] = useCheckImportMutation();
   const [run, runState] = useRunImportMutation();
@@ -50,22 +67,47 @@ export default function FormatImportPage() {
 
   const s = result?.summary;
   const imported = result?.items.some((i) => i.status === 'IMPORTED');
-  const rows = result?.items.filter((i) => i.status === tab) ?? [];
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return (result?.items ?? []).filter((i) => (!tab || i.status === tab) && (!needle || [i.itemCode, i.description, ...i.messages.map((m) => m.message)].some((v) => v?.toLowerCase().includes(needle))));
+  }, [result, tab, q]);
+  const table = useClientTable(rows, { sort: 'firstRow' });
+  const pick = (k) => setTab(tab === k ? null : k);
+
+  const cards = s ? [
+    { key: 'rows', label: 'Rows read', value: s.rows, icon: FileSpreadsheet, tone: 'blue', isTotal: true, active: !tab, onClick: () => setTab(null), note: `${s.checkpoints ?? 0} checkpoints` },
+    { key: 'items', label: 'Items found', value: s.items, icon: Layers, tone: 'slate', isTotal: true, active: false, onClick: () => setTab(null), note: 'one format each' },
+    imported
+      ? { key: 'imp', label: 'Imported', value: s.imported, icon: CheckCircle2, tone: 'green', active: tab === 'IMPORTED', onClick: () => pick('IMPORTED') }
+      : { key: 'ready', label: 'Ready to import', value: s.ready, icon: CheckCircle2, tone: 'green', active: tab === 'READY', onClick: () => pick('READY') },
+    { key: 'err', label: 'Need fixing', value: s.errors, icon: AlertTriangle, tone: 'rose', active: tab === 'ERROR', onClick: () => pick('ERROR') },
+    { key: 'skip', label: 'Skipped', value: s.skipped, icon: SkipForward, tone: 'amber', active: tab === 'SKIP', onClick: () => pick('SKIP') },
+  ] : [];
+
   const columns = [
-    { key: 'itemCode', header: 'Item', render: (i) => <div><span className="font-mono text-xs font-semibold">{i.itemCode ?? '—'}</span>{i.description && <div className="text-xs text-slate-500">{i.description}</div>}</div> },
-    { key: 'rows', header: 'Rows', render: (i) => <span className="tabular text-xs">{i.firstRow}–{i.lastRow}</span> },
-    { key: 'checkpoints', header: 'Checkpoints', align: 'right', render: (i) => i.checkpoints.length },
-    { key: 'status', header: 'Status', render: (i) => <Badge variant={ITEM_STATUS[i.status][1]}>{ITEM_STATUS[i.status][0]}</Badge> },
     {
-      key: 'messages',
-      header: 'Notes',
+      key: 'itemCode', header: 'Item', sortable: true, text: (i) => `${i.itemCode ?? ''} ${i.description ?? ''}`,
       render: (i) => (
-        <ul className="text-xs space-y-0.5">
+        <div>
+          <span className="font-mono text-xs font-semibold text-slate-800">{i.itemCode ?? '—'}</span>
+          {i.description && <div className="text-xs text-slate-500 max-w-72 truncate">{i.description}</div>}
+        </div>
+      ),
+    },
+    { key: 'firstRow', header: 'Rows in file', sortable: true, text: (i) => `${i.firstRow}-${i.lastRow}`, render: (i) => <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700">{i.firstRow}–{i.lastRow}</span> },
+    { key: 'checkpoints', header: 'Checkpoints', align: 'right', text: (i) => i.checkpoints.length, render: (i) => <span className="tabular">{i.checkpoints.length}</span> },
+    { key: 'status', header: 'Status', sortable: true, text: (i) => ITEM_STATUS[i.status][0], render: (i) => <Badge variant={ITEM_STATUS[i.status][1]}>{ITEM_STATUS[i.status][0]}</Badge> },
+    {
+      key: 'messages', header: 'Notes', text: (i) => i.messages.map((m) => `${m.row ? `Row ${m.row}: ` : ''}${m.message}`).join('; '),
+      render: (i) => (i.messages.length ? (
+        <ul className="text-xs space-y-0.5 max-w-xl">
           {i.messages.map((m, k) => (
-            <li key={k} className={m.level === 'error' ? 'text-rose-600' : 'text-slate-500'}>{m.row ? `Row ${m.row}: ` : ''}{m.message}</li>
+            <li key={k} className={`flex gap-1.5 ${m.level === 'error' ? 'text-rose-700' : 'text-slate-500'}`}>
+              {m.row && <span className="shrink-0 rounded bg-slate-100 px-1 font-mono text-[10px] text-slate-600">R{m.row}</span>}{m.message}
+            </li>
           ))}
         </ul>
-      ),
+      ) : <span className="text-xs text-slate-300">—</span>),
     },
   ];
 
@@ -74,44 +116,50 @@ export default function FormatImportPage() {
       <PageHeader icon={FileUp} title="Import Formats" subtitle="Load existing formats from Excel as approved version 1">
         <Button size="sm" variant="secondary" icon={Download} onClick={() => downloadImportTemplate().catch((e) => toast.error(e.message))}>Download template</Button>
       </PageHeader>
-      <div className="p-5 space-y-5">
-        <section className="card p-5">
-          <ol className="text-sm text-slate-600 list-decimal pl-5 space-y-1 mb-4">
-            <li>Fill the template: one row per checkpoint, with the item code on every row (the "For Data" sheet layout works too).</li>
-            <li>Check the file. Nothing is saved; every problem is listed with its row number.</li>
-            <li>Import. Items that already have an approved format are skipped; change those through a draft.</li>
-          </ol>
+      <div className="p-5 space-y-4">
+        <div className="grid gap-3 lg:grid-cols-3">
+          <Step n={1} title="Fill the template">
+            One row per checkpoint, with the item code on every row (the "For Data" sheet layout works too).
+            <button type="button" onClick={() => downloadImportTemplate().catch((e) => toast.error(e.message))} className="mt-1 block text-xs font-semibold text-blue-700 hover:underline cursor-pointer">Download the template</button>
+          </Step>
+          <Step n={2} title="Check the file" done={!!s}>Nothing is saved yet. Every problem is listed with its row number.</Step>
+          <Step n={3} title="Import" done={imported}>Items that already have an approved format are skipped: change those through a draft. For custom layouts use the <Link to="/formats" className="font-semibold text-blue-700 hover:underline">format builder</Link>.</Step>
+        </div>
+
+        <section className="card p-4">
+          <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden"
+            onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); setTab(null); }} />
           <div className="flex flex-wrap items-center gap-3">
-            <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden"
-              onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); }} />
-            <Button variant="secondary" icon={Upload} onClick={() => input.current?.click()}>{file ? 'Choose another file' : 'Choose .xlsx file'}</Button>
-            {file && <span className="text-sm text-slate-700">{file.name} · {(file.size / 1024).toFixed(0)} KB</span>}
-            <Button disabled={!file} loading={checkState.isLoading} onClick={doCheck}>Check file</Button>
-            {s && !imported && <Button variant="success" disabled={!s.ready} loading={runState.isLoading} onClick={() => setConfirming(true)}>Import {s.ready} format{s.ready === 1 ? '' : 's'}</Button>}
+            <button type="button" onClick={() => input.current?.click()}
+              className="flex items-center gap-3 rounded-xl border-2 border-dashed border-slate-300 px-4 py-3 text-left hover:border-blue-400 hover:bg-blue-50/40 cursor-pointer">
+              <UploadCloud className="w-6 h-6 text-blue-600" />
+              <span>
+                <span className="block text-sm font-semibold text-slate-800">{file ? file.name : 'Choose an .xlsx file'}</span>
+                <span className="block text-xs text-slate-500">{file ? `${(file.size / 1024).toFixed(0)} KB · click to choose another` : 'Up to 15 MB'}</span>
+              </span>
+            </button>
+            <Button icon={Upload} disabled={!file} loading={checkState.isLoading} onClick={doCheck}>Check file</Button>
+            {s && !imported && <Button variant="success" icon={CheckCircle2} disabled={!s.ready} loading={runState.isLoading} onClick={() => setConfirming(true)}>Import {s.ready} format{s.ready === 1 ? '' : 's'}</Button>}
           </div>
           <div className="mt-3"><FormError message={error ? apiError(error).message : ''} /></div>
         </section>
 
         {s && (
           <>
-            <dl className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-              {[['Rows', s.rows], ['Items', s.items], ['Ready', s.ready], ['Skipped', s.skipped], ['Need fixing', s.errors]].map(([label, n]) => (
-                <div key={label} className="card p-3">
-                  <dt className="text-[11px] font-medium text-slate-500 text-slate-400">{label}</dt>
-                  <dd className="text-2xl font-bold text-slate-800 tabular">{n}</dd>
-                </div>
-              ))}
-            </dl>
-            <Tabs
-              active={tab}
-              onChange={setTab}
-              tabs={[
-                ...(imported ? [{ key: 'IMPORTED', label: `Imported (${s.imported})` }] : [{ key: 'READY', label: `Ready (${s.ready})` }]),
-                { key: 'ERROR', label: `Need fixing (${s.errors})` },
-                { key: 'SKIP', label: `Skipped (${s.skipped})` },
-              ]}
+            <StatCards cards={cards} total={s.items} />
+            <DataTable
+              tableId="format-import"
+              rowKey="firstRow"
+              columns={columns}
+              rows={table.rows}
+              sort={table.sort}
+              onSort={table.onSort}
+              leading={<SearchBox value={q} onChange={setQ} placeholder="Item or note…" />}
+              selectable
+              exportName="format-import-check"
+              pagination={table.pagination}
+              empty={q ? 'Nothing matches.' : 'Nothing in this group.'}
             />
-            <DataTable rowKey="firstRow" columns={columns} rows={rows} empty="Nothing in this group." />
           </>
         )}
       </div>

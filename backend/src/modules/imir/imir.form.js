@@ -1,3 +1,4 @@
+import { sampleText, SECTION_LABELS } from '@qmas/shared';
 import { getPool } from '../../db/pool.js';
 import { CENTER, COLORS, FormSheet, HEAD, heightFor, LABEL, logoPng, VALUE } from '../../shared/formSheet.js';
 
@@ -77,11 +78,45 @@ export async function buildImirForm(m, db = getPool()) {
     f.merge(r, 0, r, last, text, { bold: true });
     f.keep(r);
   };
+  // A section can be split into several tables with their own headings (format builder).
+  const groups = (sec, fallback = `${SECTION_LABELS[sec]} Test`) => {
+    const out = [];
+    for (const cp of m.checkpoints.filter((c) => c.section === sec)) {
+      const label = cp.groupLabel || fallback;
+      const g = out.find((x) => x.label === label);
+      if (g) g.items.push(cp);
+      else out.push({ label, items: [cp] });
+    }
+    return out;
+  };
+
+  // Lot details (format builder): one answer per lot across the reading columns.
+  for (const g of groups('RECORD', 'Lot Details')) {
+    section(`${g.label} :`);
+    const h = f.row(24);
+    f.keep(h);
+    [[0, 'SR No.'], [OK, 'OK / NOK'], [RI, 'Inspector'], [RC, 'Incharge']].forEach(([c, v]) => f.cell(h, c, v, HEAD));
+    f.merge(h, 1, h, 2, 'Detail', HEAD);
+    f.merge(h, 3, h, 6, 'Requirement', HEAD);
+    f.merge(h, X, h, X + n - 1, 'Recorded', HEAD);
+    g.items.forEach((cp, i) => {
+      const r = f.row(24);
+      const rule = cp.inputType === 'NUMBER' && (cp.lsl !== null || cp.usl !== null)
+        ? `${cp.lsl ?? '–'} to ${cp.usl ?? '–'}${cp.uom ? ` ${cp.uom}` : ''}`
+        : (cp.options ?? []).some((o) => o.pass === false) ? `Pass: ${cp.options.filter((o) => o.pass !== false).map((o) => o.label).join(' / ')}` : cp.specification ?? '';
+      const answer = cp.textObservation ? `${cp.textObservation}${cp.inputType === 'NUMBER' && cp.uom ? ` ${cp.uom}` : ''}` : cp.isRequired === false ? '(not recorded)' : '';
+      f.cell(r, 0, i + 1, CENTER);
+      f.merge(r, 1, r, 2, cp.checkpoint, VALUE);
+      f.merge(r, 3, r, 6, rule, VALUE);
+      f.merge(r, X, r, X + n - 1, answer, { ...VALUE, fill: cp.result === 'NOK' ? COLORS.nok : COLORS.reading, bold: cp.result === 'NOK' });
+      okCell(r, cp.result);
+      remarkRow(r, cp);
+    });
+  }
 
   // Dimensional: two header rows (Tolerances LSL / USL, Observations X1…Xn, Remark Inspector / Incharge).
-  const dims = m.checkpoints.filter((c) => c.section === 'DIMENSIONAL');
-  if (dims.length) {
-    section('Dimensional Test :');
+  for (const { label, items: dims } of groups('DIMENSIONAL')) {
+    section(`${label} :`);
     const h1 = f.row(24);
     const h2 = f.row(22);
     f.keep(h1);
@@ -115,9 +150,8 @@ export async function buildImirForm(m, db = getPool()) {
   }
 
   // Visual: specification spans the tolerance columns; X1…Xn hold OK / NOK.
-  const vis = m.checkpoints.filter((c) => c.section === 'VISUAL');
-  if (vis.length) {
-    section('Visual Test :');
+  for (const { label, items: vis } of groups('VISUAL')) {
+    section(`${label} :`);
     const h = f.row(24);
     f.keep(h);
     [[0, 'SR No.'], [1, 'Check Points'], [5, 'Spec UOM'], [6, 'Instrument / Method'], [OK, 'OK / NOK'], [RI, 'Inspector'], [RC, 'Incharge']].forEach(([c, v]) => f.cell(h, c, v, HEAD));
@@ -132,8 +166,9 @@ export async function buildImirForm(m, db = getPool()) {
       f.cell(r, 6, cp.instrument ?? 'Visual', CENTER);
       samples.forEach((s) => {
         const o = cellOf(cp, s);
-        const v = o?.ok === true ? 'OK' : o?.ok === false ? 'NOK' : '';
-        f.cell(r, X + s - 1, v, { ...CENTER, fill: v === 'NOK' ? COLORS.nok : COLORS.reading, color: v === 'NOK' ? COLORS.nokText : undefined, bold: v === 'NOK' });
+        const v = sampleText(cp, o);
+        const nok = o?.decision === 'NOK' || v === 'NOK';
+        f.cell(r, X + s - 1, v, { ...CENTER, fill: nok ? COLORS.nok : COLORS.reading, color: nok ? COLORS.nokText : undefined, bold: nok });
       });
       okCell(r, cp.result);
       remarkRow(r, cp);
@@ -141,9 +176,8 @@ export async function buildImirForm(m, db = getPool()) {
   }
 
   // Reliability: frequency, and the observation across the reading columns.
-  const rel = m.checkpoints.filter((c) => c.section === 'RELIABILITY');
-  if (rel.length) {
-    section('Reliability Test :');
+  for (const { label, items: rel } of groups('RELIABILITY')) {
+    section(`${label} :`);
     const h = f.row(24);
     f.keep(h);
     [[0, 'SR No.'], [1, 'Check Points'], [5, 'Frequency'], [6, 'Instrument / Method'], [OK, 'OK / NOK'], [RI, 'Inspector'], [RC, 'Incharge']].forEach(([c, v]) => f.cell(h, c, v, HEAD));
