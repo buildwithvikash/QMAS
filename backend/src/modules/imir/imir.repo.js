@@ -119,7 +119,8 @@ export async function list(db, f, scope) {
 
 export async function formatCheckpoints(db, versionId) {
   const { rows } = await db.query(
-    `SELECT checkpoint_uid AS uid, section, seq, checkpoint, specification, nominal, lsl, usl, uom, instrument, frequency_months
+    `SELECT checkpoint_uid AS uid, section, seq, group_label, input_type, checkpoint, specification, nominal, lsl, usl, uom, instrument,
+            frequency_months, options, is_required AS format_required, help_text
        FROM qms.format_checkpoint WHERE version_id = $1 ORDER BY array_position($2::text[], section), seq`,
     [versionId, SECTIONS],
   );

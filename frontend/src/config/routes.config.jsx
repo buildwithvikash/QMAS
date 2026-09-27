@@ -12,7 +12,7 @@ const NumberSeriesPage = lazy(() => import('../pages/masters/NumberSeriesPage.js
 const FormatLibraryPage = lazy(() => import('../pages/formats/FormatLibraryPage.jsx'));
 const FormatItemPage = lazy(() => import('../pages/formats/FormatItemPage.jsx'));
 const FormatVersionPage = lazy(() => import('../pages/formats/FormatVersionPage.jsx'));
-const FormatEditorPage = lazy(() => import('../pages/formats/FormatEditorPage.jsx'));
+const FormatBuilderPage = lazy(() => import('../pages/formats/FormatBuilderPage.jsx'));
 const FormatConflictsPage = lazy(() => import('../pages/formats/FormatConflictsPage.jsx'));
 const ApprovalQueuePage = lazy(() => import('../pages/formats/ApprovalQueuePage.jsx'));
 const FormatImportPage = lazy(() => import('../pages/formats/FormatImportPage.jsx'));
@@ -93,7 +93,7 @@ export const ROUTE_SECTIONS = [
       { path: '/formats/import', label: 'Import Formats', permission: P.FORMATS_APPROVE, element: <FormatImportPage /> },
       { path: '/formats/items/:itemId', hidden: true, permission: P.FORMATS_VIEW, element: <FormatItemPage /> },
       { path: '/formats/versions/:id', hidden: true, permission: P.FORMATS_VIEW, element: <FormatVersionPage /> },
-      { path: '/formats/versions/:id/edit', hidden: true, permission: P.FORMATS_CREATE, element: <FormatEditorPage /> },
+      { path: '/formats/versions/:id/edit', hidden: true, permission: P.FORMATS_CREATE, element: <FormatBuilderPage /> },
       { path: '/formats/versions/:id/conflicts', hidden: true, permission: P.FORMATS_VIEW, element: <FormatConflictsPage /> },
     ],
   },

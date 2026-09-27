@@ -1,4 +1,4 @@
-import { dimensionalDecision, MAX_SAMPLES, readingFlag, toleranceUse } from '@qmas/shared';
+import { dimensionalDecision, MAX_SAMPLES, readingFlag, recordDecision, toleranceUse } from '@qmas/shared';
 import { ArrowDown, ArrowUp, Camera, Check, CheckCheck, MessageSquareText, Paperclip, Plus, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import Badge from '../../components/ui/Badge.jsx';
@@ -6,7 +6,7 @@ import VoiceButton from '../../components/ui/VoiceButton.jsx';
 import { formatDate } from '../../utils/format.js';
 import { fmtNum } from '../formats/formatHelpers.js';
 import InsightChip from './InsightChip.jsx';
-import { moveFocus } from './sheetNav.js';
+import { groupsOf, moveFocus } from './sheetNav.js';
 
 const SAMPLES = Array.from({ length: MAX_SAMPLES }, (_, i) => i + 1);
 const cellKey = (uid, s) => `${uid}:${s}`;
@@ -70,10 +70,35 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
     </div>
   );
 
+  if (tab === 'lot') {
+    const recs = sheet.checkpoints.filter((c) => c.section === 'RECORD');
+    if (!recs.length) return <EmptyTab text="This format has no lot details." />;
+    return (
+      <div className="space-y-4">
+        {groupsOf(recs, 'Lot details').map((g) => (
+          <section key={g.label} className="card">
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5 border-b border-slate-200">
+              <h3 className="text-sm font-semibold text-slate-900">{g.label}</h3>
+              <span className="text-xs text-slate-500">Recorded once for the whole lot. Fields marked * are required.</span>
+            </div>
+            <div className="p-4 grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
+              {g.items.map((cp) => <RecordField key={cp.uid} cp={cp} result={results[cp.uid]} readOnly={readOnly} onPatch={onPatch} remarks={(!readOnly || cp.inspectorRemark || cp.inchargeRemark) && remarkNote(cp)} />)}
+            </div>
+          </section>
+        ))}
+      </div>
+    );
+  }
+
   if (tab === 'dim') {
     if (!dims.length) return <EmptyTab text="This format has no dimensional checks." />;
+    // Rows are numbered across the section's tables so Enter / arrows run through all of them.
+    const dimGroups = groupsOf(dims, 'Dimensional test');
+    const rowIndex = new Map(dims.map((cp, i) => [cp.uid, i]));
     return (
-      <Table note="Type each reading; Enter moves to the next cell. Out-of-limit readings turn red with an arrow.">
+      <div className="space-y-4">
+      {dimGroups.map((g) => (
+      <Table key={g.label} title={dimGroups.length > 1 || g.custom ? g.label : undefined} note="Type each reading; Enter moves to the next cell. Out-of-limit readings turn red with an arrow.">
         <thead className="bg-slate-50">
           <tr>
             <th className={`${th} text-left w-12`}>SR</th>
@@ -88,11 +113,12 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {dims.map((cp, ri) => (
+          {g.items.map((cp, gi) => { const ri = rowIndex.get(cp.uid); return (
             <tr key={cp.uid} className={results[cp.uid] === 'NOK' ? 'bg-rose-50/30' : ''}>
-              <td className="px-2 py-1.5 text-slate-500 tabular">{ri + 1}</td>
+              <td className="px-2 py-1.5 text-slate-500 tabular">{gi + 1}</td>
               <td className="px-2 py-1.5">
                 <div className="font-semibold text-slate-900">{cp.checkpoint}</div>
+                {cp.helpText && <div className="text-[11px] text-slate-400">{cp.helpText}</div>}
                 <InsightChip ins={insOf(cp.uid)} focus={focusOf(cp.uid)} />
                 {(!readOnly || cp.inspectorRemark || cp.inchargeRemark) && remarkNote(cp)}
               </td>
@@ -110,9 +136,11 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
               {spacer}
               <td className="px-2 text-center"><ResultPill result={results[cp.uid]} /></td>
             </tr>
-          ))}
+          ); })}
         </tbody>
       </Table>
+      ))}
+      </div>
     );
   }
 
@@ -120,8 +148,8 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
     if (!vis.length && !rel.length) return <EmptyTab text="This format has no visual or reliability checks." />;
     return (
       <div className="space-y-4">
-        {vis.length > 0 && (
-          <Table title="Visual test" note="Tap once for OK, twice for NOK, three times to clear. Any NOK makes the check NOK.">
+        {groupsOf(vis, 'Visual test').map((g) => (
+          <Table key={g.label} title={g.label} note={g.items.some((c) => c.inputType === 'CHOICE') ? 'Pick an option per sample, or tap once for OK, twice for NOK. A failing option or a NOK makes the check NOK.' : 'Tap once for OK, twice for NOK, three times to clear. Any NOK makes the check NOK.'}>
             <thead className="bg-slate-50">
               <tr>
                 <th className={`${th} text-left w-12`}>SR</th>
@@ -133,21 +161,26 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {vis.map((cp, ri) => {
-                const emptyRequired = SAMPLES.filter((s) => s <= n && byCell.get(cellKey(cp.uid, s))?.ok == null);
+              {g.items.map((cp) => {
+                const ri = vis.indexOf(cp);
+                const choice = cp.inputType === 'CHOICE';
+                const firstPass = (cp.options ?? []).findIndex((o) => o.pass !== false);
+                const emptyRequired = SAMPLES.filter((s) => s <= n && (choice ? byCell.get(cellKey(cp.uid, s))?.value == null : byCell.get(cellKey(cp.uid, s))?.ok == null));
                 return (
                   <tr key={cp.uid} className={results[cp.uid] === 'NOK' ? 'bg-rose-50/30' : ''}>
-                    <td className="px-2 py-1.5 text-slate-500 tabular align-top pt-3">{ri + 1}</td>
+                    <td className="px-2 py-1.5 text-slate-500 tabular align-top pt-3">{g.items.indexOf(cp) + 1}</td>
                     <td className="px-2 py-1.5 align-top pt-2.5">
                       <div className="font-semibold text-slate-900">{cp.checkpoint}</div>
+                      {cp.helpText && <div className="text-[11px] text-slate-400">{cp.helpText}</div>}
                       <InsightChip ins={insOf(cp.uid)} focus={focusOf(cp.uid)} />
                       {(!readOnly || cp.inspectorRemark || cp.inchargeRemark) && remarkNote(cp)}
                       {!readOnly && (
                         <div className="mt-1 flex gap-1">
                           {emptyRequired.length > 0 && (
-                            <button type="button" onClick={() => onPatch({ cells: emptyRequired.map((s) => ({ checkpointUid: cp.uid, sampleNo: s, ok: true })) })}
+                            <button type="button" onClick={() => onPatch({ cells: emptyRequired.map((s) => (choice ? { checkpointUid: cp.uid, sampleNo: s, value: firstPass } : { checkpointUid: cp.uid, sampleNo: s, ok: true })) })}
+                              title={choice ? `Set the empty samples to "${cp.options?.[firstPass]?.label}"` : 'Set the empty samples to OK'}
                               className="inline-flex items-center gap-1 rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800 cursor-pointer hover:bg-emerald-100">
-                              <CheckCheck className="w-3.5 h-3.5" />All OK
+                              <CheckCheck className="w-3.5 h-3.5" />{choice ? `All ${cp.options?.[firstPass]?.label ?? 'pass'}` : 'All OK'}
                             </button>
                           )}
                           {onAddPhoto && (
@@ -158,11 +191,37 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
                         </div>
                       )}
                     </td>
-                    <td className="px-2 py-1.5 text-xs text-slate-600 align-top pt-3">{cp.specification}</td>
+                    <td className="px-2 py-1.5 text-xs text-slate-600 align-top pt-3">
+                      {cp.specification}
+                      {choice && (
+                        <span className="mt-1 flex flex-wrap gap-1">
+                          {(cp.options ?? []).map((o) => <span key={o.label} className={`rounded px-1 text-[10px] font-medium ${o.pass === false ? 'bg-rose-50 text-rose-700' : 'bg-emerald-50 text-emerald-700'}`}>{o.label}</span>)}
+                        </span>
+                      )}
+                    </td>
                     <td className="px-2 py-1.5 text-xs text-slate-600 align-top pt-3">{cp.instrument ?? 'Visual'}</td>
                     {shown.map((s, ci) => {
                       const ok = byCell.get(cellKey(cp.uid, s))?.ok ?? null;
                       const photos = photosByCell[cellKey(cp.uid, s)] ?? 0;
+                      if (choice) {
+                        const value = byCell.get(cellKey(cp.uid, s))?.value ?? null;
+                        const opt = value === null ? null : cp.options?.[value];
+                        return (
+                          <td key={s} className={`px-1 py-1.5 text-center ${s <= n ? 'bg-emerald-50/40' : ''}`}>
+                            <select value={value ?? ''} disabled={readOnly} data-cp={cp.uid} data-sample={s} aria-label={`${cp.checkpoint} X${s}`}
+                              onChange={(e) => onPatch({ cells: [{ checkpointUid: cp.uid, sampleNo: s, value: e.target.value === '' ? null : Number(e.target.value) }] })}
+                              className={`w-full h-10 rounded-lg border-2 px-1 text-xs font-semibold cursor-pointer disabled:cursor-default ${opt ? (opt.pass === false ? 'border-rose-500 bg-rose-100 text-rose-800' : 'border-emerald-400 bg-emerald-100 text-emerald-800') : 'border-dashed border-slate-300 bg-white text-slate-400'}`}>
+                              <option value="">–</option>
+                              {(cp.options ?? []).map((o, i) => <option key={o.label} value={i}>{o.label}</option>)}
+                            </select>
+                            {photos > 0 && (
+                              <button type="button" onClick={() => onOpenPhotos?.(cp, s)} className="mt-0.5 inline-flex items-center gap-0.5 text-[10px] font-semibold text-blue-700 cursor-pointer">
+                                <Paperclip className="w-3 h-3" />{photos}
+                              </button>
+                            )}
+                          </td>
+                        );
+                      }
                       return (
                         <td key={s} className={`px-1 py-1.5 text-center ${s <= n ? 'bg-emerald-50/40' : ''}`}>
                           <button
@@ -191,15 +250,15 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
                     })}
                     {spacer}
                     <td className="px-2 text-center"><ResultPill result={results[cp.uid]} /></td>
-                        </tr>
+                  </tr>
                 );
               })}
             </tbody>
           </Table>
-        )}
+        ))}
 
-        {rel.length > 0 && (
-          <Table title="Reliability test" note="Tests are due by frequency for this item and vendor; a test that is not due can be skipped.">
+        {groupsOf(rel, 'Reliability test').map((g) => (
+          <Table key={g.label} title={g.label} note="Tests are due by frequency for this item and vendor; a test that is not due can be skipped.">
             <thead className="bg-slate-50">
               <tr>
                 <th className={`${th} text-left w-12`}>SR</th>
@@ -211,14 +270,88 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rel.map((cp, ri) => <ReliabilityRow key={cp.uid} sr={ri + 1} cp={cp} readOnly={readOnly} onPatch={onPatch} remarks={remarkNote(cp)} chip={<InsightChip ins={insOf(cp.uid)} focus={focusOf(cp.uid)} />} />)}
+              {g.items.map((cp, ri) => <ReliabilityRow key={cp.uid} sr={ri + 1} cp={cp} readOnly={readOnly} onPatch={onPatch} remarks={remarkNote(cp)} chip={<InsightChip ins={insOf(cp.uid)} focus={focusOf(cp.uid)} />} />)}
             </tbody>
           </Table>
-        )}
+        ))}
       </div>
     );
   }
   return null;
+}
+
+/**
+ * One lot detail (format builder): text, number, date, yes / no or a choice, saved as the entry's
+ * observation. Text and numbers save when the field is left; choices at once. Shows OK / NOK when
+ * the field has a pass rule.
+ */
+function RecordField({ cp, result, readOnly, onPatch, remarks }) {
+  const [text, setText] = useState(cp.textObservation ?? '');
+  const [prev, setPrev] = useState(cp.textObservation);
+  if (cp.textObservation !== prev) {
+    setPrev(cp.textObservation);
+    setText(cp.textObservation ?? '');
+  }
+  const commit = (v) => {
+    const value = v.trim() === '' ? null : v.trim();
+    if (value !== (cp.textObservation ?? null)) onPatch({ entries: [{ checkpointUid: cp.uid, textObservation: value }] });
+  };
+  const decides = cp.inputType === 'NUMBER' ? cp.lsl !== null || cp.usl !== null : (cp.options ?? []).some((o) => o.pass === false);
+  // Live OK / NOK while typing a number, before it is saved.
+  const live = cp.inputType === 'NUMBER' && text !== '' ? recordDecision(cp, text) : result;
+  const required = cp.isRequired !== false;
+  const empty = required && !cp.textObservation;
+  const cls = `w-full h-10 rounded-lg border px-3 text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:bg-slate-50 ${
+    live === 'NOK' ? 'border-rose-400 bg-rose-50 text-rose-800 font-semibold' : live === 'OK' ? 'border-emerald-300 bg-emerald-50/40' : empty ? 'border-amber-300 bg-amber-50/40' : 'border-slate-300 bg-white'}`;
+  const limits = cp.inputType === 'NUMBER' && decides ? `${cp.lsl ?? '–'} to ${cp.usl ?? '–'}${cp.uom ? ` ${cp.uom}` : ''}` : null;
+
+  return (
+    <div>
+      <div className="flex items-center gap-2 mb-1">
+        <label htmlFor={`rec-${cp.uid}`} className="text-sm font-medium text-slate-800">{cp.checkpoint}{required && <span className="text-rose-500"> *</span>}</label>
+        {decides && <span className="ml-auto"><ResultPill result={live} /></span>}
+      </div>
+      {cp.inputType === 'YES_NO' || cp.inputType === 'CHOICE' ? (
+        cp.inputType === 'YES_NO' ? (
+          <div className="flex gap-2" data-cp={cp.uid} data-entry tabIndex={-1}>
+            {(cp.options ?? []).map((o) => {
+              const on = (cp.textObservation ?? '').toLowerCase() === o.label.toLowerCase();
+              return (
+                <button key={o.label} type="button" disabled={readOnly} aria-pressed={on} onClick={() => onPatch({ entries: [{ checkpointUid: cp.uid, textObservation: on ? null : o.label }] })}
+                  className={`flex-1 h-10 rounded-lg border-2 text-sm font-semibold cursor-pointer disabled:cursor-default ${on ? (o.pass === false && decides ? 'border-rose-500 bg-rose-100 text-rose-800' : 'border-emerald-400 bg-emerald-100 text-emerald-800') : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}>
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <select id={`rec-${cp.uid}`} data-cp={cp.uid} data-entry value={cp.textObservation ?? ''} disabled={readOnly}
+            onChange={(e) => onPatch({ entries: [{ checkpointUid: cp.uid, textObservation: e.target.value || null }] })} className={`${cls} cursor-pointer`}>
+            <option value="">Choose…</option>
+            {(cp.options ?? []).map((o) => <option key={o.label} value={o.label}>{o.label}</option>)}
+          </select>
+        )
+      ) : (
+        <input id={`rec-${cp.uid}`} data-cp={cp.uid} data-entry disabled={readOnly} value={text}
+          type={cp.inputType === 'DATE' ? 'date' : 'text'} inputMode={cp.inputType === 'NUMBER' ? 'decimal' : undefined}
+          placeholder={cp.inputType === 'NUMBER' ? (limits ?? cp.uom ?? 'Number') : cp.specification ?? ''}
+          onChange={(e) => {
+            const v = cp.inputType === 'NUMBER' ? e.target.value.replace(/[^\d.-]/g, '') : e.target.value;
+            setText(v);
+            if (cp.inputType === 'DATE') commit(v);
+          }}
+          onBlur={(e) => cp.inputType !== 'DATE' && commit(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+          className={cls} />
+      )}
+      <div className="mt-1 text-[11px] text-slate-500">
+        {limits && <span>Limits {limits}. </span>}
+        {cp.inputType === 'NUMBER' && !limits && cp.uom && <span>In {cp.uom}. </span>}
+        {cp.helpText}
+      </div>
+      {remarks}
+    </div>
+  );
 }
 
 const EmptyTab = ({ text }) => <div className="card p-8 text-center text-sm text-slate-500">{text}</div>;

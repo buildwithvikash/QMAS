@@ -1,14 +1,15 @@
-import { SECTIONS } from '@qmas/shared';
+import { DEFAULT_INPUT_TYPE, SECTIONS } from '@qmas/shared';
 import { camelRow, camelRows, likeContains, offsetOf, orderBy } from '../../shared/sql.js';
 
 const VERSION_COLUMNS = `v.id, v.format_id, v.version_no, v.status, v.source, v.source_ref, v.base_version_id,
   bv.version_no AS base_version_no, v.format_no, v.common_format_no, v.ref_standard, v.remarks, v.merge_note,
   v.created_at, v.created_by, cu.full_name AS created_by_name, v.submitted_at, v.submitted_by,
   v.decided_at, v.decided_by, du.full_name AS decided_by_name, v.decision_remark, v.updated_at, v.row_version,
-  f.item_id, f.current_version_id, i.item_code, i.description AS item_description`;
+  f.item_id, f.current_version_id, i.item_code, i.description AS item_description, ic.name AS item_category`;
 const VERSION_FROM = `qms.format_version v
   JOIN qms.format f ON f.id = v.format_id
   JOIN mst.item i ON i.id = f.item_id
+  LEFT JOIN mst.item_category ic ON ic.id = i.category_id
   LEFT JOIN qms.format_version bv ON bv.id = v.base_version_id
   LEFT JOIN core.app_user cu ON cu.id = v.created_by
   LEFT JOIN core.app_user du ON du.id = v.decided_by`;
@@ -22,7 +23,8 @@ export async function getVersion(db, id, { forUpdate = false } = {}) {
 
 export async function getCheckpoints(db, versionId) {
   const { rows } = await db.query(
-    `SELECT checkpoint_uid AS uid, section, seq, checkpoint, specification, nominal, lsl, usl, uom, instrument, frequency_months
+    `SELECT checkpoint_uid AS uid, section, seq, group_label, input_type, checkpoint, specification, nominal, lsl, usl, uom, instrument,
+            frequency_months, options, is_required, help_text
        FROM qms.format_checkpoint WHERE version_id = $1
       ORDER BY array_position($2::text[], section), seq`,
     [versionId, SECTIONS],
@@ -43,11 +45,15 @@ export async function replaceCheckpoints(db, versionId, checkpoints) {
   await db.query('DELETE FROM qms.format_checkpoint WHERE version_id = $1', [versionId]);
   if (!checkpoints.length) return;
   await db.query(
-    `INSERT INTO qms.format_checkpoint (version_id, checkpoint_uid, section, seq, checkpoint, specification, nominal, lsl, usl, uom, instrument, frequency_months)
-     SELECT $1, x.uid, x.section, x.seq, x.checkpoint, x.specification, x.nominal, x.lsl, x.usl, x.uom, x.instrument, x."frequencyMonths"
-       FROM jsonb_to_recordset($2::jsonb) AS x(uid uuid, section text, seq smallint, checkpoint text, specification text,
-            nominal numeric, lsl numeric, usl numeric, uom text, instrument text, "frequencyMonths" smallint)`,
-    [versionId, JSON.stringify(checkpoints)],
+    `INSERT INTO qms.format_checkpoint (version_id, checkpoint_uid, section, seq, group_label, input_type, checkpoint, specification, nominal, lsl, usl,
+                                         uom, instrument, frequency_months, options, is_required, help_text)
+     SELECT $1, x.uid, x.section, x.seq, x."groupLabel", x."inputType", x.checkpoint, x.specification, x.nominal, x.lsl, x.usl, x.uom, x.instrument,
+            x."frequencyMonths", x.options, COALESCE(x."isRequired", true), x."helpText"
+       FROM jsonb_to_recordset($2::jsonb) AS x(uid uuid, section text, seq smallint, "groupLabel" text, "inputType" text, checkpoint text,
+            specification text, nominal numeric, lsl numeric, usl numeric, uom text, instrument text, "frequencyMonths" smallint,
+            options jsonb, "isRequired" boolean, "helpText" text)`,
+    // Field type defaults to the one the section always had (imports, SAN/SIR, older clients).
+    [versionId, JSON.stringify(checkpoints.map((c) => ({ ...c, inputType: c.inputType ?? DEFAULT_INPUT_TYPE[c.section], options: c.options?.length ? c.options : null })))],
   );
 }
 
@@ -122,7 +128,7 @@ export async function versionsOf(db, formatId) {
   return camelRows(rows);
 }
 
-const LIBRARY_SORT = { itemCode: 'i.item_code', description: 'i.description', versionNo: 'cv.version_no', updatedAt: 'last_activity' };
+const LIBRARY_SORT = { itemCode: 'i.item_code', description: 'i.description', versionNo: 'cv.version_no', updatedAt: 'last_activity', lotsWaiting: 'lots_waiting' };
 
 /** Every item with its format state: approved version and open drafts (format coverage view). */
 export async function library(db, f) {
@@ -144,11 +150,15 @@ export async function library(db, f) {
 
   const { rows } = await db.query(
     `SELECT i.id AS item_id, i.item_code, i.description, i.drawing_no, i.drawing_rev,
-            fm.id AS format_id, cv.id AS current_version_id, cv.version_no, cv.decided_at AS approved_at,
+            fm.id AS format_id, cv.id AS current_version_id, cv.version_no, cv.decided_at AS approved_at, cv.format_no, cv.source AS current_source,
+            ic.name AS category_name,
+            (SELECT count(*)::int FROM qms.format_checkpoint fc WHERE fc.version_id = cv.id) AS checkpoint_count,
+            (SELECT count(*)::int FROM qms.imir m WHERE m.item_id = i.id AND m.status = 'AWAITING_FORMAT') AS lots_waiting,
             COALESCE(counts.draft, 0) AS draft_count, COALESCE(counts.pending, 0) AS pending_count, COALESCE(counts.conflict, 0) AS conflict_count,
             GREATEST(cv.decided_at, counts.last_change) AS last_activity,
             count(*) OVER () AS total
        FROM mst.item i
+       LEFT JOIN mst.item_category ic ON ic.id = i.category_id
        LEFT JOIN qms.format fm ON fm.item_id = i.id
        LEFT JOIN qms.format_version cv ON cv.id = fm.current_version_id
        LEFT JOIN LATERAL (
@@ -222,4 +232,48 @@ export async function markResolved(db, conflictId, resolution, value, userId) {
     'UPDATE qms.format_merge_conflict SET resolution = $2, resolved_value = $3, resolved_by = $4, resolved_at = now() WHERE id = $1',
     [conflictId, resolution, JSON.stringify(value), userId],
   );
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+
+/** Records a step on a format (see qms.format_event). */
+export async function addEvent(db, { formatId, versionId = null, action, userId = null, remark = null, detail = null }) {
+  await db.query(
+    'INSERT INTO qms.format_event (format_id, version_id, action, actor_id, remark, detail) VALUES ($1, $2, $3, $4, $5, $6)',
+    [formatId, versionId, action, userId, remark, detail ? JSON.stringify(detail) : null],
+  );
+}
+
+/** Steps on a format (or one version), newest first, with who took them and the version they concern. */
+export async function events(db, { formatId, versionId = null }) {
+  const { rows } = await db.query(
+    `SELECT e.id, e.version_id, e.action, e.remark, e.detail, e.at, u.full_name AS actor_name,
+            v.version_no, v.status AS version_status, v.created_by AS version_owner_id, cu.full_name AS version_owner_name
+       FROM qms.format_event e
+       LEFT JOIN core.app_user u ON u.id = e.actor_id
+       LEFT JOIN qms.format_version v ON v.id = e.version_id
+       LEFT JOIN core.app_user cu ON cu.id = v.created_by
+      WHERE e.format_id = $1 AND ($2::uuid IS NULL OR e.version_id = $2)
+      ORDER BY e.at DESC, e.id DESC
+      LIMIT 500`,
+    [formatId, versionId],
+  );
+  return camelRows(rows);
+}
+
+/** Figures above the Format Library: items with and without an approved format, open work, lots waiting. */
+export async function libraryCounts(db) {
+  const { rows } = await db.query(
+    `SELECT count(*)::int AS items,
+            count(*) FILTER (WHERE f.current_version_id IS NOT NULL)::int AS approved,
+            count(*) FILTER (WHERE f.current_version_id IS NULL)::int AS missing,
+            count(*) FILTER (WHERE EXISTS (SELECT 1 FROM qms.format_version v WHERE v.format_id = f.id AND v.status = 'PENDING_APPROVAL'))::int AS pending,
+            count(*) FILTER (WHERE EXISTS (SELECT 1 FROM qms.format_version v WHERE v.format_id = f.id AND v.status = 'CONFLICT'))::int AS conflict,
+            count(*) FILTER (WHERE EXISTS (SELECT 1 FROM qms.format_version v WHERE v.format_id = f.id AND v.status IN ('DRAFT', 'REJECTED')))::int AS drafts,
+            (SELECT count(*)::int FROM qms.imir m WHERE m.status = 'AWAITING_FORMAT') AS lots_waiting,
+            (SELECT count(*)::int FROM qms.format_event e WHERE e.at >= now() - interval '30 days' AND e.action IN ('APPROVED', 'MERGED')) AS approved_30d
+       FROM mst.item i LEFT JOIN qms.format f ON f.item_id = i.id
+      WHERE i.is_active`,
+  );
+  return camelRows(rows)[0];
 }

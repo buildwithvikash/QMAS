@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { CAPA_DUE_DAYS, CAPA_REMINDER_EVERY_DAYS, DN_MAX_IMAGES, PERMISSIONS } from '@qmas/shared';
+import { CAPA_DUE_DAYS, CAPA_REMINDER_EVERY_DAYS, DN_MAX_IMAGES, PERMISSIONS, perLot, sampleText } from '@qmas/shared';
 import { getPool } from '../../db/pool.js';
 import { withTransaction } from '../../db/tx.js';
 import { putObject, sniffType } from '../../integrations/storage/index.js';
@@ -114,18 +114,18 @@ async function reportDetails(db, imir) {
   const checkpoints = await imirRepo.formatCheckpoints(db, imir.formatVersionId);
   const states = new Map((await imirRepo.checkpointStates(db, imir.id)).map((s) => [s.checkpointUid, s]));
   const cells = await imirRepo.observations(db, imir.id);
-  const reading = (c, o) => (c.section === 'DIMENSIONAL' ? `X${o.sampleNo}: ${o.value}${c.uom ? ` ${c.uom}` : ''}` : `X${o.sampleNo}: ${o.ok ? 'OK' : 'NOK'}`);
+  const reading = (c, o) => `X${o.sampleNo}: ${sampleText(c, o)}`;
   const rows = checkpoints.map((c) => {
     const s = states.get(c.uid) ?? {};
     const mine = cells.filter((o) => o.checkpointUid === c.uid).sort((x, y) => x.sampleNo - y.sampleNo);
     const nok = s.result === 'NOK';
     // A failed check lists its failed readings; any other lists all readings taken.
     const shown = nok ? mine.filter((o) => o.decision === 'NOK') : mine;
-    const readings = c.section === 'RELIABILITY' ? (s.textObservation ?? null) : shown.map((o) => reading(c, o)).join(', ') || null;
+    const readings = perLot(c) ? (s.textObservation ?? null) : shown.map((o) => reading(c, o)).join(', ') || null;
     const observation = [readings, s.inspectorRemark && `Inspector: ${s.inspectorRemark}`, s.inchargeRemark && `Incharge: ${s.inchargeRemark}`].filter(Boolean).join(' — ') || null;
     return {
       uid: c.uid, section: c.section, checkpoint: c.checkpoint, specification: c.specification, result: s.result ?? null,
-      required: c.section !== 'RELIABILITY' || !!s.isRequired, readings, observation,
+      required: !perLot(c) || !!s.isRequired, readings, observation,
       line: { parameter: c.checkpoint, specification: c.specification ?? null, observation },
     };
   });

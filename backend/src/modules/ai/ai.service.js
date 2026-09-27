@@ -1,7 +1,5 @@
 import { createHash } from 'node:crypto';
-import {
-  deviationListQuery, dnListQuery, FILTER_OPERATORS, imirListQuery, LIST_FIELDS, PERMISSIONS,
-} from '@qmas/shared';
+import { FILTER_OPERATORS, LIST_FIELDS, PERMISSIONS, deviationListQuery, dnListQuery, imirListQuery, sampleText } from '@qmas/shared';
 import { z } from 'zod';
 import { getPool } from '../../db/pool.js';
 import { AppError } from '../../shared/AppError.js';
@@ -68,10 +66,12 @@ function lotContext(m, ins) {
   if (m.inspectorRemark) lines.push(`Inspector remark: ${m.inspectorRemark}`);
   lines.push('Checkpoints (name | spec | readings | result):');
   for (const c of m.checkpoints) {
-    const vals = m.cells.filter((x) => x.checkpointUid === c.uid).map((x) => (x.value ?? (x.ok === null || x.ok === undefined ? null : x.ok ? 'OK' : 'NOK')) + (x.decision === 'NOK' ? '(NOK)' : '')).filter((x) => x !== null);
+    const vals = m.cells
+      .filter((x) => x.checkpointUid === c.uid && sampleText(c, x))
+      .map((x) => `${sampleText(c, x)}${x.decision === 'NOK' ? '(NOK)' : ''}`);
     const spec = c.section === 'DIMENSIONAL' ? `${c.lsl ?? '-'}..${c.usl ?? '-'} ${c.uom ?? ''}` : c.specification ?? '';
     const extra = [c.textObservation && `observation: ${c.textObservation}`, c.inspectorRemark && `inspector: ${c.inspectorRemark}`, c.inchargeRemark && `incharge: ${c.inchargeRemark}`].filter(Boolean).join('; ');
-    lines.push(`- ${c.checkpoint} [${c.section}] | ${spec} | ${vals.join(', ') || '—'} | ${c.result ?? c.manualResult ?? '—'}${extra ? ` | ${extra}` : ''}`);
+    lines.push(`- ${c.checkpoint} [${c.groupLabel ?? c.section}] | ${spec} | ${vals.join(', ') || '—'} | ${c.result ?? c.manualResult ?? '—'}${extra ? ` | ${extra}` : ''}`);
   }
   if (m.deviation) lines.push(`Deviation ${m.deviation.deviationNo}: stage ${m.deviation.stage}${m.deviation.outcome ? `, outcome ${m.deviation.outcome}` : ''}.`);
   if (m.dn) lines.push(`Defect notification ${m.dn.dnNo}: ${m.dn.status}.`);

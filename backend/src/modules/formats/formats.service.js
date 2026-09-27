@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { checkpointSchema, diffVersions, FIELD_LABELS, mergeVersions, PERMISSIONS, renumber, submitProblems } from '@qmas/shared';
+import { checkpointSchema, diffVersions, FIELD_LABELS, isEmptyDiff, mergeVersions, PERMISSIONS, renumber, submitProblems } from '@qmas/shared';
 import { getPool } from '../../db/pool.js';
 import { withTransaction } from '../../db/tx.js';
 import { lookupSan } from '../../integrations/san/index.js';
@@ -34,6 +34,38 @@ function allowedActions(user, v) {
   return actions;
 }
 
+// ── History ───────────────────────────────────────────────────────────────────
+
+const brief = (c) => ({ uid: c.uid, section: c.section, groupLabel: c.groupLabel ?? null, inputType: c.inputType ?? null, checkpoint: c.checkpoint });
+
+/** A diff small enough to keep with a history step: what was added, removed and changed (field by field). */
+export function compactDiff(d) {
+  return {
+    header: d.header,
+    added: d.added.map(brief),
+    removed: d.removed.map(brief),
+    changed: d.changed.map((c) => ({ uid: c.uid, checkpoint: c.checkpoint, fields: c.fields })),
+    moved: d.moved?.length ?? 0,
+  };
+}
+
+/** Steps on an item's format (all versions), newest first. */
+export async function itemHistory(itemId) {
+  const pool = getPool();
+  const { rows } = await pool.query('SELECT id FROM qms.format WHERE item_id = $1', [itemId]);
+  if (!rows[0]) return [];
+  return repo.events(pool, { formatId: rows[0].id });
+}
+
+/** Steps on one version (its draft life and approval), newest first. */
+export async function versionHistory(id) {
+  const pool = getPool();
+  const v = await mustGetVersion(pool, id);
+  return repo.events(pool, { formatId: v.formatId, versionId: id });
+}
+
+export const libraryCounts = () => repo.libraryCounts(getPool());
+
 // ── Reading ───────────────────────────────────────────────────────────────────
 
 export async function library(filters) {
@@ -52,11 +84,19 @@ export async function itemFormat(itemId) {
   );
   const item = camelRow(rows[0]);
   if (!item) throw AppError.notFound('Item');
+  // Lots of this item: all received, waiting for a format, and inspected against the current version.
+  const { rows: st } = await pool.query(
+    `SELECT count(*)::int AS lots_total, count(*) FILTER (WHERE m.status = 'AWAITING_FORMAT')::int AS lots_waiting,
+            count(*) FILTER (WHERE m.format_version_id = f.current_version_id)::int AS lots_on_current, max(m.created_at) AS last_lot_at
+       FROM qms.imir m LEFT JOIN qms.format f ON f.item_id = m.item_id WHERE m.item_id = $1`,
+    [itemId],
+  );
+  const stats = camelRow(st[0]);
   const { rows: f } = await pool.query('SELECT id, current_version_id FROM qms.format WHERE item_id = $1', [itemId]);
   const format = camelRow(f[0]) ?? null;
-  if (!format) return { item, format: null, current: null, versions: [] };
+  if (!format) return { item, format: null, current: null, versions: [], stats };
   const current = format.currentVersionId ? await getVersion(format.currentVersionId, null) : null;
-  return { item, format, current, versions: await repo.versionsOf(pool, format.id) };
+  return { item, format, current, versions: await repo.versionsOf(pool, format.id), stats };
 }
 
 export async function getVersion(id, user) {
@@ -64,7 +104,17 @@ export async function getVersion(id, user) {
   const v = await mustGetVersion(pool, id);
   const checkpoints = await repo.getCheckpoints(pool, id);
   const result = { ...v, checkpoints };
-  if (v.status === 'CONFLICT') result.conflicts = await repo.openConflicts(pool, id);
+  if (v.status === 'CONFLICT') {
+    result.conflicts = await repo.openConflicts(pool, id);
+    // For the conflicts page: the version it clashes with, and how many changes merge by themselves.
+    const against = await repo.getVersion(pool, v.currentVersionId);
+    const [base, theirs, mine] = [await repo.loadModel(pool, v.baseVersionId), await repo.loadModel(pool, against), await repo.loadModel(pool, v)];
+    const d = diffVersions(theirs, mergeVersions(base, theirs, mine).merged);
+    result.mergeInfo = {
+      against: { id: against.id, versionNo: against.versionNo, decidedAt: against.decidedAt, decidedByName: against.decidedByName },
+      autoResolved: d.header.length + d.added.length + d.removed.length + d.changed.reduce((n, c) => n + c.fields.length, 0),
+    };
+  }
   if (user) {
     result.allowedActions = allowedActions(user, v);
     result.otherOpenDrafts = await repo.openDraftsOf(pool, v.formatId, v.id);
@@ -117,8 +167,9 @@ export async function createDraft(ctx, user, itemId, { from, vendorCode, cloneFr
       if (!current) throw AppError.unprocessable('This item has no approved format yet. Start from SAN/SIR, a copy, or a blank format.');
       checkpoints = current.checkpoints; // same uids: edits merge cleanly later
       source = 'CURRENT';
-    } else if (from === 'BLANK') {
-      source = 'NEW';
+    } else if (from === 'BLANK' || from === 'CUSTOM') {
+      // CUSTOM: built from scratch in the format builder (own sections and field types).
+      source = from === 'CUSTOM' ? 'CUSTOM' : 'NEW';
     } else if (from === 'SAN') {
       checkpoints = withNewUids(san.checkpoints);
       source = 'SAN';
@@ -137,6 +188,8 @@ export async function createDraft(ctx, user, itemId, { from, vendorCode, cloneFr
 
     const id = await repo.insertVersion(db, { formatId: format.id, status: 'DRAFT', source, sourceRef, baseVersionId: format.currentVersionId, header, userId: user.id });
     await repo.replaceCheckpoints(db, id, renumber(checkpoints));
+    const baseVersionNo = format.currentVersionId ? (await repo.getVersion(db, format.currentVersionId)).versionNo : null;
+    await repo.addEvent(db, { formatId: format.id, versionId: id, action: 'CREATED', userId: user.id, detail: { source, sourceRef, baseVersionNo, checkpoints: checkpoints.length } });
     return id;
   }).then((id) => getVersion(id, user));
 }
@@ -148,6 +201,7 @@ export async function saveDraft(ctx, user, id, body) {
     if (!isOwner(user, v)) throw AppError.forbidden('Only the person who started this draft can edit it.');
     if (!EDITABLE.includes(v.status)) throw AppError.conflict(`This version is ${v.status.toLowerCase().replace('_', ' ')} and can no longer be edited.`);
     const checkpoints = renumber(body.checkpoints.map((c) => ({ ...c, uid: c.uid ?? randomUUID() })));
+    const before = await repo.loadModel(db, v);
     const ok = await repo.updateVersion(db, id, body.rowVersion, {
       status: 'DRAFT',
       formatNo: body.formatNo ?? null,
@@ -157,6 +211,11 @@ export async function saveDraft(ctx, user, id, body) {
     });
     if (!ok) throw AppError.staleVersion('This draft');
     await repo.replaceCheckpoints(db, id, checkpoints);
+    // History keeps what this save changed; a save without changes leaves no entry.
+    const d = diffVersions(before, await repo.loadModel(db, id));
+    if (!isEmptyDiff(d) || d.moved.length) {
+      await repo.addEvent(db, { formatId: v.formatId, versionId: id, action: 'SAVED', userId: user.id, detail: compactDiff(d) });
+    }
   });
   return getVersion(id, user);
 }
@@ -184,6 +243,7 @@ async function submit(db, user, id, { rowVersion }) {
   if (!(await repo.updateVersion(db, id, rowVersion, { status: 'PENDING_APPROVAL', submittedAt: new Date(), submittedBy: user.id }))) {
     throw AppError.staleVersion('This draft');
   }
+  await repo.addEvent(db, { formatId: v.formatId, versionId: id, action: 'SUBMITTED', userId: user.id, detail: { checkpoints: model.checkpoints.length } });
   return 'SUBMITTED';
 }
 
@@ -192,6 +252,7 @@ async function discard(db, user, id, { rowVersion }) {
   if (!isOwner(user, v)) throw AppError.forbidden('Only the person who started this draft can discard it.');
   if (!OPEN.includes(v.status)) throw AppError.conflict('This version is already closed.');
   if (!(await repo.updateVersion(db, id, rowVersion, { status: 'DISCARDED' }))) throw AppError.staleVersion('This draft');
+  await repo.addEvent(db, { formatId: v.formatId, versionId: id, action: 'DISCARDED', userId: user.id });
   return 'DISCARDED';
 }
 
@@ -202,11 +263,13 @@ async function reject(db, user, id, { remark, rowVersion }) {
   if (!(await repo.updateVersion(db, id, rowVersion, { status: 'REJECTED', decidedAt: new Date(), decidedBy: user.id, decisionRemark: remark }))) {
     throw AppError.staleVersion('This format');
   }
+  await repo.addEvent(db, { formatId: v.formatId, versionId: id, action: 'RETURNED', userId: user.id, remark });
   return 'REJECTED';
 }
 
 /** Makes the draft the approved version; the previous approved version becomes superseded. */
-async function fastForward(db, user, v, format, { remark, mergeNote = null }) {
+async function fastForward(db, user, v, format, { remark, mergeNote = null, merged = false }) {
+  const previous = format.currentVersionId ? await repo.loadModel(db, format.currentVersionId) : EMPTY;
   if (format.currentVersionId) await repo.updateVersion(db, format.currentVersionId, null, { status: 'SUPERSEDED' });
   const versionNo = await repo.nextVersionNo(db, v.formatId);
   await repo.updateVersion(db, v.id, null, {
@@ -214,6 +277,12 @@ async function fastForward(db, user, v, format, { remark, mergeNote = null }) {
     decisionRemark: remark ?? null, mergeNote,
   });
   await repo.setCurrent(db, v.formatId, v.id);
+  // History: what this approval changed against the version it replaces.
+  const changes = compactDiff(diffVersions(previous, await repo.loadModel(db, v.id)));
+  await repo.addEvent(db, {
+    formatId: v.formatId, versionId: v.id, action: merged ? 'MERGED' : 'APPROVED', userId: user.id, remark: remark ?? null,
+    detail: { versionNo, note: mergeNote, changes },
+  });
   // Inward lots that were waiting for this item's format open now (number, sample, format pinned).
   await openAwaitingForItem(db, v.itemId, { userId: user.id });
   return versionNo;
@@ -260,10 +329,14 @@ async function approve(db, user, id, { remark, rowVersion, mode }) {
   if (conflicts.length) {
     await repo.replaceOpenConflicts(db, v.id, current.id, conflicts);
     await repo.updateVersion(db, v.id, null, { status: 'CONFLICT' });
+    await repo.addEvent(db, {
+      formatId: v.formatId, versionId: v.id, action: 'CONFLICT', userId: user.id,
+      detail: { conflicts: conflicts.length, againstVersionNo: current.versionNo, fields: conflicts.map((c) => ({ checkpoint: c.checkpoint, field: c.field })) },
+    });
     return { result: 'CONFLICT', conflicts: conflicts.length, againstVersionNo: current.versionNo };
   }
   await applyMerged(db, v.id, merged);
-  const n = await fastForward(db, user, v, format, { remark, mergeNote: `Merged with v${current.versionNo} (started from v${v.baseVersionNo}).` });
+  const n = await fastForward(db, user, v, format, { remark, merged: true, mergeNote: `Merged with v${current.versionNo} (started from v${v.baseVersionNo}).` });
   return { result: 'APPROVED', versionNo: n, merged: true };
 }
 
@@ -322,6 +395,7 @@ export async function resolveConflicts(ctx, user, id, { resolutions, rowVersion 
       const again = mergeVersions(base, theirs, mine);
       await repo.replaceOpenConflicts(db, id, format.currentVersionId, again.conflicts);
       await repo.updateVersion(db, id, null, { status: 'CONFLICT' });
+      await repo.addEvent(db, { formatId: v.formatId, versionId: id, action: 'CONFLICT', userId: user.id, detail: { conflicts: again.conflicts.length, recomputed: true } });
       return { result: 'RECOMPUTED', conflicts: again.conflicts.length };
     }
 
@@ -350,6 +424,10 @@ export async function resolveConflicts(ctx, user, id, { resolutions, rowVersion 
       status: 'PENDING_APPROVAL',
       baseVersionId: format.currentVersionId,
       mergeNote: `Conflicts with v${(await repo.getVersion(db, format.currentVersionId)).versionNo} resolved by ${user.fullName}.`,
+    });
+    await repo.addEvent(db, {
+      formatId: v.formatId, versionId: id, action: 'RESOLVED', userId: user.id,
+      detail: { choices: chosen.map(({ c, r, value }) => ({ checkpoint: c.label, field: c.field, choice: r.choice, value, remark: r.remark ?? null })) },
     });
     return { result: 'RESOLVED' };
   });
