@@ -89,6 +89,8 @@ export const adminApi = baseApi.injectEndpoints({
       providesTags: ['Audit'],
     }),
     getAuditTables: b.query({ query: () => '/audit/tables', transformResponse: envelope }),
+    getAuditSummary: b.query({ query: (params) => ({ url: '/audit/summary', params }), transformResponse: envelope, providesTags: ['Audit'] }),
+    getAuditActors: b.query({ query: (params) => ({ url: '/audit/actors', params }), transformResponse: envelope, providesTags: ['Audit'] }),
   }),
 });
 
@@ -117,4 +119,6 @@ export const {
   useGetAuditChangesQuery,
   useGetAuthEventsQuery,
   useGetAuditTablesQuery,
+  useGetAuditSummaryQuery,
+  useGetAuditActorsQuery,
 } = adminApi;

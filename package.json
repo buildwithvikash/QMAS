@@ -21,6 +21,7 @@
     "lint": "npm -w frontend run lint",
     "demo-users": "npm -w backend run demo-users",
     "puter-login": "npm -w backend run puter-login",
-    "check-mail": "npm -w backend run check-mail"
+    "check-mail": "npm -w backend run check-mail",
+    "db:setup-local": "npm -w backend run db:setup-local"
   }
 }

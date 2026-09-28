@@ -74,6 +74,7 @@ export const REPORTS = Object.freeze([
   { key: 'imir-register', name: 'IMIR register', description: 'Every lot received in the period with its result, status, deviation and DN.' },
   { key: 'pending-ageing', name: 'Pending ageing', description: 'Lots not yet closed, by stage and days waiting.' },
   { key: 'vendor-quality', name: 'Vendor quality', description: 'Lots, rejection % and rejected-quantity PPM per vendor.' },
+  { key: 'item-quality', name: 'Item quality', description: 'Lots, Not OK %, deviations and DNs per item, with its inspection format.' },
   { key: 'deviation-register', name: 'Deviation register', description: 'Deviations raised in the period with department, action, senior and final decisions.' },
   { key: 'dn-register', name: 'DN / CAPA ageing', description: 'Defect notifications with CAPA status, due date and days open.' },
   { key: 'format-coverage', name: 'Format coverage', description: 'Items received in the period: approved inspection format or not, drafts in progress, lots waiting.' },
