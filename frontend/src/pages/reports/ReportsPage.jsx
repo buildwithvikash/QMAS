@@ -1,5 +1,5 @@
 import { REPORTS } from '@qmas/shared';
-import { ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, CalendarDays, ChevronRight, Download, EyeOff, LineChart, RotateCcw, Search, X } from 'lucide-react';
+import { ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, Box, CalendarDays, ChevronRight, Clock, Download, EyeOff, Home, LineChart, RotateCcw, Search, TrendingUp, Users, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useGetReportQuery } from '../../api/dnApi.js';
@@ -112,13 +112,13 @@ function Chart({ c }) {
 
 /** Analysis tabs over the registers; a tab with two registers shows a switch between them. */
 const TABS = [
-  { key: 'overview', label: 'Overview', reports: ['imir-register'] },
-  { key: 'lots', label: 'Lot Analysis', reports: ['tat'] },
-  { key: 'vendors', label: 'Vendor Analysis', reports: ['vendor-quality'] },
-  { key: 'items', label: 'Item Analysis', reports: ['item-quality', 'format-coverage'] },
-  { key: 'deviations', label: 'Deviation Analysis', reports: ['deviation-register'] },
-  { key: 'ageing', label: 'Ageing', reports: ['pending-ageing', 'dn-register'] },
-  { key: 'download', label: 'Download', reports: [] },
+  { key: 'overview', label: 'Overview', icon: Home, reports: ['imir-register'] },
+  { key: 'lots', label: 'Lot Analysis', icon: BarChart3, reports: ['tat'] },
+  { key: 'vendors', label: 'Vendor Analysis', icon: Users, reports: ['vendor-quality'] },
+  { key: 'items', label: 'Item Analysis', icon: Box, reports: ['item-quality', 'format-coverage'] },
+  { key: 'deviations', label: 'Deviation Analysis', icon: TrendingUp, reports: ['deviation-register'] },
+  { key: 'ageing', label: 'Ageing', icon: Clock, reports: ['pending-ageing', 'dn-register'] },
+  { key: 'download', label: 'Download', icon: Download, reports: [] },
 ];
 const tabOf = (report) => TABS.find((t) => t.reports.includes(report))?.key ?? 'overview';
 const pctChange = (now, before) => (before ? Math.round(((now - before) / before) * 100) : null);
@@ -211,13 +211,23 @@ export default function ReportsPage() {
       </PageHeader>
 
       <div className="p-5 space-y-4">
-        <div role="tablist" className="card px-2 flex gap-1 overflow-x-auto no-scrollbar">
-          {TABS.map((t) => (
-            <button key={t.key} type="button" role="tab" aria-selected={tab === t.key} onClick={() => openTab(t.key)}
-              className={`shrink-0 px-4 py-3 -mb-px border-b-2 text-sm cursor-pointer ${tab === t.key ? 'border-blue-600 text-blue-700 font-semibold' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>
-              {t.label}
-            </button>
-          ))}
+        <div role="tablist" aria-label="Report views" className="card p-1.5 flex items-stretch overflow-x-auto no-scrollbar">
+          {TABS.map((t, i) => {
+            const on = tab === t.key;
+            // A thin divider between tabs, left out next to the active one.
+            const divider = i > 0 && !on && tab !== TABS[i - 1].key;
+            return (
+              <div key={t.key} className="flex flex-1 items-center min-w-max">
+                {i > 0 && <span className={`w-px h-6 shrink-0 ${divider ? 'bg-slate-200' : 'bg-transparent'}`} aria-hidden="true" />}
+                <button type="button" role="tab" aria-selected={on} onClick={() => openTab(t.key)}
+                  className={`relative flex-1 inline-flex items-center justify-center gap-2.5 h-11 px-4 mx-1 rounded-lg text-sm whitespace-nowrap cursor-pointer transition-colors ${on ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}>
+                  <t.icon className={`w-5 h-5 ${on ? 'text-blue-600' : 'text-slate-500'}`} strokeWidth={on ? 2.25 : 1.75} />
+                  {t.label}
+                  {on && <span className="absolute -bottom-1.5 left-0 right-0 h-0.5 rounded-full bg-blue-600" aria-hidden="true" />}
+                </button>
+              </div>
+            );
+          })}
         </div>
 
         {onDownload ? <Downloads xlsxUrl={xlsxUrl} from={from} to={to} onOpen={(k) => { pick(k); setTab(tabOf(k)); savePref('report-tab', tabOf(k)); }} /> : (
