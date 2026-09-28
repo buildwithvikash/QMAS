@@ -23,6 +23,29 @@ describe('audit trail', () => {
     expect(update.requestId).toBeTruthy();
   });
 
+  it('searches inside records, gives figures and users for the period, and exports CSV', async () => {
+    const { user, agent } = await adminAgent();
+    const name = `Findme ${uid('N')}`;
+    const v = (await agent.post('/api/v1/masters/vendors').send({ vendorCode: uid('V'), name })).body.data;
+
+    const found = await agent.get('/api/v1/audit/changes').query({ q: name, table: 'mst.vendor' });
+    expect(found.body.data.map((r) => r.rowPk)).toEqual([String(v.id)]);
+    expect((await agent.get('/api/v1/audit/changes').query({ q: `${name}-nothing` })).body.data).toEqual([]);
+
+    const s = (await agent.get('/api/v1/audit/summary')).body.data;
+    expect(s.dataChanges).toBeGreaterThan(0);
+    expect(s.total).toBe(s.dataChanges + s.signInEvents);
+    expect(s).toHaveProperty('trendPct');
+    const actors = (await agent.get('/api/v1/audit/actors')).body.data;
+    expect(actors.some((a) => a.id === user.id)).toBe(true);
+
+    const csv = await agent.get('/api/v1/audit/changes').query({ q: name, format: 'csv' });
+    expect(csv.status).toBe(200);
+    expect(csv.headers['content-type']).toMatch(/text\/csv/);
+    expect(csv.text).toContain('When,Action,Table');
+    expect(csv.text).toContain(name);
+  });
+
   it('never writes password hashes to the audit log', async () => {
     const { agent } = await adminAgent();
     const created = (await agent.post('/api/v1/users').send({ employeeCode: uid('u'), fullName: 'Audit Check', temporaryPassword: 'Welcome2026x', roles: [] })).body.data;

@@ -23,7 +23,7 @@ const DEFS = {
       ['sampleSize', 'Sample', 'number'], ['model', 'Model'], ['result', 'Result'], ['status', 'Status'], ['inspectedBy', 'Inspected by'],
       ['submittedAt', 'Submitted', 'datetime'], ['closedAt', 'Closed', 'datetime'], ['deviationNo', 'Deviation'], ['dnNo', 'DN'],
     ],
-    sql: (w) => `SELECT m.imir_no, l.sap_lot_no, p.name AS plant, m.grn_no, m.grn_date, i.item_code, i.description AS item_description, v.vendor_code,
+    sql: (w) => `SELECT m.id AS imir_id, d.id AS deviation_id, n.id AS dn_id, i.id AS item_id, m.imir_no, l.sap_lot_no, p.name AS plant, m.grn_no, m.grn_date, i.item_code, i.description AS item_description, v.vendor_code,
                         v.name AS vendor_name, m.inward_qty, m.uom, m.sample_size, m.model, m.result, m.status, su.full_name AS inspected_by, m.submitted_at,
                         m.closed_at, d.deviation_no, n.dn_no
                    FROM qms.imir m JOIN core.plant p ON p.id = m.plant_id JOIN mst.item i ON i.id = m.item_id JOIN mst.vendor v ON v.id = m.vendor_id
@@ -37,7 +37,7 @@ const DEFS = {
       ['imirNo', 'IMIR'], ['plant', 'Plant'], ['itemCode', 'Item'], ['vendorName', 'Vendor'], ['status', 'Stage'], ['receivedAt', 'Received', 'datetime'],
       ['lastStepAt', 'Last step', 'datetime'], ['daysOpen', 'Days open', 'number'], ['daysInStage', 'Days in stage', 'number'], ['bucket', 'Ageing'],
     ],
-    sql: (w) => `SELECT m.imir_no, p.name AS plant, i.item_code, v.name AS vendor_name, m.status, m.created_at AS received_at, a.last_at AS last_step_at,
+    sql: (w) => `SELECT m.id AS imir_id, m.imir_no, p.name AS plant, i.item_code, v.name AS vendor_name, m.status, m.created_at AS received_at, a.last_at AS last_step_at,
                         floor(extract(epoch FROM now() - m.created_at) / 86400)::int AS days_open,
                         floor(extract(epoch FROM now() - coalesce(a.last_at, m.created_at)) / 86400)::int AS days_in_stage
                    FROM qms.imir m JOIN core.plant p ON p.id = m.plant_id JOIN mst.item i ON i.id = m.item_id JOIN mst.vendor v ON v.id = m.vendor_id
@@ -79,7 +79,7 @@ const DEFS = {
       ['escalationRounds', 'Escalations', 'number'], ['seniorEffective', 'Senior decision'], ['finalDecision', 'IQC Head decision'], ['outcome', 'Outcome'],
       ['okQty', 'OK qty', 'number'], ['notOkQty', 'Not-OK qty', 'number'], ['createdAt', 'Raised', 'datetime'], ['closedAt', 'Closed', 'datetime'],
     ],
-    sql: (w) => `SELECT d.deviation_no, m.imir_no, p.name AS plant, i.item_code, v.name AS vendor_name, d.department, d.severity, d.action, d.deviation_qty,
+    sql: (w) => `SELECT d.id AS deviation_id, m.id AS imir_id, d.deviation_no, m.imir_no, p.name AS plant, i.item_code, v.name AS vendor_name, d.department, d.severity, d.action, d.deviation_qty,
                         d.stage, d.dept_outcome, (SELECT count(*)::int FROM qms.escalation_round r WHERE r.deviation_id = d.id) AS escalation_rounds,
                         d.senior_effective, d.final_decision, d.outcome, d.ok_qty, d.not_ok_qty, d.created_at, d.closed_at
                    FROM qms.deviation d JOIN qms.imir m ON m.id = d.imir_id JOIN core.plant p ON p.id = d.plant_id
@@ -93,7 +93,7 @@ const DEFS = {
       ['dnDate', 'DN date', 'datetime'], ['defectiveQty', 'Defective qty', 'number'], ['capaApplicable', 'CAPA applicable', 'bool'], ['capaDueAt', 'CAPA due', 'datetime'],
       ['capaOverdue', 'CAPA overdue', 'bool'], ['capaCycles', 'CAPA cycles', 'number'], ['daysOpen', 'Days open', 'number'], ['closedAt', 'Closed', 'datetime'],
     ],
-    sql: (w) => `SELECT n.dn_no, m.imir_no, p.name AS plant, i.item_code, v.vendor_code, v.name AS vendor_name, n.status, n.dn_date, n.defective_qty,
+    sql: (w) => `SELECT n.id AS dn_id, m.id AS imir_id, n.dn_no, m.imir_no, p.name AS plant, i.item_code, v.vendor_code, v.name AS vendor_name, n.status, n.dn_date, n.defective_qty,
                         n.capa_applicable, n.capa_due_at, (n.status = 'OPEN' AND n.capa_applicable AND n.capa_due_at < now()) AS capa_overdue,
                         (SELECT count(*)::int FROM qms.dn_capa c WHERE c.dn_id = n.id) AS capa_cycles,
                         floor(extract(epoch FROM coalesce(n.closed_at, now()) - n.dn_date) / 86400)::int AS days_open, n.closed_at
@@ -108,7 +108,7 @@ const DEFS = {
       ['approvedAt', 'Approved', 'datetime'], ['openDraft', 'Draft in progress'], ['lots', 'Lots', 'number'], ['waitingLots', 'Lots waiting for format', 'number'],
       ['lastGrnDate', 'Last GRN', 'date'],
     ],
-    sql: (w) => `SELECT i.item_code, i.description AS item_description, c.name AS category,
+    sql: (w) => `SELECT i.id AS item_id, i.item_code, i.description AS item_description, c.name AS category,
                         CASE WHEN f.current_version_id IS NOT NULL THEN 'Approved' ELSE 'Missing' END AS coverage,
                         cv.version_no, cv.decided_at AS approved_at,
                         (SELECT string_agg(DISTINCT lower(replace(v.status, '_', ' ')), ', ') FROM qms.format_version v
@@ -119,6 +119,26 @@ const DEFS = {
                   WHERE m.grn_date BETWEEN $1 AND $2 ${w('m.plant_id')}
                   GROUP BY i.id, c.name, f.id, cv.version_no, cv.decided_at
                   ORDER BY (f.current_version_id IS NOT NULL), waiting_lots DESC, lots DESC, i.item_code`,
+  },
+  'item-quality': {
+    dated: 'GRN date',
+    columns: [
+      ['itemCode', 'Item'], ['itemDescription', 'Description'], ['category', 'Category'], ['lots', 'Lots', 'number'], ['inspected', 'Inspected', 'number'],
+      ['okLots', 'OK', 'number'], ['nokLots', 'Not OK', 'number'], ['nokPct', 'Not OK %', 'percent'], ['inwardQty', 'Inward qty', 'number'],
+      ['deviations', 'Deviations', 'number'], ['dns', 'DNs', 'number'], ['vendors', 'Vendors', 'number'], ['formatVersion', 'Format version', 'number'],
+      ['lastGrnDate', 'Last GRN', 'date'],
+    ],
+    sql: (w) => `SELECT i.id AS item_id, i.item_code, i.description AS item_description, c.name AS category, count(*)::int AS lots,
+                        count(*) FILTER (WHERE m.result IS NOT NULL)::int AS inspected, count(*) FILTER (WHERE m.result = 'OK')::int AS ok_lots,
+                        count(*) FILTER (WHERE m.result = 'NOK')::int AS nok_lots,
+                        round(100.0 * count(*) FILTER (WHERE m.result = 'NOK') / nullif(count(*) FILTER (WHERE m.result IS NOT NULL), 0), 1) AS nok_pct,
+                        sum(m.inward_qty) AS inward_qty, count(d.id)::int AS deviations, count(n.id)::int AS dns, count(DISTINCT m.vendor_id)::int AS vendors,
+                        cv.version_no AS format_version, max(m.grn_date) AS last_grn_date
+                   FROM qms.imir m JOIN mst.item i ON i.id = m.item_id LEFT JOIN mst.item_category c ON c.id = i.category_id
+                   LEFT JOIN qms.format f ON f.item_id = i.id LEFT JOIN qms.format_version cv ON cv.id = f.current_version_id
+                   LEFT JOIN qms.deviation d ON d.imir_id = m.id LEFT JOIN qms.defect_notification n ON n.imir_id = m.id
+                  WHERE m.grn_date BETWEEN $1 AND $2 ${w('m.plant_id')}
+                  GROUP BY i.id, c.name, cv.version_no ORDER BY nok_pct DESC NULLS LAST, lots DESC, i.item_code`,
   },
   tat: {
     dated: 'Received',

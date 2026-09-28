@@ -7,10 +7,12 @@ import { Link } from 'react-router-dom';
  *   DailyColumns stacked OK / Not-OK columns per day, with a hover read-out; days can be clicked.
  */
 
+const TONES = { blue: 'bg-blue-500', rose: 'bg-rose-500', amber: 'bg-amber-500', violet: 'bg-violet-500', green: 'bg-emerald-500', sky: 'bg-sky-500' };
+
 export function BarList({ rows, max, format = (v) => v, tone = 'blue', empty = 'Nothing to show for this period.' }) {
   if (!rows.length) return <p className="text-sm text-slate-500 py-4">{empty}</p>;
   const top = max ?? Math.max(...rows.map((r) => r.value), 1);
-  const fill = { blue: 'bg-blue-500', rose: 'bg-rose-500', amber: 'bg-amber-500' }[tone];
+  const fill = TONES[tone] ?? TONES.blue;
   return (
     <ul className="space-y-2">
       {rows.map((r) => {
@@ -21,7 +23,7 @@ export function BarList({ rows, max, format = (v) => v, tone = 'blue', empty = '
               <span className="tabular font-semibold text-slate-900 shrink-0">{format(r.value)}</span>
             </div>
             <div className="mt-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div className={`h-full rounded-full ${r.tone ? { rose: 'bg-rose-500', amber: 'bg-amber-500', blue: 'bg-blue-500' }[r.tone] : fill}`} style={{ width: `${Math.max(2, (r.value / top) * 100)}%` }} />
+              <div className={`h-full rounded-full ${r.tone ? TONES[r.tone] ?? fill : fill}`} style={{ width: `${Math.max(2, (r.value / top) * 100)}%` }} />
             </div>
             {r.note && <div className="mt-0.5 text-xs text-slate-500">{r.note}</div>}
           </>

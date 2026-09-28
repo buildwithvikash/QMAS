@@ -13,6 +13,8 @@ const range = {
   page: z.coerce.number().int().min(1).default(1),
   pageSize: z.coerce.number().int().min(1).max(200).default(50),
   actorId: z.uuid().optional(),
+  q: z.string().trim().max(100).optional(),
+  format: z.enum(['csv']).optional(),
 };
 // Default window: last 7 days; at most 92 days per query.
 const withRange = (shape) =>
@@ -36,15 +38,29 @@ const authQuery = withRange({ event: z.string().regex(/^[A-Z_]+$/).optional() })
 const router = Router();
 router.use(requirePermission(PERMISSIONS.AUDIT_VIEW));
 
+/** CSV of the filtered list (?format=csv), named after the period. */
+async function sendCsv(res, kind, f) {
+  const day = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="audit-${kind}_${day(f.from)}_to_${day(new Date(f.to.getTime() - 1))}.csv"`);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.end(await audit.exportCsv(kind, f));
+}
+
 router.get('/changes', validate({ query: changesQuery }), async (req, res) => {
+  if (query(req).format === 'csv') return sendCsv(res, 'changes', query(req));
   const { data, meta } = await audit.listChanges(query(req));
   ok(res, data, meta);
 });
 
 router.get('/auth-events', validate({ query: authQuery }), async (req, res) => {
+  if (query(req).format === 'csv') return sendCsv(res, 'sign-ins', query(req));
   const { data, meta } = await audit.listAuthEvents(query(req));
   ok(res, data, meta);
 });
+
+router.get('/summary', validate({ query: withRange({}) }), async (req, res) => ok(res, await audit.summary(query(req))));
+router.get('/actors', validate({ query: withRange({}) }), async (req, res) => ok(res, await audit.actors(query(req))));
 
 router.get('/tables', async (_req, res) => ok(res, await audit.listTables()));
 

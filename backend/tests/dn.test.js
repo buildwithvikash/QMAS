@@ -296,6 +296,12 @@ describe('reports and dashboard', () => {
     expect(v100.lots).toBeGreaterThan(0);
     expect(typeof v100.inwardQty).toBe('number');
 
+    const iq = ok(await A.head.get('/api/v1/reports/item-quality').query({ from: '2026-09-01', to: '2026-12-31' }));
+    const item = iq.rows.find((r) => r.itemCode === m.itemCode);
+    expect(item).toMatchObject({ lots: expect.any(Number), nokLots: expect.any(Number), itemId: expect.any(Number) });
+    expect(item.nokLots).toBeGreaterThan(0);
+    expect(iq.columns.map((c) => c.key)).toContain('nokPct');
+
     const ageing = ok(await A.head.get('/api/v1/reports/pending-ageing'));
     expect(ageing.rows.find((r) => r.imirNo === m.imirNo)).toMatchObject({ status: 'WITH_IQC_HEAD', bucket: '0-1 days' });
     expect(ageing.from).toBeNull();
