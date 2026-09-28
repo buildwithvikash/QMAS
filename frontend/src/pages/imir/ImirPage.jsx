@@ -1,5 +1,8 @@
 import { MAX_SAMPLES, PERMISSIONS } from '@qmas/shared';
-import { AlertTriangle, ArrowLeft, CheckCircle2, ClipboardCheck, CloudOff, FileText, Loader2, Printer, Save, Send, Tablet, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle, ArrowLeft, Boxes, Building2, Calendar, CheckCircle2, ClipboardCheck, CloudOff, Factory, FileText, FlaskConical, Hash, Info, Layers, ListChecks, Loader2,
+  Package, Printer, Ruler, Save, Search, Send, Tablet, Tag, Trash2, UserRound, X,
+} from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -19,14 +22,14 @@ import { apiError } from '../../utils/apiError.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import { ImirResult, ImirStatus } from './imirUi.jsx';
 import InspectionSheet from './InspectionSheet.jsx';
-import { focusFirstMissing, sheetProgress, tabOf } from './sheetNav.js';
+import { focusFirstMissing, sheetProgress } from './sheetNav.js';
 import { currentStage, journeySteps, stageRows } from './journey.js';
-import LotInsights, { AiSummary } from './LotInsights.jsx';
+import { AiSummary, BeforeYouInspect, SupplierRisk } from './LotInsights.jsx';
 import LotJourney from './LotJourney.jsx';
 import ReviewPanel from './ReviewPanel.jsx';
 import HistoryPanel from '../deviation/HistoryPanel.jsx';
 import RoundsPanel from '../deviation/RoundsPanel.jsx';
-import { ActivityLayout, LinkedRecords, StageHistory } from '../deviation/RecordSide.jsx';
+import { LinkedRecords, StageHistory } from '../deviation/RecordSide.jsx';
 import { DeviationStage, DnStatus } from '../deviation/workflowUi.jsx';
 
 /** Combines two save patches: later cells/entries win. */
@@ -129,12 +132,10 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
   const canSubmit = !readOnly && ev && ev.missing.length === 0 && !!sheet.model;
 
   const progress = sheetProgress(sheet);
-  const [tabChoice, setTab] = useState(null);
+  const [find, setFind] = useState('');
   const goToMissing = () => {
-    const m = ev?.missing?.[0];
-    if (!m) return;
-    const cp = sheet.checkpoints.find((c) => c.uid === m.checkpointUid);
-    setTab(tabOf(cp));
+    if (!ev?.missing?.length) return;
+    setFind(''); // a search could hide the empty cell
     setTimeout(() => focusFirstMissing(ev.missing), 60);
   };
   const saveDraft = async () => {
@@ -143,18 +144,28 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
     toast.success(mode === 'tablet' ? 'Saved on this tablet' : 'Draft saved');
   };
   const opened = sheet.status !== 'AWAITING_FORMAT';
-  // Only the parts the format has (a custom format may have lot details and no dimensions).
-  const tabs = [
+  // The report's parts, one after another; only the parts the format has (a custom format may
+  // have lot details and no dimensions). The search box sits on the first table.
+  const sections = [
     progress.lot.present && { key: 'lot', label: 'Lot details', ...progress.lot },
     progress.present.dim && { key: 'dim', label: 'Dimensional test', ...progress.dim },
     progress.present.visrel && { key: 'visrel', label: 'Visual & reliability tests', ...progress.visrel },
-    { key: 'signoff', label: 'Sign-off & decision' },
   ].filter(Boolean);
-  const tab = tabs.some((t) => t.key === tabChoice) ? tabChoice : tabs[0].key;
+  const searchOn = sections.find((x) => x.key !== 'lot')?.key;
+
+  const steps = journeySteps({ status: sheet.status, history: sheet.history, deviation: sheet.deviation });
+  const stage = currentStage(steps);
+  const since = sheet.history?.length ? sheet.history.at(-1).at : sheet.createdAt;
+  const showHistory = () => document.getElementById('imir-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const linked = [
+    sheet.deviation && { kind: 'deviation', label: sheet.deviation.deviationNo, sub: `Deviation, ${sheet.deviation.department}`, to: `/deviations/${sheet.deviation.id}`, badge: <DeviationStage stage={sheet.deviation.stage} outcome={sheet.deviation.outcome} /> },
+    sheet.dn && { kind: 'dn', label: sheet.dn.dnNo, sub: 'Defect notification', to: `/dns/${sheet.dn.id}`, badge: <DnStatus status={sheet.dn.status} /> },
+    sheet.formatVersionId && { kind: 'format', label: `${sheet.formatNo ?? 'Inspection format'} (v${sheet.formatVersionNo})`, sub: 'Inspection format used', to: `/formats/versions/${sheet.formatVersionId}` },
+  ];
 
   return (
     <div>
-      <PageHeader icon={ClipboardCheck} title={sheet.imirNo ?? 'IMIR (not opened)'} copyTitle={!!sheet.imirNo} subtitle={`Incoming Material Inspection Report · ${sheet.itemCode} ${sheet.itemDescription}`}>
+      <PageHeader icon={ClipboardCheck} title={sheet.imirNo ?? 'IMIR (not opened)'} copyTitle={!!sheet.imirNo} subtitle={`Item: ${sheet.itemCode} · ${sheet.itemDescription}`}>
         <Link to={mode === 'tablet' ? '/tablet' : '/imirs'} className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />{mode === 'tablet' ? 'This tablet' : 'Incoming lots'}</Link>
         <ImirStatus status={sheet.status} />
         {mode === 'tablet' && <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700"><Tablet className="w-3.5 h-3.5" />On this tablet</span>}
@@ -167,77 +178,88 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
         {mode === 'view' && sheet.checkoutDeviceCode && <Banner tone="info">This lot is on tablet {sheet.checkoutDeviceCode} ({sheet.checkoutUserName}) since {formatDateTime(sheet.checkedOutAt)}. Record it there.</Banner>}
         {sheet.status === 'AWAITING_FORMAT' && <Banner tone="warning">{sheet.awaitingReason} It opens automatically once that is fixed.</Banner>}
 
+        <LotJourney status={sheet.status} history={sheet.history ?? []} deviation={sheet.deviation} dn={sheet.dn} />
         {mode !== 'tablet' && <ReviewPanel imir={sheet} />}
         {mode !== 'tablet' && aiAllowed && aiStatus?.configured && sheet.submittedAt && <AiSummary imirId={sheet.id} />}
-        <LotJourney status={sheet.status} history={sheet.history ?? []} deviation={sheet.deviation} dn={sheet.dn} />
-        <GeneralInfo sheet={sheet} readOnly={readOnly} onPatch={onPatch} progress={opened ? progress.pct : null} />
-        {opened && <LotInsights insights={insights} />}
+
+        <div className={`grid gap-4 items-stretch ${opened && insights ? 'xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)_minmax(0,1fr)]' : 'xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]'}`}>
+          <GeneralInfo sheet={sheet} />
+          <InspectionStatus sheet={sheet} stage={stage} since={since} progress={opened ? progress.pct : null} />
+          {opened && insights && <SupplierRisk insights={insights} />}
+        </div>
+
+        <div className={`grid gap-4 items-stretch ${opened && insights ? 'xl:grid-cols-2' : ''}`}>
+          {opened && insights && <BeforeYouInspect insights={insights} onHistory={mode !== 'tablet' ? showHistory : undefined} />}
+          <div className="space-y-4">
+            <ModelDetails sheet={sheet} readOnly={readOnly} onPatch={onPatch} opened={opened} />
+            <AdditionalInfo sheet={sheet} />
+          </div>
+        </div>
 
         {opened && sheet.checkpoints?.length > 0 && (
           <>
-            <div role="tablist" aria-label="Report sections" className="no-scrollbar flex gap-1 overflow-x-auto border-b border-slate-200">
-              {tabs.map((t, i) => {
-                const on = tab === t.key;
-                return (
-                  <button key={t.key} type="button" role="tab" aria-selected={on} onClick={() => setTab(t.key)}
-                    className={`shrink-0 flex items-center gap-2 px-4 py-2.5 -mb-px border-b-2 text-sm cursor-pointer transition-colors ${on ? 'border-blue-600 text-blue-800 font-semibold' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>
-                    <span className={`w-5 h-5 rounded-full text-[11px] font-bold flex items-center justify-center ${on ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{i + 1}</span>
-                    {t.label}
-                    {t.total > 0 && <span className={`text-xs tabular ${t.done === t.total ? 'text-emerald-700' : 'text-slate-500'}`}>{t.done}/{t.total}</span>}
-                    {t.nok && <span className="w-2 h-2 rounded-full bg-rose-500" title="Has a NOK" />}
-                  </button>
-                );
-              })}
-            </div>
-            {tab === 'signoff'
-              ? <SignOff sheet={sheet} readOnly={readOnly} onPatch={onPatch} />
-              : <InspectionSheet sheet={sheet} tab={tab} readOnly={readOnly} onPatch={onPatch} photosByCell={photosByCell} insights={insights}
+            {sections.map((sec) => (
+              <section key={sec.key} className="card overflow-hidden" aria-label={sec.label}>
+                <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-2.5">
+                  <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                    {sec.label}
+                    {sec.total > 0 && <span className={`text-sm font-medium tabular ${sec.done === sec.total ? 'text-emerald-700' : 'text-slate-500'}`}>({sec.done}/{sec.total})</span>}
+                    {sec.nok && <span className="w-2 h-2 rounded-full bg-rose-500" title="Has a NOK" />}
+                  </h2>
+                  {sec.key === searchOn && (
+                    <label className="relative ml-auto w-full sm:w-72">
+                      <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Search check point, specification…" aria-label="Search check points"
+                        className="h-9 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-8 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10" />
+                      {find && <button type="button" aria-label="Clear search" onClick={() => setFind('')} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 text-slate-400 hover:text-slate-700 cursor-pointer"><X className="h-3.5 w-3.5" /></button>}
+                    </label>
+                  )}
+                </div>
+                <InspectionSheet flat sheet={sheet} tab={sec.key} readOnly={readOnly} onPatch={onPatch} photosByCell={photosByCell} insights={insights} filter={sec.key === 'lot' ? '' : find}
                   onAddPhoto={readOnly ? undefined : (cp) => setDialog({ type: 'photo', cp })}
-                  onOpenPhotos={(cp, s) => setDialog({ type: 'photos', cp, sampleNo: s })} />}
+                  onOpenPhotos={(cp, s) => setDialog({ type: 'photos', cp, sampleNo: s })} />
+              </section>
+            ))}
+            <SignOff sheet={sheet} readOnly={readOnly} onPatch={onPatch} />
           </>
         )}
 
         {mode !== 'tablet' && opened && (
-          <ActivityLayout history={<HistoryPanel imirId={sheet.id} history={sheet.history ?? []} current={currentStage(journeySteps({ status: sheet.status, history: sheet.history, deviation: sheet.deviation }))} />}>
-            <RoundsPanel history={sheet.history ?? []} loop="inspection" waitingFor={sheet.status === 'SUBMITTED' ? 'Waiting for the Incharge to review' : 'Being inspected again'} />
-            <LinkedRecords items={[
-              sheet.deviation && { kind: 'deviation', label: sheet.deviation.deviationNo, sub: `Deviation, ${sheet.deviation.department}`, to: `/deviations/${sheet.deviation.id}`, badge: <DeviationStage stage={sheet.deviation.stage} outcome={sheet.deviation.outcome} /> },
-              sheet.dn && { kind: 'dn', label: sheet.dn.dnNo, sub: 'Defect notification', to: `/dns/${sheet.dn.id}`, badge: <DnStatus status={sheet.dn.status} /> },
-              sheet.formatVersionId && { kind: 'format', label: `${sheet.formatNo ?? 'Inspection format'} (v${sheet.formatVersionNo})`, sub: 'Inspection format used', to: `/formats/versions/${sheet.formatVersionId}` },
-            ]} />
-            <StageHistory rows={stageRows({
-              history: sheet.history,
-              current: currentStage(journeySteps({ status: sheet.status, history: sheet.history, deviation: sheet.deviation })),
-              start: { stage: 'SAP receipt', at: sheet.createdAt, status: 'Received' },
-            })} />
-          </ActivityLayout>
+          <div className="grid gap-4 items-start lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+            <div id="imir-history" className="min-w-0 scroll-mt-24">
+              <HistoryPanel title="Full history" imirId={sheet.id} history={sheet.history ?? []} current={stage} />
+            </div>
+            <div className="min-w-0 space-y-4">
+              <LinkedRecords items={linked} />
+              <StageHistory title="History" rows={stageRows({ history: sheet.history, current: stage, start: { stage: 'SAP receipt', at: sheet.createdAt, status: 'Received' } })} />
+              <RoundsPanel history={sheet.history ?? []} loop="inspection" waitingFor={sheet.status === 'SUBMITTED' ? 'Waiting for the Incharge to review' : 'Being inspected again'} />
+            </div>
+          </div>
         )}
       </div>
 
-      {ev && opened && (
-        <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-5 py-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+      {/* The report's actions stay at hand while scrolling. */}
+      {ev && opened && !readOnly && (
+        <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-5 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500">Progress</span>
             <span className="w-24 h-1.5 rounded-full bg-slate-200 overflow-hidden"><span className={`block h-full rounded-full ${progress.pct === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`} style={{ width: `${progress.pct}%` }} /></span>
             <span className="text-xs font-semibold tabular text-slate-700">{progress.pct}%</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500">{sheet.result ? 'Result' : 'Result so far'}</span>
-            <ImirResult result={sheet.result ?? ev.result} />
-            {ev.defectiveSamples.length > 0 && <span className="text-xs text-rose-700">NOK in X{ev.defectiveSamples.join(', X')}</span>}
+            <span className="text-xs text-slate-500">Result so far</span>
+            <ImirResult result={ev.result} />
           </div>
-          {!readOnly && (ev.missing.length > 0 ? (
+          {ev.missing.length > 0 ? (
             <button type="button" onClick={goToMissing} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 cursor-pointer">
               {ev.missing.length} empty: go to next
             </button>
-          ) : !sheet.model && <span className="text-xs text-amber-700">Enter the model in General info</span>)}
-          {!readOnly && (
-            <div className="ml-auto flex items-center gap-2">
-              {mode === 'online' && <span className="text-xs text-slate-400">{saving ? 'Saving…' : 'All changes saved'}</span>}
-              <Button variant="secondary" icon={Save} loading={saving} onClick={saveDraft}>Save draft</Button>
-              <Button icon={Send} disabled={!canSubmit || saving} onClick={() => setDialog({ type: 'submit' })}>Submit report</Button>
-            </div>
-          )}
+          ) : !sheet.model && <span className="text-xs text-amber-700">Enter the model</span>}
+          <div className="ml-auto flex items-center gap-2">
+            {mode === 'online' && <span className="text-xs text-slate-400">{saving ? 'Saving…' : 'All changes saved'}</span>}
+            <Button variant="secondary" icon={Save} loading={saving} onClick={saveDraft}>Save draft</Button>
+            <Button icon={Send} disabled={!canSubmit || saving} onClick={() => setDialog({ type: 'submit' })}>Submit report</Button>
+          </div>
         </div>
       )}
 
@@ -253,60 +275,132 @@ function Banner({ tone, children }) {
   return <div className={`flex gap-2 rounded-lg border px-4 py-3 text-sm ${tones[tone]}`}><AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" /><div>{children}</div></div>;
 }
 
-/** A read-only report field: label above a filled box, like the JIR header. */
-const Field = ({ label, children, span }) => (
-  <div className={span ? 'sm:col-span-2' : ''}>
-    <dt className="text-[11px] font-medium text-slate-600 mb-0.5">{label}</dt>
-    <dd className="min-h-8 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[13px] text-slate-900 truncate">{children ?? <span className="text-slate-400">—</span>}</dd>
+/** A read-only report field: small label, then the value in a box with an icon. */
+const Field = ({ label, icon: Icon, children, span }) => (
+  <div className={`min-w-0 ${span ? 'sm:col-span-2' : ''}`}>
+    <dt className="text-[11px] font-medium text-slate-500 mb-1">{label}</dt>
+    <dd className="flex min-h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[13px] text-slate-900">
+      {Icon && <Icon className="h-4 w-4 shrink-0 text-slate-400" />}
+      <span className="truncate">{children ?? <span className="text-slate-400">—</span>}</span>
+    </dd>
   </div>
 );
 
-/** Report header ("General info"): the lot from SAP, format and sampling, plus the model the inspector enters. */
-function GeneralInfo({ sheet, readOnly, onPatch, progress }) {
+const CardHead = ({ icon: Icon, tone = 'bg-blue-100 text-blue-700', title, children }) => (
+  <div className="flex items-center gap-2.5 px-4 pt-3.5 pb-2">
+    <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${tone}`}><Icon className="h-4 w-4" /></span>
+    <h2 className="section-title">{title}</h2>
+    {children && <div className="ml-auto flex items-center gap-2">{children}</div>}
+  </div>
+);
+
+/** Report header: the lot from SAP, with the format it is inspected against. */
+function GeneralInfo({ sheet }) {
+  return (
+    <section className="card h-full">
+      <CardHead icon={ClipboardCheck} title="General information" />
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-3 px-4 pb-4 md:grid-cols-4">
+        <Field label="Inspection date" icon={Calendar}>{formatDate(sheet.inspectionStartedAt ?? sheet.openedAt)}</Field>
+        <Field label="GRN no." icon={Hash}>{sheet.grnNo}</Field>
+        <Field label="GRN date" icon={Calendar}>{formatDate(sheet.grnDate)}</Field>
+        <Field label="Vendor" icon={Building2}>{sheet.vendorName}</Field>
+        <Field label="Item description" icon={Package}>{sheet.itemDescription}</Field>
+        <Field label="Item category" icon={Layers}>{sheet.itemCategory}</Field>
+        <Field label="Plant" icon={Factory}>{sheet.plantName}</Field>
+        <Field label="Item code" icon={Tag}>{sheet.itemCode}</Field>
+        <Field label="Inward qty" icon={Boxes}>{formatQty(sheet.inwardQty, sheet.uom)}</Field>
+        <Field label="Format no." icon={FileText}>{sheet.formatVersionNo ? `${sheet.formatNo ?? '—'} (v${sheet.formatVersionNo})` : null}</Field>
+        <Field label="Common format no." icon={FileText}>{sheet.commonFormatNo}</Field>
+        <Field label="Ref. standard" icon={FlaskConical}>{sheet.refStandard}</Field>
+      </dl>
+    </section>
+  );
+}
+
+/** Progress ring. */
+function Ring({ pct }) {
+  const r = 34;
+  const c = 2 * Math.PI * r;
+  return (
+    <svg viewBox="0 0 84 84" className="h-24 w-24 shrink-0" role="img" aria-label={`${pct}% complete`}>
+      <circle cx="42" cy="42" r={r} fill="none" strokeWidth="9" style={{ stroke: 'var(--color-slate-100)' }} />
+      <circle cx="42" cy="42" r={r} fill="none" strokeWidth="9" strokeLinecap="round" transform="rotate(-90 42 42)"
+        strokeDasharray={`${(pct / 100) * c} ${c}`} className="transition-[stroke-dasharray] duration-500" style={{ stroke: '#10b981' }} />
+      <text x="42" y="47" textAnchor="middle" className="fill-slate-900 text-[17px] font-bold">{pct}%</text>
+    </svg>
+  );
+}
+
+/** Where the lot is now: progress, stage, who holds it and since when. */
+function InspectionStatus({ sheet, stage, since, progress }) {
+  const rows = [
+    { icon: ListChecks, label: 'Current stage', value: stage?.label ?? '—', strong: true },
+    { icon: UserRound, label: stage?.closed ? 'Result' : 'Assigned to', value: stage?.closed ? (sheet.result ?? '—') : (stage?.holder ?? '—') },
+    { icon: Calendar, label: 'Since', value: formatDateTime(since) },
+    !stage?.closed && (sheet.result || sheet.evaluation?.result) && { icon: CheckCircle2, label: sheet.result ? 'Result' : 'Result so far', value: <ImirResult result={sheet.result ?? sheet.evaluation.result} /> },
+    sheet.formatVersionId && { icon: FileText, label: 'Inspection format', value: `${sheet.formatNo ?? 'Format'} (v${sheet.formatVersionNo})`, to: `/formats/versions/${sheet.formatVersionId}` },
+  ].filter(Boolean);
+  return (
+    <section className="card h-full">
+      <CardHead icon={Info} title="Inspection status" />
+      <div className="flex items-center gap-4 px-4 pb-4">
+        {progress !== null && <Ring pct={progress} />}
+        <dl className="min-w-0 flex-1 space-y-2">
+          {rows.map((r) => (
+            <div key={r.label} className="flex gap-2">
+              <r.icon className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+              <div className="min-w-0">
+                <dt className="text-[11px] text-slate-500">{r.label}</dt>
+                <dd className={`truncate text-sm ${r.strong ? 'font-semibold text-blue-700' : 'text-slate-800'}`}>
+                  {r.to ? <Link to={r.to} className="text-blue-700 hover:underline">{r.value}</Link> : r.value}
+                </dd>
+              </div>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
+  );
+}
+
+/** The model the lot is for (entered by the inspector, required to submit) and the drawing. */
+function ModelDetails({ sheet, readOnly, onPatch, opened }) {
   const [model, setModel] = useState(sheet.model ?? '');
   useEffect(() => setModel(sheet.model ?? ''), [sheet.model]);
-  const opened = sheet.status !== 'AWAITING_FORMAT';
-  const missingModel = opened && !readOnly && !model.trim();
+  const missing = opened && !readOnly && !model.trim();
   return (
     <section className="card">
-      <div className="flex flex-wrap items-center gap-3 px-4 pt-3.5 pb-3 border-b border-slate-100">
-        <h2 className="section-title">General info</h2>
-        {progress !== null && (
-          <div className="ml-auto flex items-center gap-2" aria-label={`Report ${progress}% complete`}>
-            <span className="text-xs text-slate-500">Progress</span>
-            <span className="w-40 h-2 rounded-full bg-slate-200 overflow-hidden"><span className={`block h-full rounded-full transition-[width] duration-300 ${progress === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`} style={{ width: `${progress}%` }} /></span>
-            <span className="text-sm font-semibold tabular text-slate-800 w-10 text-right">{progress}%</span>
-          </div>
-        )}
-      </div>
-      <dl className="grid grid-cols-2 gap-x-3 gap-y-2.5 p-4 md:grid-cols-4 xl:grid-cols-6">
-        <Field label="Inspection date">{formatDate(sheet.inspectionStartedAt ?? sheet.openedAt)}</Field>
-        <Field label="GRN no.">{sheet.grnNo}</Field>
-        <Field label="GRN date">{formatDate(sheet.grnDate)}</Field>
-        <Field label="Vendor">{sheet.vendorName}</Field>
-        <Field label="Vendor code">{sheet.vendorCode}</Field>
-        <Field label="Item code">{sheet.itemCode}</Field>
-        <Field label="Item description" span>{sheet.itemDescription}</Field>
-        <Field label="Item category">{sheet.itemCategory}</Field>
-        <Field label="Drawing no. / rev">{sheet.drawingNo ? `${sheet.drawingNo}${sheet.drawingRev ? ` / ${sheet.drawingRev}` : ''}` : null}</Field>
-        <Field label="Plant">{sheet.plantName}</Field>
-        <Field label="Invoice no.">{sheet.invoiceNo}</Field>
-        <Field label="Inward qty">{formatQty(sheet.inwardQty, sheet.uom)}</Field>
-        <Field label="Format no.">{sheet.formatVersionNo ? `${sheet.formatNo ?? '—'} (v${sheet.formatVersionNo})` : null}</Field>
-        <Field label="Common format no.">{sheet.commonFormatNo}</Field>
-        <Field label="Ref. standard">{sheet.refStandard}</Field>
-        <Field label="Sample">{sheet.sampleSize ? `${sheet.sampleSize} of ${sheet.lotSize}${sheet.samplingBasis === 'FULL_LOT' ? ' (whole lot)' : ''}` : null}</Field>
-        <Field label="Reject at">{sheet.sampleSize ? `${sheet.rejectNo} NOK sample${sheet.rejectNo === 1 ? '' : 's'}` : null}</Field>
-        {opened && (
-          <div>
-            <label htmlFor="imir-model" className="block text-[11px] font-medium text-slate-600 mb-0.5">Model <span className="text-rose-600">*</span></label>
+      <CardHead icon={Package} tone="bg-sky-100 text-sky-700" title="Model details">
+        {sheet.drawingNo && <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700"><Ruler className="h-3.5 w-3.5 text-slate-400" />Drawing {sheet.drawingNo}{sheet.drawingRev ? ` rev ${sheet.drawingRev}` : ''}</span>}
+      </CardHead>
+      <div className="px-4 pb-4">
+        {opened ? (
+          <>
+            <label htmlFor="imir-model" className="mb-1 block text-[11px] font-medium text-slate-500">Model <span className="text-rose-600">*</span></label>
             <input id="imir-model" disabled={readOnly} value={model} placeholder="Model the lot is for" onChange={(e) => setModel(e.target.value)}
               onBlur={() => (model.trim() || null) !== (sheet.model ?? null) && onPatch({ model: model.trim() || null })}
-              className={`w-full min-h-8 rounded-md border px-2.5 py-1 text-[13px] focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:bg-slate-50 disabled:text-slate-900 ${
-                missingModel ? 'border-rose-300 bg-rose-50/60' : model.trim() ? 'border-emerald-300 bg-emerald-50/50' : 'border-slate-300 bg-white'
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+              className={`w-full sm:w-72 min-h-9 rounded-lg border px-2.5 py-1.5 text-sm font-semibold focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:bg-slate-50 disabled:text-slate-900 ${
+                missing ? 'border-rose-300 bg-rose-50/60' : model.trim() ? 'border-emerald-300 bg-emerald-50/50 text-blue-800' : 'border-slate-300 bg-white'
               }`} />
-          </div>
-        )}
+            {missing && <p className="mt-1 text-[11px] text-rose-600">Needed before you can submit the report.</p>}
+          </>
+        ) : <p className="text-sm text-slate-500">Entered when the lot is inspected.</p>}
+      </div>
+    </section>
+  );
+}
+
+/** The rest of the lot: vendor code, invoice, sampling. */
+function AdditionalInfo({ sheet }) {
+  return (
+    <section className="card">
+      <CardHead icon={FileText} tone="bg-slate-100 text-slate-600" title="Additional information" />
+      <dl className="grid grid-cols-2 gap-x-3 gap-y-3 px-4 pb-4 md:grid-cols-4">
+        <Field label="Vendor code">{sheet.vendorCode}</Field>
+        <Field label="Invoice no.">{sheet.invoiceNo}</Field>
+        <Field label="Sample">{sheet.sampleSize ? `${sheet.sampleSize} of ${sheet.lotSize}${sheet.samplingBasis === 'FULL_LOT' ? ' (whole lot)' : ''}` : null}</Field>
+        <Field label="Reject at">{sheet.sampleSize ? `${sheet.rejectNo} NOK sample${sheet.rejectNo === 1 ? '' : 's'}` : null}</Field>
       </dl>
     </section>
   );
@@ -352,6 +446,7 @@ function SignOff({ sheet, readOnly, onPatch }) {
   const outcome = OUTCOME[sheet.status];
   return (
     <section className="card p-4 space-y-4">
+      <h2 className="text-base font-semibold text-slate-900">Sign-off &amp; decision</h2>
       <div>
         <label htmlFor="imir-final-remarks" className="block text-sm font-semibold text-slate-900 mb-1.5">Final remarks</label>
         <textarea id="imir-final-remarks" disabled={readOnly} rows={3} value={remark} placeholder={readOnly ? '' : 'Anything the reviewer should know about this lot'}

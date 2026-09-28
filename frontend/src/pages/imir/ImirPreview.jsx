@@ -141,7 +141,7 @@ export function PreviewHistory({ rows }) {
       <ol className="relative ml-2 border-l-2 border-slate-100 space-y-3">
         {rows.map((r) => (
           <li key={r.key} className="ml-4">
-            <span className={`absolute -left-[7px] mt-1.5 w-3 h-3 rounded-full ring-2 ring-white ${r.pending ? 'bg-white border-2 border-blue-500' : r.tone === 'bad' ? 'bg-rose-500' : r.tone === 'good' ? 'bg-emerald-500' : r.tone === 'warn' || r.tone === 'esc' ? 'bg-amber-500' : 'bg-blue-500'}`} />
+            <span className={`absolute -left-1.75 mt-1.5 w-3 h-3 rounded-full ring-2 ring-white ${r.pending ? 'bg-white border-2 border-blue-500' : r.tone === 'bad' ? 'bg-rose-500' : r.tone === 'good' ? 'bg-emerald-500' : r.tone === 'warn' || r.tone === 'esc' ? 'bg-amber-500' : 'bg-blue-500'}`} />
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold text-slate-900">{r.stage}</span>
               <Badge variant={TONE[r.tone] ?? 'neutral'}>{r.status}</Badge>

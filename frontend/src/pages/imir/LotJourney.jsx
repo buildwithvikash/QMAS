@@ -31,10 +31,10 @@ export function Stepper({ steps, since, extra, title = 'Route' }) {
         {extra && <div className="ml-auto">{extra}</div>}
       </div>
       <div className="no-scrollbar overflow-x-auto">
-        <ol className="relative flex justify-between min-w-[34rem] px-1">
+        <ol className="relative flex justify-between min-w-136 px-1">
           {/* Rail runs between the first and last station centres (stations are 6rem wide, list has 0.25rem padding). */}
-          <span className="absolute top-[9px] h-[3px] rounded-full bg-slate-200" style={{ left: '3.25rem', right: '3.25rem' }} aria-hidden="true" />
-          <span className={`absolute top-[9px] h-[3px] rounded-full ${fill} transition-[width] duration-500`} style={{ left: '3.25rem', width: `calc((100% - 6.5rem) * ${pct / 100})` }} aria-hidden="true" />
+          <span className="absolute top-2.25 h-0.75 rounded-full bg-slate-200" style={{ left: '3.25rem', right: '3.25rem' }} aria-hidden="true" />
+          <span className={`absolute top-2.25 h-0.75 rounded-full ${fill} transition-[width] duration-500`} style={{ left: '3.25rem', width: `calc((100% - 6.5rem) * ${pct / 100})` }} aria-hidden="true" />
           {steps.map((s) => {
             const on = s.state === 'current';
             const done = s.state === 'done';

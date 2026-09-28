@@ -69,10 +69,10 @@ export function DailyColumns({ days, height = 120, onDayClick }) {
           const bar = (
             <g key={d.day} onMouseEnter={() => setHover(d)} onClick={onDayClick ? () => onDayClick(d) : undefined} className={onDayClick ? 'cursor-pointer' : ''}>
               <rect x={i * w} y={0} width={w} height={height} fill={on ? 'rgb(0 103 184 / 0.06)' : 'transparent'} />
-              {restH > 0 && <rect x={x} y={height - total} width={bw} height={restH} rx={0.6} fill="#cbd5e1" />}
+              {restH > 0 && <rect x={x} y={height - total} width={bw} height={restH} rx={0.6} style={{ fill: 'var(--color-slate-300)' }} />}
               {okH > 0 && <rect x={x} y={height - okH - nokH} width={bw} height={okH} rx={0.6} fill="#0f7bd1" />}
               {nokH > 0 && <rect x={x} y={height - nokH} width={bw} height={nokH} rx={0.6} fill="#e11d48" />}
-              {d.received === 0 && <rect x={x} y={height - 1} width={bw} height={1} fill="#e2e8f0" />}
+              {d.received === 0 && <rect x={x} y={height - 1} width={bw} height={1} style={{ fill: 'var(--color-slate-200)' }} />}
             </g>
           );
           return bar;

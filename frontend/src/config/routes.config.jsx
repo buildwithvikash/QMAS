@@ -1,5 +1,5 @@
 import { PERMISSIONS as P } from '@qmas/shared';
-import { BarChart3, ClipboardCheck, FileSpreadsheet, FileWarning, FileX2, Home, ShieldCheck, SlidersHorizontal } from 'lucide-react';
+import { BarChart3, ClipboardCheck, FileSpreadsheet, FileWarning, FileX2, Home, LifeBuoy, ShieldCheck, SlidersHorizontal } from 'lucide-react';
 import { lazy } from 'react';
 
 const HomePage = lazy(() => import('../pages/Home.jsx'));
@@ -29,6 +29,9 @@ const DevicesPage = lazy(() => import('../pages/admin/DevicesPage.jsx'));
 const SapSyncPage = lazy(() => import('../pages/admin/SapSyncPage.jsx'));
 const InsightsPage = lazy(() => import('../pages/ai/InsightsPage.jsx'));
 const AskPage = lazy(() => import('../pages/ai/AskPage.jsx'));
+const HelpCenterPage = lazy(() => import('../pages/help/HelpCenterPage.jsx'));
+const TicketsPage = lazy(() => import('../pages/help/TicketsPage.jsx'));
+const TicketPage = lazy(() => import('../pages/help/TicketPage.jsx'));
 
 /**
  * Sidebar sections and routes, filtered by the user's permissions (same idea as WRL's
@@ -123,6 +126,18 @@ export const ROUTE_SECTIONS = [
       { path: '/admin/devices', label: 'Tablets', permission: P.DEVICES_MANAGE, element: <DevicesPage /> },
       { path: '/admin/sap-sync', label: 'SAP Sync', permission: P.INTEGRATION_MONITOR, element: <SapSyncPage /> },
       { path: '/admin/audit', label: 'Audit Trail', permission: P.AUDIT_VIEW, element: <AuditTrailPage /> },
+    ],
+  },
+  {
+    // Everyone signed in: no permission needed to ask for help.
+    key: 'help',
+    label: 'Help & Support',
+    icon: LifeBuoy,
+    activePrefix: '/help',
+    items: [
+      { path: '/help', label: 'Help Center', element: <HelpCenterPage /> },
+      { path: '/help/tickets', label: 'My Tickets', element: <TicketsPage /> },
+      { path: '/help/tickets/:id', hidden: true, element: <TicketPage /> },
     ],
   },
 ];

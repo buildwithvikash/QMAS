@@ -74,7 +74,7 @@ function NowCard({ current, since }) {
  * remarks written on the record itself (checkpoint and review remarks). Data entry is left out.
  * `owner` limits remarks to one document (the DN page shows only DN and CAPA remarks).
  */
-export default function HistoryPanel({ imirId, history = [], owner, current }) {
+export default function HistoryPanel({ imirId, history = [], owner, current, title = 'History' }) {
   const [filter, setFilter] = useState('all');
   const { data: changes = [] } = useGetImirChangesQuery(imirId, { skip: !imirId });
 
@@ -106,7 +106,7 @@ export default function HistoryPanel({ imirId, history = [], owner, current }) {
   return (
     <section className="card">
       <div className="flex flex-wrap items-center gap-2 px-4 pt-3.5 pb-3 border-b border-slate-100">
-        <h2 className="section-title">History</h2>
+        <h2 className="section-title">{title}</h2>
         <div role="tablist" className="ml-auto flex flex-wrap gap-1 text-xs">
           {FILTERS.map(([k, l]) => {
             const n = k === 'all' ? null : count(k);

@@ -51,17 +51,17 @@ export default function ResetPasswordPage() {
         <form onSubmit={submit} noValidate className="space-y-4">
           <FormError message={error && !Object.keys(apiError(error).fieldErrors).filter((k) => k !== 'token').length ? apiError(error).message : form.error('token') ?? ''} />
           <div className="relative">
-            <TextInput label="New password" icon={Lock} type={show ? 'text' : 'password'} autoComplete="new-password" autoFocus
+            <TextInput size="lg" label="New password" icon={Lock} type={show ? 'text' : 'password'} autoComplete="new-password" autoFocus
               value={form.values.newPassword} onChange={(e) => form.set('newPassword', e.target.value)} error={form.error('newPassword')}
-              hint="At least 10 characters, with a letter and a digit; must not contain your employee code." />
-            <button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'} className="absolute right-3 top-[30px] p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+              hint="At least 10 characters, with a letter and a digit; must not contain your employee code."
+              trailing={<button type="button" onClick={() => setShow((s) => !s)} aria-label={show ? 'Hide password' : 'Show password'} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer">
               {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-            </button>
+            </button>} />
           </div>
-          <TextInput label="Repeat new password" icon={Lock} type={show ? 'text' : 'password'} autoComplete="new-password"
+          <TextInput size="lg" label="Repeat new password" icon={Lock} type={show ? 'text' : 'password'} autoComplete="new-password"
             value={form.values.confirmPassword} onChange={(e) => form.set('confirmPassword', e.target.value)} error={form.error('confirmPassword')} />
           <p className="text-xs text-slate-500">Every device signed in to this account will be signed out.</p>
-          <Button type="submit" size="lg" className="w-full" loading={saving}>Set new password</Button>
+          <Button type="submit" size="lg" className="w-full py-4! text-base! rounded-xl! shadow-lg shadow-blue-600/25" loading={saving}>Set new password</Button>
         </form>
       )}
     </AuthShell>

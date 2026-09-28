@@ -5,12 +5,12 @@ export const inputCls =
 const okCls = 'border-slate-300 hover:border-slate-400 focus:border-blue-500 focus:ring-blue-500/10';
 const errCls = 'border-rose-300 bg-rose-50/30 focus:border-rose-400 focus:ring-rose-500/10';
 
-/** Label + control + help/error text, as in WRL Master Config forms. */
-export function Field({ label, required, error, hint, id, className = '', children }) {
+/** Label + control + help/error text, as in WRL Master Config forms. `size="lg"`: the larger sign-in look. */
+export function Field({ label, required, error, hint, id, className = '', size, children }) {
   return (
     <div className={className}>
       {label && (
-        <label htmlFor={id} className="block text-[11px] font-semibold text-slate-600 mb-1.5">
+        <label htmlFor={id} className={`block font-semibold ${size === 'lg' ? 'text-sm text-slate-800 mb-2' : 'text-[11px] text-slate-600 mb-1.5'}`}>
           {label} {required && <span className="text-rose-500">*</span>}
         </label>
       )}
@@ -24,19 +24,21 @@ export function Field({ label, required, error, hint, id, className = '', childr
   );
 }
 
-export function TextInput({ label, required, error, hint, className, icon: Icon, ...props }) {
+/** `trailing`: a control inside the right edge of the box (e.g. a show-password button), centred on the input. */
+export function TextInput({ label, required, error, hint, className, icon: Icon, trailing, size, ...props }) {
   const id = useId();
   return (
-    <Field label={label} required={required} error={error} hint={hint} id={id} className={className}>
+    <Field label={label} required={required} error={error} hint={hint} id={id} className={className} size={size}>
       <div className="relative">
-        {Icon && <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />}
+        {Icon && <Icon className={`absolute top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none ${size === 'lg' ? 'left-4 w-5 h-5' : 'left-3 w-4 h-4'}`} />}
         <input
           id={id}
           aria-invalid={!!error}
           aria-describedby={error ? `${id}-error` : undefined}
-          className={`${inputCls} ${error ? errCls : okCls} ${Icon ? 'pl-9' : ''}`}
+          className={`${inputCls} ${error ? errCls : okCls} ${Icon ? (size === 'lg' ? 'pl-12' : 'pl-9') : ''} ${trailing ? 'pr-12' : ''} ${size === 'lg' ? 'py-3.5! text-base! rounded-xl!' : ''}`}
           {...props}
         />
+        {trailing && <div className="absolute right-3 top-1/2 -translate-y-1/2 flex">{trailing}</div>}
       </div>
     </Field>
   );

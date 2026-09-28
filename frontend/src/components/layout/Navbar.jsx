@@ -1,10 +1,13 @@
-import { KeyRound, LogOut, Search } from 'lucide-react';
+import { Bug, CircleHelp, Inbox, KeyRound, LifeBuoy, LogOut, Monitor, Moon, Search, Sun } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import { useLogoutMutation } from '../../api/authApi.js';
+import { THEMES, useTheme } from '../../app/theme.js';
 import * as engine from '../../offline/engine.js';
 import { ConfirmDialog } from '../ui/Modal.jsx';
+import PopMenu from '../ui/PopMenu.jsx';
+import { openReportIssue } from '../../pages/help/helpLook.js';
 import logo from '../../assets/logo.png';
 import { useAccess } from '../../hooks/useAccess.js';
 import { initials } from '../../utils/format.js';
@@ -63,6 +66,8 @@ export default function Navbar() {
 
       <div className="ml-auto flex items-center">
       <button type="button" onClick={openSearch} aria-label="Search" className="md:hidden p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer"><Search className="w-5 h-5 text-slate-600" /></button>
+      <ThemeButton />
+      <HelpMenu />
       <NotificationBell />
       <div className="relative">
         <button
@@ -98,6 +103,10 @@ export default function Navbar() {
                   ))}
                 </ul>
               </div>
+              <ThemeChoice />
+              <Link role="menuitem" to="/help" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-50">
+                <LifeBuoy className="w-4 h-4 text-slate-400" /> Help &amp; support
+              </Link>
               <Link role="menuitem" to="/change-password" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-50">
                 <KeyRound className="w-4 h-4 text-slate-400" /> Change password
               </Link>
@@ -121,5 +130,62 @@ export default function Navbar() {
         />
       )}
     </header>
+  );
+}
+
+/** "?" in the top bar: help, report a problem from the page you are on, and your tickets. */
+function HelpMenu() {
+  const item = 'flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-50 cursor-pointer';
+  return (
+    <PopMenu width="w-64" button={({ open, toggle }) => (
+      <button type="button" onClick={toggle} aria-label="Help and support" aria-haspopup="menu" aria-expanded={open} title="Help & support"
+        className="p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+        <CircleHelp className="w-5 h-5 text-slate-600" />
+      </button>
+    )}>
+      <p className="px-3 pt-1.5 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">Help &amp; support</p>
+      <button type="button" role="menuitem" data-close onClick={() => openReportIssue({ kind: 'BUG' })} className={item}>
+        <Bug className="w-4 h-4 text-rose-500" /><span className="flex-1 text-left">Report a problem on this page</span>
+      </button>
+      <Link role="menuitem" data-close to="/help" className={item}><LifeBuoy className="w-4 h-4 text-blue-600" />Help Center &amp; guides</Link>
+      <Link role="menuitem" data-close to="/help/tickets" className={item}><Inbox className="w-4 h-4 text-slate-500" />My tickets</Link>
+    </PopMenu>
+  );
+}
+
+const THEME_ICON = { light: Sun, dark: Moon, system: Monitor };
+
+/** Quick switch between light and dark (from "system" it switches to the opposite of what shows now). */
+function ThemeButton() {
+  const [, setChoice, resolved] = useTheme();
+  const next = resolved === 'dark' ? 'light' : 'dark';
+  const Icon = resolved === 'dark' ? Sun : Moon;
+  return (
+    <button type="button" onClick={() => setChoice(next)} aria-label={`Switch to ${next} mode`} title={`Switch to ${next} mode`}
+      className="p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
+      <Icon className="w-5 h-5 text-slate-600" />
+    </button>
+  );
+}
+
+/** Light / Dark / System in the account menu. */
+function ThemeChoice() {
+  const [choice, setChoice] = useTheme();
+  return (
+    <div className="px-3 py-2">
+      <p className="mb-1.5 text-[11px] font-medium text-slate-500">Appearance</p>
+      <div role="radiogroup" aria-label="Appearance" className="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1">
+        {THEMES.map((t) => {
+          const Icon = THEME_ICON[t.value];
+          const on = choice === t.value;
+          return (
+            <button key={t.value} type="button" role="radio" aria-checked={on} onClick={() => setChoice(t.value)}
+              className={`flex items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-semibold cursor-pointer transition-colors ${on ? 'bg-white text-blue-700 ring-1 ring-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
+              <Icon className="h-3.5 w-3.5" />{t.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
