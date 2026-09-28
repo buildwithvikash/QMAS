@@ -15,7 +15,8 @@
     "worker": "node --env-file-if-exists=.env src/worker.js",
     "demo-users": "node --env-file-if-exists=.env scripts/create-demo-users.js",
     "puter-login": "node --env-file-if-exists=.env scripts/puter-login.js",
-    "check-mail": "node --env-file-if-exists=.env scripts/check-mail.js"
+    "check-mail": "node --env-file-if-exists=.env scripts/check-mail.js",
+    "db:setup-local": "node scripts/setup-local-postgres.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.128.0",

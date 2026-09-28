@@ -40,6 +40,10 @@ export const imirApi = baseApi
 
       // SAP integration
       getSapStatus: b.query({ query: () => '/integration/sap/status', transformResponse: envelope, providesTags: ['SapSync'] }),
+      getSapSummary: b.query({ query: () => '/integration/sap/summary', transformResponse: envelope, providesTags: ['SapSync'] }),
+      getSapRuns: b.query({ query: (params) => ({ url: '/integration/sap/runs', params }), transformResponse: pagedEnvelope, providesTags: ['SapSync'] }),
+      getSapRun: b.query({ query: (id) => `/integration/sap/runs/${id}`, transformResponse: envelope, providesTags: ['SapSync'] }),
+      getSapStarters: b.query({ query: () => '/integration/sap/starters', transformResponse: envelope, providesTags: ['SapSync'] }),
       runSapSync: b.mutation({ query: () => ({ url: '/integration/sap/sync', method: 'POST' }), transformResponse: envelope, invalidatesTags: ['SapSync', 'Imir', 'Master'] }),
       addMockLot: b.mutation({ query: (body) => ({ url: '/integration/sap/mock-lots', method: 'POST', body }), transformResponse: envelope, invalidatesTags: ['SapSync'] }),
     }),
@@ -58,6 +62,10 @@ export const {
   useUpdateDeviceMutation,
   useReleaseLotsMutation,
   useGetSapStatusQuery,
+  useGetSapSummaryQuery,
+  useGetSapRunsQuery,
+  useGetSapRunQuery,
+  useGetSapStartersQuery,
   useRunSapSyncMutation,
   useAddMockLotMutation,
   useGetImirCountsQuery,

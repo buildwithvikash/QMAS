@@ -1,35 +1,25 @@
 import { PERMISSIONS, ROLES } from "@qmas/shared";
 import {
-  ArrowLeft,
-  BarChart3,
-  Check,
   CheckSquare,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
-  ClipboardCheck,
   Clock,
+  Columns3,
   Copy,
   ExternalLink,
   FileText,
-  FileWarning,
-  FileX2,
   Grid3x3,
-  Home,
   Info,
   KeyRound,
-  Minus,
   MoreVertical,
   Pencil,
   Plus,
   Power,
   Save,
   Search,
-  Settings,
   ShieldCheck,
-  SlidersHorizontal,
-  Sparkles,
   Trash2,
   UserRound,
   Users,
@@ -51,48 +41,13 @@ import Button from "../../components/ui/Button.jsx";
 import Loader from "../../components/ui/Loader.jsx";
 import { ConfirmDialog } from "../../components/ui/Modal.jsx";
 import PageHeader from "../../components/ui/PageHeader.jsx";
-import { ROUTE_SECTIONS } from "../../config/routes.config.jsx";
+import PopMenu from "../../components/ui/PopMenu.jsx";
 import { useAccess } from "../../hooks/useAccess.js";
 import { apiError } from "../../utils/apiError.js";
 import { formatDate, formatRelative } from "../../utils/format.js";
 import RoleDialog from "./RoleDialog.jsx";
-
-// The menu pages each permission opens, straight from the menu configuration (so this stays true).
-const PAGES_BY_PERMISSION = new Map();
-for (const section of ROUTE_SECTIONS) {
-  for (const item of section.items) {
-    if (item.hidden || !item.permission) continue;
-    PAGES_BY_PERMISSION.set(item.permission, [
-      ...(PAGES_BY_PERMISSION.get(item.permission) ?? []),
-      { path: item.path, label: item.label, section: section.label },
-    ]);
-  }
-}
-
-const MODULE_LOOK = {
-  Home: [Home, "bg-blue-100 text-blue-700"],
-  Administration: [Settings, "bg-emerald-100 text-emerald-700"],
-  "Master Config": [SlidersHorizontal, "bg-violet-100 text-violet-700"],
-  "Inspection Formats": [FileText, "bg-sky-100 text-sky-700"],
-  "Incoming Inspection": [ClipboardCheck, "bg-emerald-100 text-emerald-700"],
-  Deviation: [FileWarning, "bg-orange-100 text-orange-700"],
-  "Defect Notification": [FileX2, "bg-rose-100 text-rose-700"],
-  Reports: [BarChart3, "bg-indigo-100 text-indigo-700"],
-  "AI Assistant": [Sparkles, "bg-fuchsia-100 text-fuchsia-700"],
-};
-const DEPT_TONE = {
-  IT: "bg-slate-100 text-slate-700",
-  IQC: "bg-emerald-100 text-emerald-700",
-  Quality: "bg-violet-100 text-violet-700",
-  "Centralized Quality": "bg-sky-100 text-sky-700",
-  SCM: "bg-amber-100 text-amber-700",
-  VD: "bg-orange-100 text-orange-700",
-  Plant: "bg-rose-100 text-rose-700",
-  PDC: "bg-indigo-100 text-indigo-700",
-  Operations: "bg-teal-100 text-teal-700",
-  Management: "bg-slate-100 text-slate-700",
-};
-const deptTone = (d) => DEPT_TONE[d] ?? "bg-blue-100 text-blue-700";
+import RoleMatrix from "./RoleMatrix.jsx";
+import { deptTone, MODULE_LOOK, PAGES_BY_PERMISSION } from "./roleLook.js";
 
 /**
  * Roles & Permissions: the roles on the left; the chosen role's permissions by module, its users and
@@ -105,7 +60,10 @@ export default function RolesPage() {
   const { data: roles, isLoading } = useGetRolesQuery();
   const { data: permissions } = useGetPermissionsQuery();
   const [selected, setSelected] = useState(null);
-  const [view, setView] = useState("role");
+  const [view, setView] = useState("matrix");
+  const [permQuery, setPermQuery] = useState("");
+  const [compare, setCompare] = useState([]);
+  const [onlyDiff, setOnlyDiff] = useState(false);
   const [dialog, setDialog] = useState(null); // { mode: 'add' | 'duplicate' | 'edit' }
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -154,8 +112,8 @@ export default function RolesPage() {
 
   const menu = [
     {
-      label: view === "matrix" ? "Back to one role" : "Compare all roles",
-      icon: view === "matrix" ? ArrowLeft : Grid3x3,
+      label: view === "matrix" ? "Role details" : "Permission matrix",
+      icon: view === "matrix" ? FileText : Grid3x3,
       onClick: () => setView(view === "matrix" ? "role" : "matrix"),
     },
     ...(manage && !role.isSystem
@@ -183,6 +141,37 @@ export default function RolesPage() {
         title="Roles & Permissions"
         subtitle="Manage user roles and what they can see and do. Select a role to view and edit its permissions."
       >
+        {view === "matrix" && (
+          <label className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              value={permQuery}
+              onChange={(e) => setPermQuery(e.target.value)}
+              placeholder="Search permissions…"
+              aria-label="Search permissions"
+              className="h-9 w-64 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
+            />
+          </label>
+        )}
+        {view === "matrix" && (
+          <ComparePicker
+            roles={roles}
+            value={compare}
+            onChange={setCompare}
+            onlyDiff={onlyDiff}
+            onOnlyDiff={setOnlyDiff}
+          />
+        )}
+        {view === "matrix" && manage && (
+          <Button size="sm" icon={Plus} onClick={() => setDialog({ mode: "add" })}>
+            Add role
+          </Button>
+        )}
+        {view === "role" && (
+          <Button size="sm" variant="secondary" icon={Grid3x3} onClick={() => setView("matrix")}>
+            Permission matrix
+          </Button>
+        )}
         {manage && view === "role" && role.code !== ROLES.SYSTEM_ADMIN && (
           <Button
             variant="secondary"
@@ -208,14 +197,28 @@ export default function RolesPage() {
       </PageHeader>
 
       {view === "matrix" ? (
-        <Matrix
-          roles={roles}
-          permissions={permissions}
-          onPick={(code) => {
-            pick(code);
-            setView("role");
-          }}
-        />
+        <div className="p-4 sm:p-5 grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)] items-start">
+          <RoleList
+            roles={roles}
+            total={permissions.length}
+            active={role.code}
+            onPick={pick}
+            onAdd={null}
+          />
+          <RoleMatrix
+            key={role.code}
+            roles={roles}
+            permissions={permissions}
+            role={role}
+            editable={manage && role.code !== ROLES.SYSTEM_ADMIN}
+            onSelect={pick}
+            onDetails={() => setView("role")}
+            onDirty={setDirty}
+            search={permQuery}
+            compare={compare}
+            onlyDiff={onlyDiff && compare.length > 0}
+          />
+        </div>
       ) : (
         <div className="p-4 sm:p-5 grid gap-4 lg:grid-cols-[340px_1fr] items-start">
           <RoleList
@@ -268,58 +271,20 @@ export default function RolesPage() {
 
 /** ⋮ menu of page actions. items: [{ label, icon, onClick, danger } | 'sep']. */
 function Kebab({ items }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (e) => !ref.current?.contains(e.target) && setOpen(false);
-    const esc = (e) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [open]);
   return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        aria-label="More actions"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
-        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer"
-      >
+    <PopMenu width="w-52" button={({ open, toggle }) => (
+      <button type="button" aria-label="More actions" aria-haspopup="menu" aria-expanded={open} onClick={toggle}
+        className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer">
         <MoreVertical className="w-4 h-4" />
       </button>
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 mt-1 z-30 w-52 rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
-        >
-          {items.map((it, i) =>
-            it === "sep" ? (
-              <div key={`s${i}`} className="my-1 border-t border-slate-100" />
-            ) : (
-              <button
-                key={it.label}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setOpen(false);
-                  it.onClick();
-                }}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left cursor-pointer ${it.danger ? "text-rose-700 hover:bg-rose-50" : "text-slate-700 hover:bg-slate-50"}`}
-              >
-                <it.icon className="w-4 h-4" />
-                {it.label}
-              </button>
-            ),
-          )}
-        </div>
-      )}
-    </div>
+    )}>
+      {items.map((it, i) => (it === "sep" ? <div key={`s${i}`} className="my-1 border-t border-slate-100" /> : (
+        <button key={it.label} type="button" role="menuitem" data-close onClick={it.onClick}
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm text-left cursor-pointer ${it.danger ? "text-rose-700 hover:bg-rose-50" : "text-slate-700 hover:bg-slate-50"}`}>
+          <it.icon className="w-4 h-4" />{it.label}
+        </button>
+      )))}
+    </PopMenu>
   );
 }
 
@@ -1023,95 +988,39 @@ function RoleInfo({ role, granted }) {
   );
 }
 
-/** Every role against every permission, read-only; click a role to open it. */
-function Matrix({ roles, permissions, onPick }) {
-  const modules = [...new Set(permissions.map((p) => p.module))];
+/** Choose the roles to compare in the matrix (the selected role is always shown), and whether to keep only the rows where they differ. */
+function ComparePicker({ roles, value, onChange, onlyDiff, onOnlyDiff }) {
+  const toggle = (code) => onChange(value.includes(code) ? value.filter((c) => c !== code) : [...value, code]);
   return (
-    <div className="p-4 sm:p-5">
-      <div className="card overflow-auto max-h-[calc(100dvh-11rem)]">
-        <table className="text-xs border-separate border-spacing-0">
-          <thead>
-            <tr>
-              <th className="sticky left-0 top-0 z-20 bg-slate-50 px-3 py-2 text-left font-semibold text-slate-600 border-b border-r border-slate-200 min-w-72">
-                Permission
-              </th>
-              {roles.map((r) => (
-                <th
-                  key={r.code}
-                  className="sticky top-0 z-10 bg-slate-50 px-1 py-2 border-b border-slate-200 align-bottom"
-                >
-                  <button
-                    type="button"
-                    onClick={() => onPick(r.code)}
-                    title={`${r.name}: open`}
-                    className={`h-32 w-8 cursor-pointer hover:text-blue-700 [writing-mode:vertical-rl] rotate-180 text-left font-medium whitespace-nowrap ${r.isActive ? "text-slate-700" : "text-slate-400 line-through"}`}
-                  >
-                    {r.name}
-                  </button>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {modules.map((m) => (
-              <MatrixRows
-                key={m}
-                module={m}
-                perms={permissions.filter((p) => p.module === m)}
-                roles={roles}
-              />
-            ))}
-          </tbody>
-        </table>
+    <PopMenu role="dialog" width="w-72" className="p-3"
+      button={({ open, toggle: flip }) => (
+        <Button size="sm" variant="secondary" icon={Columns3} onClick={flip} aria-expanded={open} aria-haspopup="dialog">
+          Compare roles{value.length ? ` (${value.length})` : ""}
+        </Button>
+      )}>
+      <p className="text-xs font-semibold text-slate-700 mb-1">Show only these roles</p>
+      <p className="text-[11px] text-slate-500 mb-2">The selected role is always shown. None ticked: all roles.</p>
+      <ul className="max-h-72 overflow-y-auto space-y-0.5">
+        {roles.map((r) => (
+          <li key={r.code}>
+            <label className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
+              <input type="checkbox" className="w-4 h-4 accent-blue-600" checked={value.includes(r.code)} onChange={() => toggle(r.code)} />
+              {r.name}
+            </label>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 pt-2 border-t border-slate-100 flex items-center gap-2">
+        <label className={`flex items-center gap-2 text-xs cursor-pointer ${value.length ? "text-slate-700" : "text-slate-400"}`}>
+          <input type="checkbox" className="w-4 h-4 accent-blue-600" checked={onlyDiff} disabled={!value.length} onChange={(e) => onOnlyDiff(e.target.checked)} />
+          Only rows that differ
+        </label>
+        {value.length > 0 && (
+          <button type="button" onClick={() => { onChange([]); onOnlyDiff(false); }} className="ml-auto text-xs font-semibold text-blue-700 hover:underline cursor-pointer">
+            Show all
+          </button>
+        )}
       </div>
-      <p className="mt-2 text-xs text-slate-500">
-        Changes are made on a role's own page (click its name). System Admin
-        always has everything.
-      </p>
-    </div>
-  );
-}
-
-function MatrixRows({ module, perms, roles }) {
-  return (
-    <>
-      <tr>
-        <td
-          colSpan={roles.length + 1}
-          className="sticky left-0 bg-white px-3 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400"
-        >
-          {module}
-        </td>
-      </tr>
-      {perms.map((p) => (
-        <tr key={p.key} className="hover:bg-blue-50/40">
-          <td
-            className="sticky left-0 z-10 bg-white px-3 py-1.5 border-r border-slate-100 text-slate-700"
-            title={p.key}
-          >
-            {p.description}
-          </td>
-          {roles.map((r) => {
-            const has =
-              r.code === ROLES.SYSTEM_ADMIN || r.permissions.includes(p.key);
-            return (
-              <td key={r.code} className="text-center border-b border-slate-50">
-                {has ? (
-                  <Check
-                    className="w-3.5 h-3.5 mx-auto text-emerald-600"
-                    aria-label="yes"
-                  />
-                ) : (
-                  <Minus
-                    className="w-3 h-3 mx-auto text-slate-200"
-                    aria-label="no"
-                  />
-                )}
-              </td>
-            );
-          })}
-        </tr>
-      ))}
-    </>
+    </PopMenu>
   );
 }

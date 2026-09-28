@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Columns3, Download, Eye, Inbox, MoreVertical, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import PopMenu from './PopMenu.jsx';
+import { useState } from 'react';
 import { loadPref, savePref } from '../../utils/prefs.js';
 import FilterBuilder from './FilterBuilder.jsx';
 
@@ -19,35 +19,6 @@ function useHiddenColumns(tableId) {
 }
 
 /** A small menu that opens below its button (in a portal, so the table does not clip it). */
-function PopMenu({ button, children, align = 'right', width = 'w-56' }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState(null);
-  const ref = useRef(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    const r = ref.current.getBoundingClientRect();
-    setPos({ top: r.bottom + 4, left: align === 'left' ? r.left : undefined, right: align === 'right' ? window.innerWidth - r.right : undefined });
-    const shut = () => setOpen(false);
-    window.addEventListener('scroll', shut, true);
-    window.addEventListener('resize', shut);
-    return () => { window.removeEventListener('scroll', shut, true); window.removeEventListener('resize', shut); };
-  }, [open, align]);
-  return (
-    <span ref={ref} className="inline-flex">
-      {button({ open, toggle: () => setOpen((o) => !o) })}
-      {open && pos && createPortal(
-        <>
-          <div className="fixed inset-0 z-40" onMouseDown={() => setOpen(false)} />
-          <div role="menu" className={`fixed z-50 ${width} card shadow-lift p-1.5 max-h-80 overflow-auto animate-fadeIn`} style={pos} onClick={(e) => e.target.closest('[data-close]') && setOpen(false)}>
-            {children}
-          </div>
-        </>,
-        document.body,
-      )}
-    </span>
-  );
-}
-
 const toolBtn = 'inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 cursor-pointer';
 
 function ColumnPicker({ columns, hidden, onToggle }) {
