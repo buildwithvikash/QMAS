@@ -34,6 +34,7 @@ export const PERMISSIONS = Object.freeze({
   INTEGRATION_MONITOR: 'integration.monitor',
   REPORTS_VIEW: 'reports.view',
   AI_ASSIST: 'ai.assist',
+  SUPPORT_MANAGE: 'support.manage',
 });
 
 export const PERMISSION_DEFINITIONS = Object.freeze([
@@ -66,6 +67,7 @@ export const PERMISSION_DEFINITIONS = Object.freeze([
   { key: PERMISSIONS.INTEGRATION_MONITOR, module: 'Administration', description: 'View the SAP (QA32) lot sync and pull lots now' },
   { key: PERMISSIONS.REPORTS_VIEW, module: 'Reports', description: 'View and export reports' },
   { key: PERMISSIONS.AI_ASSIST, module: 'AI Assistant', description: 'Quality Insights, AI summaries, CAPA assessment, root-cause suggestions, search in words and Ask QMAS' },
+  { key: PERMISSIONS.SUPPORT_MANAGE, module: 'Help & Support', description: 'Work on help-desk tickets from all users: reply, assign, change status and priority' },
 ]);
 
 const P = PERMISSIONS;

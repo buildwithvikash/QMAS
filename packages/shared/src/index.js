@@ -16,3 +16,4 @@ export * from './logic/insights.js';
 export * from './schemas/workflow.js';
 export * from './schemas/dn.js';
 export * from './schemas/listFilter.js';
+export * from './schemas/support.js';

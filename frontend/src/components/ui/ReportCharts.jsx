@@ -22,7 +22,7 @@ export function Donut({ segments, size = 148, thickness = 22, center, centerLabe
     <div className="flex flex-wrap items-center gap-5">
       <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} className="shrink-0" role="img" aria-label={parts.map((p) => `${p.label} ${p.value}`).join(', ')}>
         <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f1f5f9" strokeWidth={thickness} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" style={{ stroke: 'var(--color-slate-100)' }} strokeWidth={thickness} />
         {parts.map((p) => {
           const len = (p.value / total) * c;
           const el = (
@@ -84,7 +84,7 @@ export function Columns({ data, series, height = 170, format = fmtN, empty = 'No
         </div>
         <div className="min-w-0 flex-1">
           <svg viewBox={`0 0 100 ${height}`} preserveAspectRatio="none" className="w-full block" style={{ height }} onMouseLeave={() => setHover(null)} role="img" aria-label="Column chart">
-            {ticks.map((t) => <line key={t} x1="0" x2="100" y1={height - (t / top) * height} y2={height - (t / top) * height} stroke={t ? '#f1f5f9' : '#cbd5e1'} strokeWidth="1" vectorEffect="non-scaling-stroke" />)}
+            {ticks.map((t) => <line key={t} x1="0" x2="100" y1={height - (t / top) * height} y2={height - (t / top) * height} style={{ stroke: t ? 'var(--color-slate-100)' : 'var(--color-slate-300)' }} strokeWidth="1" vectorEffect="non-scaling-stroke" />)}
             {data.map((d, i) => {
               let y = height;
               return (

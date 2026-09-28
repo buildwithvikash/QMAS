@@ -2,6 +2,7 @@ import { dimensionalDecision, MAX_SAMPLES, readingFlag, recordDecision, toleranc
 import { ArrowDown, ArrowUp, Camera, Check, CheckCheck, MessageSquareText, Paperclip, Plus, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import Badge from '../../components/ui/Badge.jsx';
+import PopMenu from '../../components/ui/PopMenu.jsx';
 import VoiceButton from '../../components/ui/VoiceButton.jsx';
 import { formatDate } from '../../utils/format.js';
 import { fmtNum } from '../formats/formatHelpers.js';
@@ -11,6 +12,28 @@ import { groupsOf, moveFocus } from './sheetNav.js';
 const SAMPLES = Array.from({ length: MAX_SAMPLES }, (_, i) => i + 1);
 const cellKey = (uid, s) => `${uid}:${s}`;
 const VALID_READING = /^-?\d*(\.\d{0,3})?$/;
+
+/**
+ * The reading that decides a dimensional check: the one furthest out of spec, else the one using
+ * most of the tolerance. Shown in the Result column (red: out of spec, amber: close to a limit).
+ */
+function worstReading(cp, readings, stats) {
+  let best = null;
+  for (const v of readings) {
+    const nok = dimensionalDecision(v, cp) === 'NOK';
+    const use = toleranceUse(v, cp, stats?.mean ?? null) ?? 0;
+    const score = (nok ? 10 : 0) + use;
+    if (!best || score > best.score) best = { value: v, score, nok, flag: nok ? null : readingFlag(v, cp, stats) };
+  }
+  return best;
+}
+
+const ReadingResult = ({ worst }) =>
+  worst ? (
+    <span className={`inline-flex min-w-14 justify-center rounded-md px-2 py-1 text-sm font-bold tabular ${worst.nok ? 'bg-rose-100 text-rose-700' : worst.flag ? 'bg-amber-100 text-amber-800' : 'bg-emerald-50 text-emerald-700'}`}>
+      {fmtNum(worst.value)}
+    </span>
+  ) : <span className="text-xs text-slate-300">—</span>;
 
 const ResultPill = ({ result }) =>
   result === 'OK' ? <Badge variant="success">OK</Badge> : result === 'NOK' ? <Badge variant="danger">NOK</Badge> : <span className="text-xs text-slate-300">—</span>;
@@ -23,15 +46,18 @@ const ResultPill = ({ result }) =>
  * `insights` (optional) adds each checkpoint's history, drift and focus, and warns on readings
  * close to a limit or far from the usual values as they are typed.
  */
-export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch, photosByCell = {}, onAddPhoto, onOpenPhotos, insights = null }) {
+export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch, photosByCell = {}, onAddPhoto, onOpenPhotos, insights = null, filter = '', flat = false }) {
   const insOf = (uid) => insights?.checkpoints?.[uid];
   const focusOf = (uid) => insights?.focus?.find((f) => f.uid === uid);
   const n = sheet.sampleSize;
   const byCell = new Map(sheet.cells.map((c) => [cellKey(c.checkpointUid, c.sampleNo), c]));
   const results = sheet.evaluation?.checkpointResults ?? {};
-  const dims = sheet.checkpoints.filter((c) => c.section === 'DIMENSIONAL');
-  const vis = sheet.checkpoints.filter((c) => c.section === 'VISUAL');
-  const rel = sheet.checkpoints.filter((c) => c.section === 'RELIABILITY');
+  // The page's search box: check point, specification, instrument or help text.
+  const q = filter.trim().toLowerCase();
+  const matches = (c) => !q || [c.checkpoint, c.specification, c.instrument, c.helpText, c.groupLabel].some((v) => v && String(v).toLowerCase().includes(q));
+  const dims = sheet.checkpoints.filter((c) => c.section === 'DIMENSIONAL' && matches(c));
+  const vis = sheet.checkpoints.filter((c) => c.section === 'VISUAL' && matches(c));
+  const rel = sheet.checkpoints.filter((c) => c.section === 'RELIABILITY' && matches(c));
   const usesOptional = sheet.cells.some((c) => c.sampleNo > n);
   const [optionalOpen, setOptionalOpen] = useState(false);
   const showOptional = optionalOpen || usesOptional;
@@ -43,7 +69,7 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
   const sampleHeads = (
     <>
       {shown.map((s) => (
-        <th key={s} className={`${th} text-center w-[4.5rem] ${s <= n ? 'text-emerald-800 bg-emerald-50/70' : 'text-slate-400'}`} title={s <= n ? 'Required sample' : 'Optional sample'}>X{s}</th>
+        <th key={s} className={`${th} text-center w-18 ${s <= n ? 'text-emerald-800 bg-emerald-50/70' : 'text-slate-400'}`} title={s <= n ? 'Required sample' : 'Optional sample'}>X{s}</th>
       ))}
       {canAddOptional && (
         <th className={`${th} w-16`}>
@@ -56,12 +82,13 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
   );
   const tail = (
     <>
-      <th className={`${th} text-center w-16`}>OK / NOK</th>
+      <th className={`${th} text-center w-16`}>Status</th>
+      <th className={`${th} text-left w-48`}>Remark</th>
     </>
   );
   const spacer = canAddOptional ? <td /> : null;
-  // Remarks live with the check point (no separate columns): the inspector's is editable from the
-  // small note button; the Incharge's, set during review, is shown under the name.
+  // Remarks: the inspector's is editable from the note button; the Incharge's, set during review, is
+  // shown below it. The tables give them their own column; lot details keep them under the field.
   const remarkNote = (cp) => (
     <div className="mt-1 flex flex-wrap items-center gap-1.5">
       <RemarkButton who="Inspector" value={cp.inspectorRemark} readOnly={readOnly} context={{ checkpoint: cp.checkpoint, specification: cp.specification ?? undefined, unit: cp.uom ?? undefined }}
@@ -69,14 +96,25 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
       {cp.inchargeRemark && <span className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Incharge: {cp.inchargeRemark}</span>}
     </div>
   );
+  const remarkCell = (cp, top = false) => (
+    <td className={`px-2 py-1.5 w-48 min-w-36 max-w-48 ${top ? 'align-top pt-2.5' : ''}`}>
+      {!readOnly || cp.inspectorRemark || cp.inchargeRemark ? (
+        <div className="flex flex-col items-start gap-1">
+          <RemarkInput checkpoint={cp.checkpoint} value={cp.inspectorRemark} readOnly={readOnly}
+            onCommit={(v) => onPatch({ entries: [{ checkpointUid: cp.uid, inspectorRemark: v }] })} />
+          {cp.inchargeRemark && <span title={cp.inchargeRemark} className="max-w-full line-clamp-2 text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Incharge: {cp.inchargeRemark}</span>}
+        </div>
+      ) : <span className="text-slate-300">—</span>}
+    </td>
+  );
 
   if (tab === 'lot') {
     const recs = sheet.checkpoints.filter((c) => c.section === 'RECORD');
     if (!recs.length) return <EmptyTab text="This format has no lot details." />;
     return (
-      <div className="space-y-4">
+      <div className={flat ? '' : 'space-y-4'}>
         {groupsOf(recs, 'Lot details').map((g) => (
-          <section key={g.label} className="card">
+          <section key={g.label} className={flat ? 'border-b border-slate-200 last:border-b-0' : 'card'}>
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5 border-b border-slate-200">
               <h3 className="text-sm font-semibold text-slate-900">{g.label}</h3>
               <span className="text-xs text-slate-500">Recorded once for the whole lot. Fields marked * are required.</span>
@@ -91,14 +129,14 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
   }
 
   if (tab === 'dim') {
-    if (!dims.length) return <EmptyTab text="This format has no dimensional checks." />;
+    if (!dims.length) return <EmptyTab text={q ? `No dimensional check matches “${filter.trim()}”.` : 'This format has no dimensional checks.'} />;
     // Rows are numbered across the section's tables so Enter / arrows run through all of them.
     const dimGroups = groupsOf(dims, 'Dimensional test');
     const rowIndex = new Map(dims.map((cp, i) => [cp.uid, i]));
     return (
       <div className="space-y-4">
       {dimGroups.map((g) => (
-      <Table key={g.label} title={dimGroups.length > 1 || g.custom ? g.label : undefined} note="Type each reading; Enter moves to the next cell. Out-of-limit readings turn red with an arrow.">
+      <Table flat={flat} key={g.label} title={dimGroups.length > 1 || g.custom ? g.label : undefined} note="Type each reading; Enter moves to the next cell. Out-of-limit readings turn red with an arrow.">
         <thead className="bg-slate-50">
           <tr>
             <th className={`${th} text-left w-12`}>SR</th>
@@ -109,6 +147,7 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
             <th className={`${th} text-left`}>UOM</th>
             <th className={`${th} text-left`}>Instrument</th>
             {sampleHeads}
+            <th className={`${th} text-center w-20`}>Result</th>
             {tail}
           </tr>
         </thead>
@@ -120,7 +159,6 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
                 <div className="font-semibold text-slate-900">{cp.checkpoint}</div>
                 {cp.helpText && <div className="text-[11px] text-slate-400">{cp.helpText}</div>}
                 <InsightChip ins={insOf(cp.uid)} focus={focusOf(cp.uid)} />
-                {(!readOnly || cp.inspectorRemark || cp.inchargeRemark) && remarkNote(cp)}
               </td>
               <td className="px-2 py-1.5 text-right tabular text-slate-700">{cp.lsl !== null ? fmtNum(cp.lsl) : '—'}</td>
               <td className="px-2 py-1.5 text-right tabular text-slate-700">{cp.usl !== null ? fmtNum(cp.usl) : '—'}</td>
@@ -134,7 +172,9 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
                 </td>
               ))}
               {spacer}
+              <td className="px-2 text-center"><ReadingResult worst={worstReading(cp, shown.map((x) => byCell.get(cellKey(cp.uid, x))?.value).filter((v) => v !== null && v !== undefined), insOf(cp.uid)?.stats)} /></td>
               <td className="px-2 text-center"><ResultPill result={results[cp.uid]} /></td>
+              {remarkCell(cp)}
             </tr>
           ); })}
         </tbody>
@@ -145,11 +185,11 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
   }
 
   if (tab === 'visrel') {
-    if (!vis.length && !rel.length) return <EmptyTab text="This format has no visual or reliability checks." />;
+    if (!vis.length && !rel.length) return <EmptyTab text={q ? `No visual or reliability check matches “${filter.trim()}”.` : 'This format has no visual or reliability checks.'} />;
     return (
       <div className="space-y-4">
         {groupsOf(vis, 'Visual test').map((g) => (
-          <Table key={g.label} title={g.label} note={g.items.some((c) => c.inputType === 'CHOICE') ? 'Pick an option per sample, or tap once for OK, twice for NOK. A failing option or a NOK makes the check NOK.' : 'Tap once for OK, twice for NOK, three times to clear. Any NOK makes the check NOK.'}>
+          <Table flat={flat} key={g.label} title={g.label} note={g.items.some((c) => c.inputType === 'CHOICE') ? 'Pick an option per sample, or tap once for OK, twice for NOK. A failing option or a NOK makes the check NOK.' : 'Tap once for OK, twice for NOK, three times to clear. Any NOK makes the check NOK.'}>
             <thead className="bg-slate-50">
               <tr>
                 <th className={`${th} text-left w-12`}>SR</th>
@@ -173,7 +213,6 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
                       <div className="font-semibold text-slate-900">{cp.checkpoint}</div>
                       {cp.helpText && <div className="text-[11px] text-slate-400">{cp.helpText}</div>}
                       <InsightChip ins={insOf(cp.uid)} focus={focusOf(cp.uid)} />
-                      {(!readOnly || cp.inspectorRemark || cp.inchargeRemark) && remarkNote(cp)}
                       {!readOnly && (
                         <div className="mt-1 flex gap-1">
                           {emptyRequired.length > 0 && (
@@ -250,6 +289,7 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
                     })}
                     {spacer}
                     <td className="px-2 text-center"><ResultPill result={results[cp.uid]} /></td>
+                    {remarkCell(cp, true)}
                   </tr>
                 );
               })}
@@ -258,7 +298,7 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
         ))}
 
         {groupsOf(rel, 'Reliability test').map((g) => (
-          <Table key={g.label} title={g.label} note="Tests are due by frequency for this item and vendor; a test that is not due can be skipped.">
+          <Table flat={flat} key={g.label} title={g.label} note="Tests are due by frequency for this item and vendor; a test that is not due can be skipped.">
             <thead className="bg-slate-50">
               <tr>
                 <th className={`${th} text-left w-12`}>SR</th>
@@ -266,11 +306,12 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
                 <th className={`${th} text-left min-w-40`}>Specification</th>
                 <th className={`${th} text-left`}>Frequency</th>
                 <th className={`${th} text-left min-w-64`}>Observation</th>
-                <th className={`${th} text-center w-32`}>OK / NOK</th>
+                <th className={`${th} text-center w-32`}>Status</th>
+                <th className={`${th} text-left w-48`}>Remark</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {g.items.map((cp, ri) => <ReliabilityRow key={cp.uid} sr={ri + 1} cp={cp} readOnly={readOnly} onPatch={onPatch} remarks={remarkNote(cp)} chip={<InsightChip ins={insOf(cp.uid)} focus={focusOf(cp.uid)} />} />)}
+              {g.items.map((cp, ri) => <ReliabilityRow key={cp.uid} sr={ri + 1} cp={cp} readOnly={readOnly} onPatch={onPatch} remarks={remarkCell(cp, true)} chip={<InsightChip ins={insOf(cp.uid)} focus={focusOf(cp.uid)} />} />)}
             </tbody>
           </Table>
         ))}
@@ -354,10 +395,10 @@ function RecordField({ cp, result, readOnly, onPatch, remarks }) {
   );
 }
 
-const EmptyTab = ({ text }) => <div className="card p-8 text-center text-sm text-slate-500">{text}</div>;
+const EmptyTab = ({ text }) => <div className="p-8 text-center text-sm text-slate-500">{text}</div>;
 
-const Table = ({ title, note, children }) => (
-  <section className="card overflow-hidden">
+const Table = ({ title, note, flat, children }) => (
+  <section className={flat ? 'border-b border-slate-200 last:border-b-0' : 'card overflow-hidden'}>
     {(title || note) && (
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 py-2.5 border-b border-slate-200">
         {title && <h3 className="text-sm font-semibold text-slate-900">{title}</h3>}
@@ -368,53 +409,71 @@ const Table = ({ title, note, children }) => (
   </section>
 );
 
-/**
- * Remark column: an icon that shows whether there is a remark; opens a small editor (inspector) or
- * reader (Incharge, whose remarks come from the review).
- */
-function RemarkButton({ who, value, readOnly, onCommit, context }) {
-  const [open, setOpen] = useState(false);
+/** Remark text box in the table: saves when you leave it or press Enter; Esc undoes the edit. */
+function RemarkInput({ checkpoint, value, readOnly, onCommit }) {
   const [text, setText] = useState(value ?? '');
-  const ref = useRef(null);
-  useEffect(() => setText(value ?? ''), [value]);
-  useEffect(() => {
-    if (!open) return undefined;
-    const close = (e) => !ref.current?.contains(e.target) && setOpen(false);
-    document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
-  }, [open]);
-  const save = () => {
-    if ((text.trim() || null) !== (value ?? null)) onCommit?.(text.trim() || null);
-    setOpen(false);
+  const [prev, setPrev] = useState(value);
+  if (value !== prev) {
+    setPrev(value);
+    setText(value ?? '');
+  }
+  if (readOnly) return <p className="text-xs text-slate-700 whitespace-pre-line wrap-break-word">{value}</p>;
+  const commit = () => {
+    const next = text.trim() || null;
+    if (next !== (value ?? null)) onCommit(next);
   };
+  return (
+    <input value={text} maxLength={500} placeholder="Remark" aria-label={`${checkpoint} remark`} title={text || undefined}
+      onChange={(e) => setText(e.target.value)} onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') { setText(value ?? ''); e.currentTarget.blur(); }
+      }}
+      className={`h-9 w-full rounded-lg border px-2.5 text-xs outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 ${text ? 'border-blue-200 bg-blue-50/40 text-slate-800' : 'border-slate-200 bg-white'}`} />
+  );
+}
+
+/**
+ * Remark button: shows the remark (or "Add remark"); opens a small editor (inspector) or reader
+ * (Incharge, whose remarks come from the review). The editor opens above the page, so the table's
+ * scroll box never cuts it off.
+ */
+function RemarkButton({ who, value, readOnly, onCommit, context, block = false }) {
+  const [text, setText] = useState(value ?? '');
   if (readOnly && !value) return null;
+  const save = (close) => {
+    if ((text.trim() || null) !== (value ?? null)) onCommit?.(text.trim() || null);
+    close();
+  };
   const tone = value ? 'text-blue-800 bg-blue-50 border-blue-200' : 'text-slate-500 border-slate-200 hover:border-slate-400';
   return (
-    <div ref={ref} className="relative inline-block">
-      <button type="button" onClick={() => setOpen((o) => !o)} title={value ?? 'Add a remark'} aria-label={`${who} remark${value ? `: ${value}` : ''}`}
-        className={`max-w-48 h-7 px-1.5 rounded-md border inline-flex items-center gap-1 text-[11px] cursor-pointer ${tone}`}>
-        <MessageSquareText className="w-3.5 h-3.5 shrink-0" />
-        <span className="truncate">{value ?? 'Remark'}</span>
+    <PopMenu align="left" width="w-72" role="dialog" className="p-3 text-left" button={({ toggle }) => (
+      <button type="button" onClick={() => { setText(value ?? ''); toggle(); }} title={value ?? 'Add a remark'} aria-label={`${who} remark${value ? `: ${value}` : ''}`}
+        className={`${block ? 'w-full max-w-44' : 'max-w-48'} min-h-7 px-1.5 py-1 rounded-md border inline-flex items-start gap-1 text-left text-[11px] cursor-pointer ${tone}`}>
+        <MessageSquareText className="w-3.5 h-3.5 shrink-0 mt-px" />
+        <span className={value ? (block ? 'line-clamp-2 wrap-break-word' : 'truncate') : 'whitespace-nowrap'}>{value ?? 'Add remark'}</span>
       </button>
-      {open && (
-        <div className="animate-fadeIn absolute left-0 top-8 z-30 w-64 card shadow-lift p-3 text-left">
+    )}>
+      {({ close }) => (
+        <>
           <p className="text-xs font-medium text-slate-600 mb-1.5">{who} remark</p>
           {readOnly ? (
             <p className="text-sm text-slate-800 whitespace-pre-line">{value}</p>
           ) : (
             <>
               <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} maxLength={500} rows={3}
-                className="w-full px-2.5 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500" />
+                onKeyDown={(e) => e.key === 'Enter' && (e.ctrlKey || e.metaKey) && save(close)}
+                className="w-full px-2.5 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500" />
               <VoiceButton className="mt-1.5" context={context} onText={(t) => setText((cur) => (cur.trim() ? `${cur.trim()} ${t}` : t).slice(0, 500))} />
               <div className="mt-2 flex justify-end gap-2">
-                <button type="button" onClick={() => setOpen(false)} className="px-2.5 py-1 text-xs rounded-md text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button>
-                <button type="button" onClick={save} className="px-2.5 py-1 text-xs rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-700 cursor-pointer">Save remark</button>
+                <button type="button" onClick={close} className="px-2.5 py-1 text-xs rounded-md text-slate-600 hover:bg-slate-100 cursor-pointer">Cancel</button>
+                <button type="button" onClick={() => save(close)} className="px-2.5 py-1 text-xs rounded-md bg-blue-600 text-white font-semibold hover:bg-blue-700 cursor-pointer">Save remark</button>
               </div>
             </>
           )}
-        </div>
+        </>
       )}
-    </div>
+    </PopMenu>
   );
 }
 
@@ -498,7 +557,6 @@ function ReliabilityRow({ sr, cp, readOnly, onPatch, remarks, chip }) {
         <div className="font-semibold text-slate-900">{cp.checkpoint}</div>
         <div className="mt-1">{due ? <Badge variant="warning">Due on this lot</Badge> : <Badge variant="neutral">Not due</Badge>}</div>
         {chip}
-        {(!readOnly || cp.inspectorRemark || cp.inchargeRemark) && remarks}
       </td>
       <td className="px-2 py-2 text-xs text-slate-600 align-top pt-3">{cp.specification}</td>
       <td className="px-2 py-2 text-xs text-slate-600 align-top pt-3 whitespace-nowrap">
@@ -539,6 +597,7 @@ function ReliabilityRow({ sr, cp, readOnly, onPatch, remarks, chip }) {
           ))}
         </div>
       </td>
+      {remarks}
     </tr>
   );
 }

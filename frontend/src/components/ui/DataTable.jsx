@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Columns3, Download, Eye, Inbox, MoreVertical, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Columns3, Download, Eye, Inbox, Info, MoreVertical, X } from 'lucide-react';
 import PopMenu from './PopMenu.jsx';
 import { useState } from 'react';
 import { loadPref, savePref } from '../../utils/prefs.js';
@@ -63,7 +63,7 @@ function downloadCsv(name, cols, rows) {
 
 /**
  * The common list table: one card with the filter bar, the table and the page controls.
- *   columns: [{ key, header, render?(row), text?(row) (for export), sortable?, className?, align?, hideable?, export? }]
+ *   columns: [{ key, header, hint? (ⓘ tooltip on the header), render?(row), text?(row) (for export), sortable?, className?, align?, hideable?, export? }]
  *   Filter bar: `leading` (date range, selects, search), `toolbar` (filter chips), the Filter
  *   builder (`filter` = { fields, value, onChange, storageKey }) and the column chooser (`tableId`).
  *   Rows: `onRowClick`, `onPreview(row)` (eye button), `rowMenu(row)` → [{ label, icon, onClick, danger }]
@@ -143,6 +143,7 @@ export default function DataTable({
                     ) : (
                       c.header
                     )}
+                    {c.hint && <span title={c.hint} className="ml-1 inline-flex align-middle text-slate-400 cursor-help"><Info className="h-3.5 w-3.5" aria-label={c.hint} /></span>}
                   </th>
                 );
               })}

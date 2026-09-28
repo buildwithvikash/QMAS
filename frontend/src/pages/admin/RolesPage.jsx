@@ -484,7 +484,7 @@ function RoleDetail({ role, permissions, editable, onDirty }) {
   return (
     <div className="space-y-4 min-w-0">
       {/* The role's summary and the tabs stay pinned under the page header; only the details scroll. */}
-      <div className="lg:sticky lg:top-[var(--page-header-h,0px)] z-10 bg-canvas lg:-mt-5 lg:pt-5 pb-1 space-y-4">
+      <div className="lg:sticky lg:top-(--page-header-h,0px) z-10 bg-canvas lg:-mt-5 lg:pt-5 pb-1 space-y-4">
       <section className="card px-5 py-4 flex flex-wrap items-center gap-x-6 gap-y-4">
         <div className="flex items-start gap-3 min-w-0 flex-1">
           <span

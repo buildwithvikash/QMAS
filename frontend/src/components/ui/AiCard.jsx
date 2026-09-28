@@ -9,7 +9,7 @@ export default function AiCard({ title, intro, result, loading, error, onRun, ru
   const meta = result?.meta;
   return (
     <section className={`card overflow-hidden border-violet-200 ${className}`}>
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-violet-50 to-white border-b border-violet-100">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-linear-to-r from-violet-50 to-white border-b border-violet-100">
         <Sparkles className="w-4 h-4 text-violet-600" />
         <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
         <span className="rounded bg-violet-100 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide text-violet-700">AI</span>

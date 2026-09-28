@@ -1,4 +1,4 @@
-import { AlertTriangle, Gauge, History, ShieldAlert, Target, TrendingUp } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, Gauge, History, ShieldAlert, Target, TrendingUp } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useImirSummaryMutation } from '../../api/aiApi.js';
@@ -11,74 +11,92 @@ const REC = { REDUCED: 'Reduced inspection', NORMAL: 'Normal inspection', TIGHTE
 const pct = (p) => `${Math.round(p * 100)} %`;
 
 /**
- * What history says about this lot, for the inspector and the Incharge: where to look first,
- * defects this item or vendor had before, drifting values, the vendor's risk with the
- * recommended inspection level, and (Incharge and above) the chance this lot fails.
+ * "Before you inspect": where to look first and what this item or vendor failed before, with drifting
+ * values. `onHistory` shows the lot's full history.
  */
-export default function LotInsights({ insights }) {
+export function BeforeYouInspect({ insights, onHistory }) {
   if (!insights) return null;
-  const { supplier: s, prediction: p, alerts, focus, basis } = insights;
-  const [label, tone] = LEVEL[s.level] ?? LEVEL.NEW;
+  const { alerts, focus, basis } = insights;
   const watch = alerts.length > 0 || focus.length > 0;
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-      <section className="card">
-        <div className="flex items-center gap-2 px-4 pt-3.5 pb-2">
-          <Target className="w-4 h-4 text-violet-600" />
-          <h2 className="section-title">Before you inspect</h2>
-          <span className="ml-auto text-[11px] text-slate-400">{basis.historyLots ? `From ${basis.historyLots} earlier lots of this item` : 'First lot of this item'}</span>
-        </div>
-        {!watch && <p className="px-4 pb-4 text-sm text-slate-500">{basis.historyLots ? 'No repeat defects or drifting values in this item\'s history. Inspect as usual.' : 'No history yet for this item; later lots will show repeat defects and drift here.'}</p>}
-        {focus.length > 0 && (
-          <div className="px-4 pb-3">
-            <p className="text-xs font-medium text-slate-500 mb-1.5">Look here first</p>
-            <ol className="space-y-1.5">
-              {focus.map((f, i) => (
-                <li key={f.uid} className="flex items-baseline gap-2 text-sm">
-                  <span className="w-5 h-5 shrink-0 rounded-full bg-violet-100 text-violet-800 text-[11px] font-bold flex items-center justify-center">{i + 1}</span>
-                  <span><span className="font-semibold text-slate-900">{f.name}</span> <span className="text-slate-500">— {f.reasons.join(', ')}</span></span>
-                </li>
-              ))}
-            </ol>
-          </div>
+    <section className={`card h-full ${watch ? 'border-rose-200 bg-rose-50/30' : ''}`}>
+      <div className="flex flex-wrap items-center gap-2 px-4 pt-3.5 pb-2">
+        <span className="grid h-8 w-8 place-items-center rounded-lg bg-violet-100"><Target className="w-4 h-4 text-violet-600" /></span>
+        <h2 className="section-title">Before you inspect</h2>
+        <span className="text-[11px] text-slate-400">{basis.historyLots ? `From ${basis.historyLots} earlier lots of this item` : 'First lot of this item'}</span>
+        {onHistory && (
+          <button type="button" onClick={onHistory} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-blue-700 hover:border-blue-300 cursor-pointer">
+            View full history <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         )}
-        {alerts.length > 0 && (
-          <ul className="border-t border-slate-100 divide-y divide-slate-100">
-            {alerts.map((a) => {
-              const Icon = a.kind === 'DRIFT' ? TrendingUp : a.level === 'HIGH' ? AlertTriangle : History;
-              return (
-                <li key={`${a.uid}-${a.kind ?? 'hist'}`} className="flex gap-2.5 px-4 py-2">
-                  <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${a.level === 'HIGH' ? 'text-rose-600' : 'text-amber-600'}`} />
-                  <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">{a.checkpoint}</span>: {a.text}</p>
-                </li>
-              );
-            })}
+      </div>
+      {!watch && <p className="px-4 pb-4 text-sm text-slate-500">{basis.historyLots ? "No repeat defects or drifting values in this item’s history. Inspect as usual." : 'No history yet for this item; later lots will show repeat defects and drift here.'}</p>}
+      {focus.length > 0 && (
+        <div className="px-4 pb-3">
+          <p className="text-xs font-medium text-blue-700 mb-1.5">Look here first</p>
+          <ol className="space-y-1.5">
+            {focus.map((f, i) => (
+              <li key={f.uid} className="flex items-baseline gap-2 text-sm">
+                <span className="w-5 h-5 shrink-0 rounded-md bg-rose-100 text-rose-700 text-[11px] font-bold flex items-center justify-center">{i + 1}</span>
+                <span><span className="font-semibold text-slate-900">{f.name}</span> <span className="text-slate-500">— {f.reasons.join(', ')}</span></span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+      {alerts.length > 0 && (
+        <ul className="border-t border-rose-100 divide-y divide-rose-100">
+          {alerts.map((a) => {
+            const Icon = a.kind === 'DRIFT' ? TrendingUp : a.level === 'HIGH' ? AlertTriangle : History;
+            return (
+              <li key={`${a.uid}-${a.kind ?? 'hist'}`} className="flex gap-2.5 px-4 py-2">
+                <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${a.level === 'HIGH' ? 'text-rose-600' : 'text-amber-600'}`} />
+                <p className="text-sm text-slate-700"><span className="font-semibold text-slate-900">{a.checkpoint}</span>: {a.text}</p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** The vendor's risk with the recommended inspection level, and (Incharge and above) the chance this lot fails. */
+export function SupplierRisk({ insights }) {
+  if (!insights) return null;
+  const { supplier: s, prediction: p, basis } = insights;
+  const [label, tone] = LEVEL[s.level] ?? LEVEL.NEW;
+  const high = s.level === 'HIGH';
+  const pTone = p?.level === 'HIGH' ? 'border-rose-200 bg-rose-50 text-rose-700' : p?.level === 'MEDIUM' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  return (
+    <section className={`card h-full ${high ? 'border-rose-200 bg-rose-50/30' : ''}`}>
+      <div className="flex items-center gap-2 px-4 pt-3.5 pb-2">
+        <span className="grid h-8 w-8 place-items-center rounded-lg bg-violet-100"><ShieldAlert className="w-4 h-4 text-violet-600" /></span>
+        <h2 className="section-title">Supplier risk</h2>
+        <Badge variant={tone}>{label}</Badge>
+      </div>
+      <div className="px-4 pb-3 space-y-2">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">{s.vendorName} <span className="font-normal text-slate-500">({s.vendorCode})</span></p>
+          <p className="text-xs text-slate-500">Score {s.score}/100 over {basis.windowDays} days</p>
+        </div>
+        <p className="text-sm font-semibold text-slate-900">{REC[s.recommendation]}</p>
+        {s.reasons.length > 0 && (
+          <ul className="space-y-1">
+            {s.reasons.map((r) => <li key={r} className="flex items-start gap-1.5 text-xs text-slate-600"><Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />{r}</li>)}
           </ul>
         )}
-      </section>
-
-      <section className="card">
-        <div className="flex items-center gap-2 px-4 pt-3.5 pb-2">
-          <ShieldAlert className="w-4 h-4 text-blue-700" />
-          <h2 className="section-title">Supplier risk</h2>
-          <Badge variant={tone}>{label}</Badge>
-        </div>
-        <div className="px-4 pb-3 space-y-2">
-          <p className="text-sm text-slate-800"><span className="font-semibold">{s.vendorName}</span> <span className="text-slate-500">({s.vendorCode}) · score {s.score}/100 over {basis.windowDays} days</span></p>
-          <p className="text-sm"><span className="font-semibold text-slate-900">{REC[s.recommendation]}.</span> <span className="text-slate-600">{s.recommendationText.split(': ')[1] ?? ''}</span></p>
-          {s.reasons.length > 0 && <ul className="text-xs text-slate-500 list-disc pl-4 space-y-0.5">{s.reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
-        </div>
-        {p && (
-          <div className="border-t border-slate-100 px-4 py-3 flex items-center gap-3">
-            <Gauge className={`w-8 h-8 shrink-0 ${p.level === 'HIGH' ? 'text-rose-600' : p.level === 'MEDIUM' ? 'text-amber-600' : 'text-emerald-600'}`} />
-            <div>
-              <p className="text-sm text-slate-800">Chance this lot fails: <span className={`font-bold ${p.level === 'HIGH' ? 'text-rose-700' : p.level === 'MEDIUM' ? 'text-amber-700' : 'text-emerald-700'}`}>{pct(p.probability)}</span></p>
-              <p className="text-[11px] text-slate-500">From recent history: this vendor with this item {pct(p.basis.vendorItem)}, the vendor overall {pct(p.basis.vendor)}, the item overall {pct(p.basis.item)}; recent lots count more.</p>
-            </div>
+      </div>
+      {p && (
+        <div className={`mx-4 mb-4 flex items-center gap-3 rounded-xl border px-3 py-2.5 ${pTone}`}>
+          <Gauge className="w-8 h-8 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-slate-900">Chance this lot fails: <span className="font-bold">{pct(p.probability)}</span></p>
+            <p className="text-[11px] text-slate-500">This vendor with this item {pct(p.basis.vendorItem)}, the vendor overall {pct(p.basis.vendor)}, the item overall {pct(p.basis.item)}; recent lots count more.</p>
           </div>
-        )}
-      </section>
-    </div>
+        </div>
+      )}
+    </section>
   );
 }
 

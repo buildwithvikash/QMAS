@@ -1,8 +1,10 @@
 import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Outlet, useLocation } from 'react-router-dom';
+import { useApplyTheme } from '../../app/theme.js';
 import * as engine from '../../offline/engine.js';
 import Loader from '../ui/Loader.jsx';
+import ReportIssueHost from '../../pages/help/ReportIssueHost.jsx';
 import IdleSignOut from './IdleSignOut.jsx';
 import Navbar from './Navbar.jsx';
 import Sidebar from './Sidebar.jsx';
@@ -12,6 +14,7 @@ const WIDE_BREAKPOINT = 1100;
 
 /** App shell from WRL Tool Report: top bar, collapsible sidebar, scrolling content area. */
 export default function Layout() {
+  useApplyTheme();
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < MOBILE_BREAKPOINT);
   // Wide screens start with the full menu; tablets start with the icon rail to leave room for tables.
   const [expanded, setExpanded] = useState(() => window.innerWidth >= WIDE_BREAKPOINT);
@@ -44,6 +47,7 @@ export default function Layout() {
     <div className="flex flex-col h-screen">
       <Navbar />
       <IdleSignOut />
+      <ReportIssueHost />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar expanded={expanded} onToggle={toggle} isMobile={isMobile} />
         <main className={`flex-1 overflow-auto transition-all duration-300 ${isMobile ? 'ml-0' : expanded ? 'ml-64' : 'ml-[56px]'}`}>

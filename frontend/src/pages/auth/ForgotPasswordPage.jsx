@@ -39,6 +39,7 @@ export default function ForgotPasswordPage() {
         <form onSubmit={submit} noValidate className="space-y-4">
           <FormError message={error && !Object.keys(apiError(error).fieldErrors).length ? apiError(error).message : ''} />
           <TextInput
+            size="lg"
             label="Employee code or e-mail"
             icon={User}
             autoComplete="username"
@@ -47,7 +48,7 @@ export default function ForgotPasswordPage() {
             onChange={(e) => form.set('login', e.target.value)}
             error={form.error('login')}
           />
-          <Button type="submit" size="lg" className="w-full" loading={isLoading}>Send reset link</Button>
+          <Button type="submit" size="lg" className="w-full py-4! text-base! rounded-xl! shadow-lg shadow-blue-600/25" loading={isLoading}>Send reset link</Button>
           <p className="text-center">
             <Link to="/login" className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-blue-700"><ArrowLeft className="w-3.5 h-3.5" />Back to sign in</Link>
           </p>

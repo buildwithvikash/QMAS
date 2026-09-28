@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300..800&display=swap');
 @import 'tailwindcss';
+@import './styles/dark.css' layer(utilities);
+
+/* Dark mode is the `dark` class on <html> (set from the user's choice); dark: utilities follow it. */
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* Same type as WRL Tool Report. */
 @theme {
@@ -30,11 +34,17 @@ body,
 body {
   @apply bg-canvas text-slate-900 antialiased;
 }
+html.dark body {
+  color: #e8edf4;
+}
+html.dark .section-title {
+  color: #d9e0ea;
+}
 
 /* Thin scrollbars instead of WRL's hidden ones: shop-floor users need to see that a table scrolls. */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #cbd5e1 transparent;
+  scrollbar-color: var(--color-slate-300) transparent;
 }
 
 /* In the base layer, so components can still turn it off (e.g. the search input). */
@@ -49,6 +59,10 @@ body {
   /* Work panels: flat, steel border. Hierarchy comes from borders and background, not shadows. */
   .card {
     @apply rounded-[10px] border border-slate-200 bg-white shadow-[0_1px_2px_rgb(15_23_42/0.04)];
+  }
+  /* The card's own bg-white is not a class on the element, so give it the dark surface here. */
+  :where(html.dark) .card {
+    background-color: var(--surface);
   }
   .card-hover {
     @apply transition-colors duration-150 hover:border-blue-300;
@@ -66,7 +80,7 @@ body {
   }
   .skeleton {
     @apply rounded-md bg-slate-200/70;
-    background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.6) 50%, transparent 100%);
+    background-image: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / var(--shimmer, 0.6)) 50%, transparent 100%);
     background-size: 200% 100%;
     animation: shimmer 1.4s ease-in-out infinite;
   }
@@ -119,4 +133,9 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+html.dark {
+  --shimmer: 0.05;
+  --shadow-lift: 0 12px 32px -12px rgb(0 0 0 / 0.6);
 }
