@@ -1,7 +1,5 @@
 import { PERMISSIONS, SECTION_LABELS } from '@qmas/shared';
-import {
-  ArrowLeft, Boxes, Copy, ExternalLink, FileCheck2, GitBranch, GitCompare, Hammer, History, Hourglass, Layers, Pencil, PencilLine, Plus,
-} from 'lucide-react';
+import { ArrowLeft, Boxes, ClipboardCheck, Copy, ExternalLink, FileCheck2, GitBranch, GitCompare, Hammer, History, Hourglass, Layers, Pencil, PencilLine, Plus } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -19,9 +17,10 @@ import { formatDateTime, formatRelative } from '../../utils/format.js';
 import FormatHistory from './FormatHistory.jsx';
 import { groupCheckpoints, SOURCE } from './formatHelpers.js';
 import { FormatContent, StatusBadge, VersionTag } from './formatUi.jsx';
+import InspectorView from './InspectorView.jsx';
 import StartDraftModal from './StartDraftModal.jsx';
 
-const TABS = [['current', 'Current Format', FileCheck2], ['versions', 'Drafts & Versions', GitBranch], ['history', 'History', History]];
+const TABS = [['current', 'Current Format', FileCheck2], ['inspector', 'Inspector view', ClipboardCheck], ['versions', 'Drafts & Versions', GitBranch], ['history', 'History', History]];
 const PILL = {
   DIMENSIONAL: 'border-blue-200 bg-blue-50 text-blue-800',
   VISUAL: 'border-emerald-200 bg-emerald-50 text-emerald-800',
@@ -84,7 +83,10 @@ export default function FormatItemPage() {
   const approvedVersions = versions.filter((v) => v.versionNo);
   const groups = current ? groupCheckpoints(current.checkpoints) : [];
   const kinds = ['DIMENSIONAL', 'VISUAL', 'RELIABILITY', 'RECORD'].map((k) => [k, current?.checkpoints.filter((c) => c.section === k).length ?? 0]).filter(([, n]) => n);
-  const ownDraft = open.find((v) => ['DRAFT', 'REJECTED'].includes(v.status) && v.createdBy === user?.id);
+  // The user's own open draft is continued only if it holds the approved format (or has work in it);
+  // an empty draft started before the current version was approved would open as an empty format.
+  const ownDraft = open.find((v) => ['DRAFT', 'REJECTED'].includes(v.status) && v.createdBy === user?.id
+    && (!current || v.baseVersionNo === current.versionNo || v.checkpointCount > 0));
   const itemRef = { id: item.id, itemCode: item.itemCode, description: item.description };
 
   /** Changes to an approved format go into a draft: the user's own open one, or a new one from the current version. */
@@ -199,7 +201,8 @@ export default function FormatItemPage() {
             onEdit={canCreate ? (c) => openDraft(`?focus=${c.uid}`) : undefined}
             onRemove={canCreate ? (c) => setRemoving(c) : undefined} />
         )}
-        {tab === 'current' && !current && <p className="card p-8 text-center text-sm text-slate-500">Nothing to show until a format is approved.</p>}
+        {(tab === 'current' || tab === 'inspector') && !current && <p className="card p-8 text-center text-sm text-slate-500">Nothing to show until a format is approved.</p>}
+        {tab === 'inspector' && current && <InspectorView key={current.id} checkpoints={current.checkpoints} note={`Approved v${current.versionNo} as the inspector fills it on an IMIR. Try readings and ticks; nothing is saved.`} />}
 
         {tab === 'versions' && (
           <div className="space-y-5">

@@ -40,6 +40,9 @@ export const formatsApi = baseApi
       }),
       checkImport: b.mutation({ query: (formData) => ({ url: '/formats/import/check', method: 'POST', body: formData }), transformResponse: envelope }),
       runImport: b.mutation({ query: (formData) => ({ url: '/formats/import', method: 'POST', body: formData }), transformResponse: envelope, invalidatesTags: ['Formats', 'Master'] }),
+      // Rows corrected on screen after the file check.
+      checkImportRows: b.mutation({ query: (body) => ({ url: '/formats/import/check-rows', method: 'POST', body }), transformResponse: envelope }),
+      runImportRows: b.mutation({ query: (body) => ({ url: '/formats/import/rows', method: 'POST', body }), transformResponse: envelope, invalidatesTags: ['Formats', 'Master'] }),
     }),
   });
 
@@ -60,6 +63,8 @@ export const {
   useResolveConflictsMutation,
   useCheckImportMutation,
   useRunImportMutation,
+  useCheckImportRowsMutation,
+  useRunImportRowsMutation,
 } = formatsApi;
 
 /** Downloads the import template (a file response, so not through RTK Query). */

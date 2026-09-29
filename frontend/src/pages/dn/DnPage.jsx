@@ -30,8 +30,9 @@ export default function DnPage() {
   const { data: dn, isLoading, error } = useGetDnQuery(id);
   const [mail, { isLoading: mailing }] = useMailDnToSelfMutation();
   const { can } = useAccess();
-  const { data: aiStatus } = useGetAiStatusQuery(undefined, { skip: !can(PERMISSIONS.AI_ASSIST) });
-  const ai = can(PERMISSIONS.AI_ASSIST) && !!aiStatus?.configured;
+  const anyAi = can(PERMISSIONS.AI_ROOT_CAUSE) || can(PERMISSIONS.AI_CAPA_REVIEW);
+  const { data: aiStatus } = useGetAiStatusQuery(undefined, { skip: !anyAi });
+  const ai = !!aiStatus?.configured;
   if (isLoading) return <Loader />;
   if (error) return <p className="p-6 text-sm text-rose-600">{apiError(error).message}</p>;
   const editable = dn.allowedActions.includes('edit');
@@ -61,9 +62,9 @@ export default function DnPage() {
           <Facts dn={dn} />
           {editable ? <DnForm key={dn.rowVersion} dn={dn} /> : <DnView dn={dn} />}
           <Images dn={dn} editable={editable} />
-          {ai && <RootCauseSuggestions dn={dn} />}
+          {ai && can(PERMISSIONS.AI_ROOT_CAUSE) && <RootCauseSuggestions dn={dn} />}
           <CapaSection dn={dn} />
-          {ai && dn.capas.length > 0 && <CapaAssessment key={dn.capas.at(-1).id} dn={dn} />}
+          {ai && can(PERMISSIONS.AI_CAPA_REVIEW) && dn.capas.length > 0 && <CapaAssessment key={dn.capas.at(-1).id} dn={dn} />}
           <ActivityLayout history={<HistoryPanel imirId={dn.imirId} history={dn.history} owner="DN" current={currentStage(dnSteps(dn))} />}>
             <LinkedRecords items={[
               dn.imirId && { kind: 'imir', label: dn.imirNo, sub: `Inspection report, ${dn.itemCode}`, to: `/imirs/${dn.imirId}`, badge: <ImirStatus status={dn.imirStatus} /> },

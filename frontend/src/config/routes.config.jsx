@@ -83,8 +83,8 @@ export const ROUTE_SECTIONS = [
     icon: BarChart3,
     items: [
       { path: '/reports', label: 'Registers & KPIs', permission: P.REPORTS_VIEW, element: <ReportsPage /> },
-      { path: '/insights', label: 'Quality Insights', permission: P.AI_ASSIST, element: <InsightsPage /> },
-      { path: '/ask', label: 'Ask QMAS', permission: P.AI_ASSIST, element: <AskPage /> },
+      { path: '/insights', label: 'Quality Insights', permission: P.AI_INSIGHTS, element: <InsightsPage /> },
+      { path: '/ask', label: 'Ask QMAS', permission: P.AI_ASK, element: <AskPage /> },
     ],
   },
   {
@@ -95,7 +95,7 @@ export const ROUTE_SECTIONS = [
     items: [
       { path: '/formats', label: 'Format Library', permission: P.FORMATS_VIEW, element: <FormatLibraryPage /> },
       { path: '/formats/queue', label: 'Approval Queue', permission: P.FORMATS_APPROVE, element: <ApprovalQueuePage /> },
-      { path: '/formats/import', label: 'Import Formats', permission: P.FORMATS_APPROVE, element: <FormatImportPage /> },
+      { path: '/formats/import', label: 'Import Formats', permission: P.FORMATS_IMPORT, element: <FormatImportPage /> },
       { path: '/formats/items/:itemId', hidden: true, permission: P.FORMATS_VIEW, element: <FormatItemPage /> },
       { path: '/formats/versions/:id', hidden: true, permission: P.FORMATS_VIEW, element: <FormatVersionPage /> },
       { path: '/formats/versions/:id/edit', hidden: true, permission: P.FORMATS_CREATE, element: <FormatBuilderPage /> },

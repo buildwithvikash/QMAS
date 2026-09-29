@@ -16,6 +16,7 @@ const router = Router();
 const canView = requirePermission(P.FORMATS_VIEW);
 const canCreate = requirePermission(P.FORMATS_CREATE);
 const canApprove = requirePermission(P.FORMATS_APPROVE);
+const canImport = requirePermission(PERMISSIONS.FORMATS_IMPORT);
 const itemParam = z.object({ itemId: z.coerce.number().int().positive() });
 
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -53,14 +54,29 @@ router.get('/san-lookup', canCreate, validate({ query: sanLookupQuery }), async 
 });
 
 // ── Import (pre-fed formats) ──────────────────────────────────────────────────
-router.get('/import/template', canApprove, async (_req, res) => {
+router.get('/import/template', canImport, async (_req, res) => {
   res.setHeader('Content-Type', XLSX);
   res.setHeader('Content-Disposition', 'attachment; filename="QMAS-format-import-template.xlsx"');
   res.send(Buffer.from(await imports.template()));
 });
-router.post('/import/check', canApprove, receiveFile, async (req, res) => ok(res, await imports.analyse(req.file.buffer)));
-router.post('/import', canApprove, receiveFile, async (req, res) => {
+router.post('/import/check', canImport, receiveFile, async (req, res) => ok(res, await imports.analyse(req.file.buffer)));
+router.post('/import', canImport, receiveFile, async (req, res) => {
   ok(res, await imports.commit({ ...txContext(req), log: req.log }, req.user, req.file.buffer, req.file.originalname));
+});
+// Rows corrected on screen after the file check: checked and imported without the file.
+const cell = z.union([z.string().max(2000), z.number(), z.null()]).optional().transform((v) => (v === undefined ? null : v));
+const importRows = z.object({
+  sheet: z.string().max(100).default('Edited'),
+  fileName: z.string().max(260).default('edited rows'),
+  rows: z.array(z.object({
+    rowNo: z.number().int().positive().nullable().optional().transform((v) => v ?? null),
+    ...Object.fromEntries(imports.ROW_FIELDS.map((k) => [k, cell])),
+  })).min(1, 'There are no rows to check.').max(100_000),
+});
+router.post('/import/check-rows', canImport, validate({ body: importRows }), async (req, res) => ok(res, await imports.analyseRows(body(req).sheet, body(req).rows)));
+router.post('/import/rows', canImport, validate({ body: importRows }), async (req, res) => {
+  const b = body(req);
+  ok(res, await imports.commitRows({ ...txContext(req), log: req.log }, req.user, { sheet: b.sheet, rows: b.rows, fileName: b.fileName, edited: true }));
 });
 
 // ── Drafts and versions ───────────────────────────────────────────────────────

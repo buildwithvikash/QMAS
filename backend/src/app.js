@@ -57,7 +57,10 @@ export function createApp({ logger = defaultLogger } = {}) {
   );
   app.use(helmet());
   if (env.corsOrigins.length) app.use(cors({ origin: env.corsOrigins, credentials: true }));
-  app.use(express.json({ limit: '1mb' }));
+  // Corrected format-import rows can be large (up to 100 000 rows); everything else stays small.
+  const jsonSmall = express.json({ limit: '1mb' });
+  const jsonImport = express.json({ limit: '25mb' });
+  app.use((req, res, next) => (/^\/api\/v1\/formats\/import\/(check-rows|rows)$/.test(req.path) ? jsonImport : jsonSmall)(req, res, next));
   app.use(cookieParser());
 
   const api = Router();

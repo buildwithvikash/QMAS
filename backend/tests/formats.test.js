@@ -282,6 +282,73 @@ describe('bulk import', () => {
     expect(again.body.data.items.find((i) => i.itemCode === newCode).status).toBe('SKIP');
   });
 
+  it('lets the rows be corrected on screen, re-checked and imported as corrected', async () => {
+    const code = uid('EDT');
+    const file = await workbook([
+      [code, 'Dimensional', 'Length', 'about 50', null, null, 'mm', 'DVC', null, 'Edited bracket'],
+      [code, 'Visual', 'Aesthetic', 'Free from burr', null, null, null, 'Visual'],
+    ]);
+    const { agent } = await head();
+    const check = (await agent.post('/api/v1/formats/import/check').attach('file', file, 'edit.xlsx')).body.data;
+    const item = check.items.find((i) => i.itemCode === code);
+    expect(item.status).toBe('ERROR'); // "about 50" gives no limits for a dimensional check
+    expect(item.rows).toHaveLength(2);
+    expect(item.rows[0]).toMatchObject({ rowNo: 2, itemCode: code, section: 'Dimensional', checkpoint: 'Length', specification: 'about 50' });
+
+    // Fix the limits, add a checkpoint the file forgot, then check the corrected rows.
+    const rows = [
+      { ...item.rows[0], specification: '50 ± 0.5' },
+      item.rows[1],
+      { rowNo: null, itemCode: code, section: 'Dimensional', checkpoint: 'Width', specification: '20', lsl: 19.8, usl: 20.2, uom: 'mm', instrument: 'DVC' },
+    ];
+    const rechecked = await agent.post('/api/v1/formats/import/check-rows').send({ sheet: check.sheet, fileName: 'edit.xlsx', rows });
+    expect(rechecked.status).toBe(200);
+    const fixed = rechecked.body.data.items.find((i) => i.itemCode === code);
+    expect(fixed).toMatchObject({ status: 'READY', firstRow: 2, lastRow: 3 });
+    expect(fixed.checkpoints.map((c) => c.checkpoint)).toEqual(['Length', 'Aesthetic', 'Width']);
+    expect(fixed.checkpoints[0]).toMatchObject({ lsl: 49.5, usl: 50.5 });
+    expect(fixed.rows[2].rowNo).toBeNull();
+    expect((await getPool().query('SELECT 1 FROM mst.item WHERE item_code = $1', [code])).rows).toHaveLength(0);
+
+    const done = await agent.post('/api/v1/formats/import/rows').send({ sheet: check.sheet, fileName: 'edit.xlsx', rows });
+    expect(done.body.data.summary).toMatchObject({ imported: 1 });
+    const { rows: v } = await getPool().query(
+      `SELECT v.source_ref, v.decision_remark, (SELECT count(*)::int FROM qms.format_checkpoint c WHERE c.version_id = v.id) AS n
+         FROM mst.item i JOIN qms.format f ON f.item_id = i.id JOIN qms.format_version v ON v.id = f.current_version_id WHERE i.item_code = $1`,
+      [code],
+    );
+    expect(v[0]).toMatchObject({ n: 3, source_ref: { file: 'edit.xlsx', edited: true } });
+    expect(v[0].decision_remark).toContain('corrected on screen');
+
+    // Only people who may import can use it; nonsense is refused.
+    const { agent: incharge } = await agentWithRoles([{ roleCode: 'IQC_INCHARGE', plantId: await plantId('1115') }]);
+    expect((await incharge.post('/api/v1/formats/import/check-rows').send({ rows })).status).toBe(403);
+    expect((await agent.post('/api/v1/formats/import/check-rows').send({ rows: [] })).status).toBe(422);
+  });
+
+  it('closes empty drafts started before an import, keeps drafts with work, and flags them as behind', async () => {
+    const code = uid('STL');
+    const { agent } = await head();
+    const rows = [
+      { rowNo: 2, itemCode: code, itemDescription: 'Stale draft test', section: 'Visual', checkpoint: 'Aesthetic', specification: 'Clean', instrument: 'Visual' },
+    ];
+    // An item with no format yet: one empty draft and one with work in it, both started before the import.
+    const { rows: it } = await getPool().query("INSERT INTO mst.item (item_code, description) VALUES ($1, 'Stale draft test') RETURNING id", [code]);
+    const empty = (await draft(agent, it[0].id, { from: 'CUSTOM' })).body.data;
+    const withWork = (await draft(agent, it[0].id, { from: 'BLANK' })).body.data;
+    expect((await save(agent, withWork, { checkpoints: [vis('Clean surface')] })).status).toBe(200);
+
+    expect((await agent.post('/api/v1/formats/import/rows').send({ rows })).body.data.summary.imported).toBe(1);
+
+    const status = async (id) => (await getPool().query('SELECT status FROM qms.format_version WHERE id = $1', [id])).rows[0].status;
+    expect(await status(empty.id)).toBe('DISCARDED');
+    expect(await status(withWork.id)).toBe('DRAFT');
+    const kept = (await agent.get(`/api/v1/formats/versions/${withWork.id}`)).body.data;
+    expect(kept).toMatchObject({ behindCurrent: true, currentVersionNo: 1, baseVersionId: null });
+    const { rows: ev } = await getPool().query("SELECT remark FROM qms.format_event WHERE version_id = $1 AND action = 'DISCARDED'", [empty.id]);
+    expect(ev[0].remark).toContain('newer version was approved');
+  });
+
   it('serves a template that imports cleanly, and rejects non-Excel files', async () => {
     const { agent } = await head();
     const tpl = await agent.get('/api/v1/formats/import/template').buffer(true).parse((res, cb) => {

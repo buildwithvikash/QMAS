@@ -11,6 +11,8 @@ import * as repo from './formats.repo.js';
  * Bulk import of existing ("pre-fed") formats from Excel, one row per checkpoint — the layout of the
  * "For Data" sheet in the review workbook, plus optional columns. Every item with no format yet
  * gets an approved version 1 (source PRE_FED); items that already have a format are skipped.
+ * After the file is checked, the user can correct the rows on screen: the corrected rows are
+ * checked and imported the same way (analyseRows / commitRows), without the file.
  */
 export const COLUMNS = [
   { key: 'itemCode', header: 'Item Code', required: true, aliases: ['item code', 'item', 'item no', 'item no.'] },
@@ -156,9 +158,23 @@ function toCheckpoint(row) {
   return { checkpoint: r.success ? r.data : null, messages };
 }
 
+/** The row fields, as edited on screen (and returned with each item for editing). */
+export const ROW_FIELDS = COLUMNS.map((c) => c.key);
+const rowForEditing = (row) => Object.fromEntries([['rowNo', row.rowNo ?? null], ...ROW_FIELDS.map((k) => [k, row[k] ?? null])]);
+
 /** Validates the whole file. Nothing is written. */
 export async function analyse(buffer) {
   const { sheet, rows } = await readRows(buffer);
+  return analyseRows(sheet, rows);
+}
+
+/**
+ * Validates rows (from the file, or corrected on screen). Rows added on screen have no row number:
+ * they get "new 1", "new 2"… in messages. Nothing is written.
+ */
+export async function analyseRows(sheet, inputRows) {
+  let added = 0;
+  const rows = inputRows.map((r) => ({ ...r, rowNo: r.rowNo ?? `new ${(added += 1)}` }));
   const groups = new Map();
   for (const row of rows) {
     const code = text(row.itemCode)?.toUpperCase() ?? null;
@@ -208,7 +224,12 @@ export async function analyse(buffer) {
       for (const p of submitProblems({ header, checkpoints })) messages.push({ level: 'error', message: p });
       if (messages.some((m) => m.level === 'error')) status = 'ERROR';
     }
-    items.push({ itemCode: g.itemCode, description, itemExists: !!item, status, header, checkpoints: renumber(checkpoints), messages, firstRow: g.rows[0].rowNo, lastRow: g.rows.at(-1).rowNo });
+    const numbered = g.rows.map((r) => r.rowNo).filter((n) => typeof n === 'number');
+    items.push({
+      itemCode: g.itemCode, description, itemExists: !!item, status, header, checkpoints: renumber(checkpoints), messages,
+      firstRow: numbered.length ? Math.min(...numbered) : null, lastRow: numbered.length ? Math.max(...numbered) : null,
+      rows: g.rows.map((r) => rowForEditing({ ...r, rowNo: typeof r.rowNo === 'number' ? r.rowNo : null })),
+    });
   }
 
   const count = (s) => items.filter((i) => i.status === s).length;
@@ -224,7 +245,13 @@ export async function analyse(buffer) {
  * Returns the analysis with per-item results.
  */
 export async function commit(ctx, user, buffer, fileName) {
-  const analysis = await analyse(buffer);
+  const { sheet, rows } = await readRows(buffer);
+  return commitRows(ctx, user, { sheet, rows, fileName });
+}
+
+/** Imports rows as checked (from the file or corrected on screen). */
+export async function commitRows(ctx, user, { sheet, rows, fileName, edited = false }) {
+  const analysis = await analyseRows(sheet, rows);
   for (const item of analysis.items.filter((i) => i.status === 'READY')) {
     try {
       await withTransaction(ctx, async (db) => {
@@ -239,14 +266,15 @@ export async function commit(ctx, user, buffer, fileName) {
         if (format.currentVersionId) throw AppError.conflict('A format was approved for this item while the import was running.');
         const id = await repo.insertVersion(db, {
           formatId: format.id, status: 'APPROVED', source: 'PRE_FED', versionNo: 1, header: item.header, userId: user.id,
-          sourceRef: { file: fileName, sheet: analysis.sheet, rows: [item.firstRow, item.lastRow] },
+          sourceRef: { file: fileName, sheet: analysis.sheet, rows: [item.firstRow, item.lastRow], edited },
         });
         await repo.replaceCheckpoints(db, id, item.checkpoints);
-        await repo.updateVersion(db, id, null, { decidedAt: new Date(), decidedBy: user.id, decisionRemark: `Imported from ${fileName}` });
+        await repo.updateVersion(db, id, null, { decidedAt: new Date(), decidedBy: user.id, decisionRemark: `Imported from ${fileName}${edited ? ' (corrected on screen)' : ''}` });
         await repo.setCurrent(db, format.id, id);
+        await repo.discardStaleEmptyDrafts(db, format.id, id, user.id);
         await repo.addEvent(db, {
           formatId: format.id, versionId: id, action: 'IMPORTED', userId: user.id,
-          detail: { file: fileName, sheet: analysis.sheet, rows: [item.firstRow, item.lastRow], checkpoints: item.checkpoints.length, versionNo: 1 },
+          detail: { file: fileName, sheet: analysis.sheet, rows: [item.firstRow, item.lastRow], checkpoints: item.checkpoints.length, versionNo: 1, editedOnScreen: edited },
         });
         await openAwaitingForItem(db, rows[0].id, { userId: user.id });
       });

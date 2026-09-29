@@ -26,7 +26,7 @@ export default function CommandPalette({ onClose }) {
   const listRef = useRef(null);
   const navigate = useNavigate();
   const { menu, can } = useAccess();
-  const aiAllowed = can(PERMISSIONS.AI_ASSIST);
+  const aiAllowed = can(PERMISSIONS.AI_SEARCH);
   const { data: aiStatus } = useGetAiStatusQuery(undefined, { skip: !aiAllowed });
   const [aiSearch, { isLoading: asking }] = useAiSearchMutation();
   const term = useDebounced(q.trim(), 200);

@@ -119,6 +119,9 @@ export async function getVersion(id, user) {
     result.allowedActions = allowedActions(user, v);
     result.otherOpenDrafts = await repo.openDraftsOf(pool, v.formatId, v.id);
     result.behindCurrent = OPEN.includes(v.status) && v.baseVersionId !== v.currentVersionId;
+    result.currentVersionNo = v.currentVersionId
+      ? (await pool.query('SELECT version_no FROM qms.format_version WHERE id = $1', [v.currentVersionId])).rows[0]?.version_no ?? null
+      : null;
   }
   return result;
 }
@@ -277,6 +280,7 @@ async function fastForward(db, user, v, format, { remark, mergeNote = null, merg
     decisionRemark: remark ?? null, mergeNote,
   });
   await repo.setCurrent(db, v.formatId, v.id);
+  await repo.discardStaleEmptyDrafts(db, v.formatId, v.id, user.id);
   // History: what this approval changed against the version it replaces.
   const changes = compactDiff(diffVersions(previous, await repo.loadModel(db, v.id)));
   await repo.addEvent(db, {

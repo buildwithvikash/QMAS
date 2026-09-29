@@ -1,8 +1,5 @@
 import { SECTION_LABELS } from '@qmas/shared';
-import {
-  AlertTriangle, ArrowLeft, BookOpen, CheckCircle2, Clock, FileText, GitCompare, GitMerge, Hash, History, Info, Layers, MessageSquareText, PencilLine, Send, Trash2,
-  Undo2, UserRound, XCircle,
-} from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BookOpen, CheckCircle2, ClipboardCheck, Clock, FileText, GitCompare, GitMerge, Hash, History, Info, Layers, MessageSquareText, PencilLine, Send, Trash2, Undo2, UserRound, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -17,6 +14,7 @@ import { formatDateTime } from '../../utils/format.js';
 import { fieldLabel, fmtValue, groupCheckpoints, SOURCE } from './formatHelpers.js';
 import FormatHistory from './FormatHistory.jsx';
 import { DiffSummary, FormatContent, StatusBadge, VersionTag } from './formatUi.jsx';
+import InspectorView from './InspectorView.jsx';
 
 function Banner({ tone = 'info', icon: Icon = Info, children }) {
   const tones = { info: 'border-sky-200 bg-sky-50 text-sky-800', warning: 'border-amber-200 bg-amber-50 text-amber-800', danger: 'border-rose-200 bg-rose-50 text-rose-800', success: 'border-emerald-200 bg-emerald-50 text-emerald-800' };
@@ -67,6 +65,7 @@ export default function FormatVersionPage() {
             {[
               ...(compareWith ? [['changes', `Changes from v${v.baseVersionNo}`, GitCompare, cmp ? cmp.diff.added.length + cmp.diff.changed.length + cmp.diff.removed.length + cmp.diff.header.length : null]] : []),
               ['content', 'Full format', FileText, v.checkpoints.length],
+              ['inspector', 'Inspector view', ClipboardCheck, null],
               ['history', 'History', History, events?.length ?? null],
             ].map(([k, label, Icon, n]) => (
               <button key={k} type="button" role="tab" aria-selected={shown === k} onClick={() => setTab(k)}
@@ -90,7 +89,8 @@ export default function FormatVersionPage() {
             <ul className="text-sm space-y-0.5">{cmp.diff.header.map((h) => <li key={h.field}>{fieldLabel(h.field)}: <s className="text-rose-500">{fmtValue(h.field, h.from)}</s> → <b>{fmtValue(h.field, h.to)}</b></li>)}</ul>
           </section>
         )}
-        {shown !== 'history' && <FormatContent checkpoints={v.checkpoints} diff={shown === 'changes' ? cmp?.diff : undefined} />}
+        {(shown === 'content' || shown === 'changes') && <FormatContent checkpoints={v.checkpoints} diff={shown === 'changes' ? cmp?.diff : undefined} />}
+        {shown === 'inspector' && <InspectorView key={v.id} checkpoints={v.checkpoints} />}
         {shown === 'history' && <FormatHistory events={events} loading={loadingHistory && !events} showVersion={false} />}
       </div>
 
