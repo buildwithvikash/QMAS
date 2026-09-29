@@ -1,7 +1,8 @@
-import { BarChart3, ClipboardCheck, FileText, FileWarning, FileX2, Home, Settings, SlidersHorizontal, Sparkles } from 'lucide-react';
+import { PERMISSIONS } from '@qmas/shared';
+import { BarChart3, ClipboardCheck, FileText, FileWarning, FileX2, Home, LifeBuoy, Settings, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { ROUTE_SECTIONS } from '../../config/routes.config.jsx';
 
-/** Look of the Roles & Permissions page, shared by the role details and the permission matrix. */
+/** Look of the Roles & Permissions page, used by the role details. */
 
 // The menu pages each permission opens, straight from the menu configuration (so this stays true).
 export const PAGES_BY_PERMISSION = new Map();
@@ -12,7 +13,20 @@ for (const section of ROUTE_SECTIONS) {
   }
 }
 
-// Module: icon, icon tile, and the tint of its group row in the matrix.
+// Views inside a page that need their own permission (not separate menu entries).
+export const EXTRA_PAGES = [
+  { permission: PERMISSIONS.SUPPORT_MANAGE, path: '/help/tickets?scope=all', label: 'Support Desk (all tickets)', section: 'Help & Support', note: 'Tabs on My Tickets: all tickets, assigned to me; reply, assign, set status' },
+  // AI features inside other pages.
+  { permission: PERMISSIONS.AI_SEARCH, path: '/', label: 'AI: search in plain words', section: 'Home', note: 'In the search box (Ctrl K): a question becomes list filters' },
+  { permission: PERMISSIONS.AI_IMIR_SUMMARY, path: '/imirs', label: 'AI: inspection summary', section: 'Incoming Inspection', note: 'On a submitted IMIR' },
+  { permission: PERMISSIONS.AI_FAILURE_CHANCE, path: '/imirs', label: 'Chance this lot fails', section: 'Incoming Inspection', note: 'In Supplier risk on the IMIR page (from history, no AI service)' },
+  { permission: PERMISSIONS.AI_VOICE_TIDY, path: '/imirs', label: 'AI: tidy dictated text', section: 'Incoming Inspection', note: '"Tidy & add" on the inspection sheet when dictating' },
+  { permission: PERMISSIONS.AI_ROOT_CAUSE, path: '/dns', label: 'AI: root-cause suggestions', section: 'Defect Notification', note: 'On a DN' },
+  { permission: PERMISSIONS.AI_CAPA_REVIEW, path: '/dns', label: 'AI: CAPA assessment', section: 'Defect Notification', note: "On a DN with the vendor's CAPA" },
+];
+for (const x of EXTRA_PAGES) PAGES_BY_PERMISSION.set(x.permission, [...(PAGES_BY_PERMISSION.get(x.permission) ?? []), x]);
+
+// Module: icon, icon tile, and a soft tint of the module colour.
 export const MODULE_LOOK = {
   Home: [Home, 'bg-blue-100 text-blue-700', 'bg-blue-50/70'],
   Administration: [Settings, 'bg-emerald-100 text-emerald-700', 'bg-emerald-50/70'],
@@ -23,6 +37,7 @@ export const MODULE_LOOK = {
   'Defect Notification': [FileX2, 'bg-rose-100 text-rose-700', 'bg-rose-50/70'],
   Reports: [BarChart3, 'bg-indigo-100 text-indigo-700', 'bg-indigo-50/70'],
   'AI Assistant': [Sparkles, 'bg-fuchsia-100 text-fuchsia-700', 'bg-fuchsia-50/70'],
+  'Help & Support': [LifeBuoy, 'bg-cyan-100 text-cyan-700', 'bg-cyan-50/70'],
 };
 
 const DEPT_TONE = {

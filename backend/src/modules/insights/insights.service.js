@@ -87,7 +87,7 @@ export async function lotInsights(id, user) {
   const base = await baseRate(db);
   const [vendor] = await vendorHistory(db, [imir.vendorId]);
   const supplier = riskOf(vendor, base);
-  const canSeePrediction = user.assignments.some((a) => a.permissions.includes(PERMISSIONS.AI_ASSIST));
+  const canSeePrediction = user.assignments.some((a) => a.permissions.includes(PERMISSIONS.AI_FAILURE_CHANCE));
   const prediction = canSeePrediction ? await probabilityFor(db, { vendorId: imir.vendorId, itemId: imir.itemId, excludeId: imir.id }, base) : null;
 
   // Earlier lots of the item, newest first, with each checkpoint's lot average and result.
@@ -193,7 +193,7 @@ export async function lotInsights(id, user) {
  * fail, and characteristics drifting in recent lots, within the user's plants.
  */
 export async function overview(user) {
-  const scope = plantScope(user, PERMISSIONS.AI_ASSIST, 'view');
+  const scope = plantScope(user, PERMISSIONS.AI_INSIGHTS, 'view');
   const args = scope.all ? [] : [scope.plantIds];
   const inScope = (col) => (scope.all ? 'true' : `${col} = ANY($1)`);
   const db = getPool();

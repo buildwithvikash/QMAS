@@ -11,6 +11,6 @@ const router = Router();
 router.get('/imirs/:id', requirePermission(PERMISSIONS.IMIR_VIEW), validate({ params: uuidParam }), async (req, res) => ok(res, await lotInsights(req.params.id, req.user)));
 
 /** Plant-wide: supplier risk ranking, open lots most likely to fail, drifting characteristics. */
-router.get('/overview', requirePermission(PERMISSIONS.AI_ASSIST), async (req, res) => ok(res, await overview(req.user)));
+router.get('/overview', requirePermission(PERMISSIONS.AI_INSIGHTS), async (req, res) => ok(res, await overview(req.user)));
 
 export default router;

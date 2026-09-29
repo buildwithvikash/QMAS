@@ -5,6 +5,7 @@ import { useApplyTheme } from '../../app/theme.js';
 import * as engine from '../../offline/engine.js';
 import Loader from '../ui/Loader.jsx';
 import ReportIssueHost from '../../pages/help/ReportIssueHost.jsx';
+import ConfirmHost from './ConfirmHost.jsx';
 import ErrorBoundary from './ErrorBoundary.jsx';
 import IdleSignOut from './IdleSignOut.jsx';
 import Navbar from './Navbar.jsx';
@@ -49,6 +50,7 @@ export default function Layout() {
       <Navbar />
       <IdleSignOut />
       <ReportIssueHost />
+      <ConfirmHost />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar expanded={expanded} onToggle={toggle} isMobile={isMobile} />
         <main className={`flex-1 overflow-auto transition-all duration-300 ${isMobile ? 'ml-0' : expanded ? 'ml-64' : 'ml-[56px]'}`}>

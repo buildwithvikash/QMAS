@@ -11,13 +11,18 @@ import Button from './Button.jsx';
 export default function Modal({ title, subtitle, onClose, children, footer, size = 'md' }) {
   const ref = useRef(null);
   useEffect(() => {
-    const onKey = (e) => e.key === 'Escape' && onClose();
+    // Esc closes only the dialog on top (a confirmation can open over another dialog).
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      const open = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      if (open[open.length - 1] === ref.current) onClose();
+    };
     document.addEventListener('keydown', onKey);
     ref.current?.querySelector('input, select, textarea, button:not([data-close])')?.focus();
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const width = { sm: 'max-w-md', md: 'max-w-2xl', lg: 'max-w-4xl' }[size];
+  const width = { sm: 'max-w-md', md: 'max-w-2xl', lg: 'max-w-4xl', xl: 'max-w-7xl' }[size];
   // Rendered at the end of <body>, so sticky or blurred parents cannot clip it.
   return createPortal(
     <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -49,9 +54,9 @@ export function ModalFooter({ onCancel, onSave, saveLabel = 'Save', saving, save
 }
 
 /** Confirmation for actions that change state in a way users should think about. */
-export function ConfirmDialog({ title, message, confirmLabel, variant = 'danger', onConfirm, onCancel, busy }) {
+export function ConfirmDialog({ title, message, confirmLabel, cancelLabel, variant = 'danger', onConfirm, onCancel, busy }) {
   return (
-    <Modal title={title} onClose={onCancel} size="sm" footer={<ModalFooter onCancel={onCancel} onSave={onConfirm} saveLabel={confirmLabel} saving={busy} saveVariant={variant} />}>
+    <Modal title={title} onClose={onCancel} size="sm" footer={<ModalFooter onCancel={onCancel} onSave={onConfirm} saveLabel={confirmLabel} saving={busy} saveVariant={variant} cancelLabel={cancelLabel} />}>
       <p className="text-sm text-slate-600">{message}</p>
     </Modal>
   );

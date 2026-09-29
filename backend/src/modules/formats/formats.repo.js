@@ -237,6 +237,26 @@ export async function markResolved(db, conflictId, resolution, value, userId) {
 // ── History ───────────────────────────────────────────────────────────────────
 
 /** Records a step on a format (see qms.format_event). */
+/**
+ * Empty drafts that were started before the version now approved (never filled in) are discarded:
+ * opening one later would show an empty "first format" instead of the approved one.
+ * Drafts with checkpoints are kept (they merge on approval). Returns the discarded ids.
+ */
+export async function discardStaleEmptyDrafts(db, formatId, currentVersionId, userId) {
+  const { rows } = await db.query(
+    `UPDATE qms.format_version v SET status = 'DISCARDED'
+      WHERE v.format_id = $1 AND v.status = 'DRAFT' AND v.id <> $2 AND v.base_version_id IS DISTINCT FROM $2
+        AND NOT EXISTS (SELECT 1 FROM qms.format_checkpoint c WHERE c.version_id = v.id)
+      RETURNING v.id`,
+    [formatId, currentVersionId],
+  );
+  for (const r of rows) {
+    // eslint-disable-next-line no-await-in-loop
+    await addEvent(db, { formatId, versionId: r.id, action: 'DISCARDED', userId, remark: 'Empty draft closed: a newer version was approved' });
+  }
+  return rows.map((r) => r.id);
+}
+
 export async function addEvent(db, { formatId, versionId = null, action, userId = null, remark = null, detail = null }) {
   await db.query(
     'INSERT INTO qms.format_event (format_id, version_id, action, actor_id, remark, detail) VALUES ($1, $2, $3, $4, $5, $6)',

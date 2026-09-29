@@ -6,11 +6,9 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Clock,
-  Columns3,
   Copy,
   ExternalLink,
   FileText,
-  Grid3x3,
   Info,
   KeyRound,
   MoreVertical,
@@ -28,6 +26,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Link } from "react-router-dom";
+import { askConfirm } from "../../app/confirm.js";
 import {
   useDeleteRoleMutation,
   useGetPermissionsQuery,
@@ -46,7 +45,6 @@ import { useAccess } from "../../hooks/useAccess.js";
 import { apiError } from "../../utils/apiError.js";
 import { formatDate, formatRelative } from "../../utils/format.js";
 import RoleDialog from "./RoleDialog.jsx";
-import RoleMatrix from "./RoleMatrix.jsx";
 import { deptTone, MODULE_LOOK, PAGES_BY_PERMISSION } from "./roleLook.js";
 
 /**
@@ -60,10 +58,6 @@ export default function RolesPage() {
   const { data: roles, isLoading } = useGetRolesQuery();
   const { data: permissions } = useGetPermissionsQuery();
   const [selected, setSelected] = useState(null);
-  const [view, setView] = useState("matrix");
-  const [permQuery, setPermQuery] = useState("");
-  const [compare, setCompare] = useState([]);
-  const [onlyDiff, setOnlyDiff] = useState(false);
   const [dialog, setDialog] = useState(null); // { mode: 'add' | 'duplicate' | 'edit' }
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -76,9 +70,16 @@ export default function RolesPage() {
     roles.find((r) => r.code !== ROLES.SYSTEM_ADMIN) ??
     roles[0];
   const departments = [...new Set(roles.map((r) => r.department))].sort();
-  const pick = (code) => {
+  const pick = async (code) => {
     if (code === role.code) return;
-    if (dirty && !window.confirm("Discard the unsaved permission changes?"))
+    if (
+      dirty &&
+      !(await askConfirm({
+        title: "Discard unsaved changes?",
+        message: "The permission changes you made to this role are not saved.",
+        confirmLabel: "Discard changes",
+      }))
+    )
       return;
     setDirty(false);
     setSelected(code);
@@ -111,14 +112,8 @@ export default function RolesPage() {
   };
 
   const menu = [
-    {
-      label: view === "matrix" ? "Role details" : "Permission matrix",
-      icon: view === "matrix" ? FileText : Grid3x3,
-      onClick: () => setView(view === "matrix" ? "role" : "matrix"),
-    },
     ...(manage && !role.isSystem
       ? [
-          "sep",
           {
             label: role.isActive ? "Make inactive" : "Make active",
             icon: Power,
@@ -141,38 +136,7 @@ export default function RolesPage() {
         title="Roles & Permissions"
         subtitle="Manage user roles and what they can see and do. Select a role to view and edit its permissions."
       >
-        {view === "matrix" && (
-          <label className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              value={permQuery}
-              onChange={(e) => setPermQuery(e.target.value)}
-              placeholder="Search permissions…"
-              aria-label="Search permissions"
-              className="h-9 w-64 pl-9 pr-3 rounded-lg border border-slate-200 bg-white text-sm focus:outline-none focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500"
-            />
-          </label>
-        )}
-        {view === "matrix" && (
-          <ComparePicker
-            roles={roles}
-            value={compare}
-            onChange={setCompare}
-            onlyDiff={onlyDiff}
-            onOnlyDiff={setOnlyDiff}
-          />
-        )}
-        {view === "matrix" && manage && (
-          <Button size="sm" icon={Plus} onClick={() => setDialog({ mode: "add" })}>
-            Add role
-          </Button>
-        )}
-        {view === "role" && (
-          <Button size="sm" variant="secondary" icon={Grid3x3} onClick={() => setView("matrix")}>
-            Permission matrix
-          </Button>
-        )}
-        {manage && view === "role" && role.code !== ROLES.SYSTEM_ADMIN && (
+        {manage && role.code !== ROLES.SYSTEM_ADMIN && (
           <Button
             variant="secondary"
             size="sm"
@@ -183,7 +147,7 @@ export default function RolesPage() {
             Duplicate role
           </Button>
         )}
-        {manage && view === "role" && role.code !== ROLES.SYSTEM_ADMIN && (
+        {manage && role.code !== ROLES.SYSTEM_ADMIN && (
           <Button
             variant="secondary"
             size="sm"
@@ -193,50 +157,25 @@ export default function RolesPage() {
             Edit role details
           </Button>
         )}
-        <Kebab items={menu} />
+        {menu.length > 0 && <Kebab items={menu} />}
       </PageHeader>
 
-      {view === "matrix" ? (
-        <div className="p-4 sm:p-5 grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)] items-start">
-          <RoleList
-            roles={roles}
-            total={permissions.length}
-            active={role.code}
-            onPick={pick}
-            onAdd={null}
-          />
-          <RoleMatrix
-            key={role.code}
-            roles={roles}
-            permissions={permissions}
-            role={role}
-            editable={manage && role.code !== ROLES.SYSTEM_ADMIN}
-            onSelect={pick}
-            onDetails={() => setView("role")}
-            onDirty={setDirty}
-            search={permQuery}
-            compare={compare}
-            onlyDiff={onlyDiff && compare.length > 0}
-          />
-        </div>
-      ) : (
-        <div className="p-4 sm:p-5 grid gap-4 lg:grid-cols-[340px_1fr] items-start">
-          <RoleList
-            roles={roles}
-            total={permissions.length}
-            active={role.code}
-            onPick={pick}
-            onAdd={manage ? () => setDialog({ mode: "add" }) : null}
-          />
-          <RoleDetail
-            key={role.code}
-            role={role}
-            permissions={permissions}
-            editable={manage && role.code !== ROLES.SYSTEM_ADMIN}
-            onDirty={setDirty}
-          />
-        </div>
-      )}
+      <div className="p-4 sm:p-5 grid gap-4 lg:grid-cols-[340px_1fr] items-start">
+        <RoleList
+          roles={roles}
+          total={permissions.length}
+          active={role.code}
+          onPick={pick}
+          onAdd={manage ? () => setDialog({ mode: "add" }) : null}
+        />
+        <RoleDetail
+          key={role.code}
+          role={role}
+          permissions={permissions}
+          editable={manage && role.code !== ROLES.SYSTEM_ADMIN}
+          onDirty={setDirty}
+        />
+      </div>
 
       {dialog && (
         <RoleDialog
@@ -985,42 +924,5 @@ function RoleInfo({ role, granted }) {
         </p>
       </section>
     </div>
-  );
-}
-
-/** Choose the roles to compare in the matrix (the selected role is always shown), and whether to keep only the rows where they differ. */
-function ComparePicker({ roles, value, onChange, onlyDiff, onOnlyDiff }) {
-  const toggle = (code) => onChange(value.includes(code) ? value.filter((c) => c !== code) : [...value, code]);
-  return (
-    <PopMenu role="dialog" width="w-72" className="p-3"
-      button={({ open, toggle: flip }) => (
-        <Button size="sm" variant="secondary" icon={Columns3} onClick={flip} aria-expanded={open} aria-haspopup="dialog">
-          Compare roles{value.length ? ` (${value.length})` : ""}
-        </Button>
-      )}>
-      <p className="text-xs font-semibold text-slate-700 mb-1">Show only these roles</p>
-      <p className="text-[11px] text-slate-500 mb-2">The selected role is always shown. None ticked: all roles.</p>
-      <ul className="max-h-72 overflow-y-auto space-y-0.5">
-        {roles.map((r) => (
-          <li key={r.code}>
-            <label className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer">
-              <input type="checkbox" className="w-4 h-4 accent-blue-600" checked={value.includes(r.code)} onChange={() => toggle(r.code)} />
-              {r.name}
-            </label>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-2 pt-2 border-t border-slate-100 flex items-center gap-2">
-        <label className={`flex items-center gap-2 text-xs cursor-pointer ${value.length ? "text-slate-700" : "text-slate-400"}`}>
-          <input type="checkbox" className="w-4 h-4 accent-blue-600" checked={onlyDiff} disabled={!value.length} onChange={(e) => onOnlyDiff(e.target.checked)} />
-          Only rows that differ
-        </label>
-        {value.length > 0 && (
-          <button type="button" onClick={() => { onChange([]); onOnlyDiff(false); }} className="ml-auto text-xs font-semibold text-blue-700 hover:underline cursor-pointer">
-            Show all
-          </button>
-        )}
-      </div>
-    </PopMenu>
   );
 }

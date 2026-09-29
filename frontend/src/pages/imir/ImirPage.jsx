@@ -80,7 +80,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
   // History, drift, focus and supplier risk (no AI); unavailable offline, where the sheet works without it.
   const { data: insights } = useGetLotInsightsQuery(sheet.id, { skip: sheet.status === 'AWAITING_FORMAT' });
   const { can } = useAccess();
-  const aiAllowed = can(PERMISSIONS.AI_ASSIST);
+  const aiAllowed = can(PERMISSIONS.AI_IMIR_SUMMARY);
   const { data: aiStatus } = useGetAiStatusQuery(undefined, { skip: !aiAllowed });
 
   // Keep in step with the server copy when nothing is waiting to be saved.
