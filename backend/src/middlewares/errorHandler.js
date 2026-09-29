@@ -1,3 +1,4 @@
+import { recordError } from '../modules/system/errorLog.js';
 import { AppError } from '../shared/AppError.js';
 
 // PostgreSQL constraint violations that can reach us despite service-level checks (races,
@@ -35,7 +36,13 @@ export function errorHandler(err, req, res, _next) {
 
   const status = error instanceof AppError ? error.statusCode : 500;
   const log = req.log ?? console;
-  if (status >= 500) log.error({ err }, 'request failed');
+  if (status >= 500) {
+    log.error({ err }, 'request failed');
+    // Kept in the error log (Administration → Error Log), except outside systems being down on purpose.
+    if (!(error instanceof AppError && (status === 502 || status === 503))) {
+      recordError({ source: 'SERVER', err, method: req.method, path: `${req.baseUrl ?? ''}${req.route?.path ?? req.path}`, statusCode: status, requestId: req.id, userId: req.user?.id, userAgent: req.get?.('user-agent') });
+    }
+  }
   else if (err !== error) log.warn({ err: { code: err.code, detail: err.detail, constraint: err.constraint } }, error.message);
 
   // A bug stays hidden behind a reference number; an outside system being down (SAP 502/503,

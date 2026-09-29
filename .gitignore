@@ -15,3 +15,4 @@ Thumbs.db
 .idea/
 backend/.pgdata.credentials
 backend/uploads/
+backend/logs/

@@ -5,6 +5,7 @@ import { useApplyTheme } from '../../app/theme.js';
 import * as engine from '../../offline/engine.js';
 import Loader from '../ui/Loader.jsx';
 import ReportIssueHost from '../../pages/help/ReportIssueHost.jsx';
+import ErrorBoundary from './ErrorBoundary.jsx';
 import IdleSignOut from './IdleSignOut.jsx';
 import Navbar from './Navbar.jsx';
 import Sidebar from './Sidebar.jsx';
@@ -53,7 +54,9 @@ export default function Layout() {
         <main className={`flex-1 overflow-auto transition-all duration-300 ${isMobile ? 'ml-0' : expanded ? 'ml-64' : 'ml-[56px]'}`}>
           <Suspense fallback={<Loader />}>
             <div key={pathname} className="animate-page min-h-full">
-              <Outlet />
+              <ErrorBoundary resetKey={pathname}>
+                <Outlet />
+              </ErrorBoundary>
             </div>
           </Suspense>
         </main>
