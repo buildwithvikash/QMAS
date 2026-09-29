@@ -27,6 +27,7 @@ import rolesRoutes from './modules/roles/roles.routes.js';
 import samplingRoutes from './modules/sampling/sampling.routes.js';
 import searchRoutes from './modules/search/search.routes.js';
 import supportRoutes from './modules/support/support.routes.js';
+import systemRoutes from './modules/system/system.routes.js';
 import { devicesRouter, syncRouter } from './modules/sync/sync.routes.js';
 import tasksRoutes from './modules/tasks/tasks.routes.js';
 import usersRoutes from './modules/users/users.routes.js';
@@ -87,6 +88,7 @@ export function createApp({ logger = defaultLogger } = {}) {
   api.use('/ai', aiRoutes);
   api.use('/audit', auditRoutes);
   api.use('/support', supportRoutes);
+  api.use('/system', systemRoutes);
 
   app.use('/api/v1', api);
   app.use('/api', notFoundHandler);

@@ -35,6 +35,7 @@ export const PERMISSIONS = Object.freeze({
   REPORTS_VIEW: 'reports.view',
   AI_ASSIST: 'ai.assist',
   SUPPORT_MANAGE: 'support.manage',
+  SYSTEM_MONITOR: 'system.monitor',
 });
 
 export const PERMISSION_DEFINITIONS = Object.freeze([
@@ -68,6 +69,7 @@ export const PERMISSION_DEFINITIONS = Object.freeze([
   { key: PERMISSIONS.REPORTS_VIEW, module: 'Reports', description: 'View and export reports' },
   { key: PERMISSIONS.AI_ASSIST, module: 'AI Assistant', description: 'Quality Insights, AI summaries, CAPA assessment, root-cause suggestions, search in words and Ask QMAS' },
   { key: PERMISSIONS.SUPPORT_MANAGE, module: 'Help & Support', description: 'Work on help-desk tickets from all users: reply, assign, change status and priority' },
+  { key: PERMISSIONS.SYSTEM_MONITOR, module: 'Administration', description: 'System health, the error log (server, worker and browser crashes) and monitoring alerts' },
 ]);
 
 const P = PERMISSIONS;
