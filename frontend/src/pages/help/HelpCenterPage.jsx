@@ -1,10 +1,11 @@
 import { PERMISSIONS } from '@qmas/shared';
-import { ArrowRight, Bug, ChevronDown, CircleHelp, Inbox, KeyRound, Keyboard, LifeBuoy, Lightbulb, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { ArrowRight, Bug, Check, ChevronDown, CircleHelp, Compass, Inbox, KeyRound, Keyboard, LifeBuoy, Lightbulb, RotateCcw, Search } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useGetTicketCountsQuery, useGetTicketsQuery } from '../../api/supportApi.js';
 import Badge from '../../components/ui/Badge.jsx';
 import PageHeader from '../../components/ui/PageHeader.jsx';
+import { saveTourState, startTour, TOURS, tourState } from '../../app/tours.js';
 import { useAccess } from '../../hooks/useAccess.js';
 import { formatRelative } from '../../utils/format.js';
 import { HELP_TOPICS } from './helpContent.js';
@@ -59,7 +60,7 @@ export default function HelpCenterPage() {
           </label>
         </section>
 
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div data-tour="help-actions" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {ACTIONS.map((a) => (
             <button key={a.kind} type="button" onClick={() => openReportIssue({ kind: a.kind })}
               className="group card flex items-center gap-3 p-4 text-left transition-all hover:-translate-y-px hover:shadow-md cursor-pointer">
@@ -72,6 +73,8 @@ export default function HelpCenterPage() {
             </button>
           ))}
         </div>
+
+        <GuidedTours />
 
         <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_20rem]">
           <section className="space-y-3">
@@ -183,5 +186,74 @@ export default function HelpCenterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Every tour the user's role can use, with progress; Start opens the page and runs it. */
+function GuidedTours() {
+  const { user, can } = useAccess();
+  const navigate = useNavigate();
+  const { pathname, hash } = useLocation();
+  const [state, setState] = useState(() => tourState(user?.id));
+  useEffect(() => {
+    const onChange = () => setState(tourState(user?.id));
+    window.addEventListener('qmas:tours-changed', onChange);
+    return () => window.removeEventListener('qmas:tours-changed', onChange);
+  }, [user?.id]);
+  useEffect(() => {
+    if (hash === '#help-tours') setTimeout(() => document.getElementById('help-tours')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 300);
+  }, [hash]);
+  const tours = TOURS.filter((t) => can(t.permission));
+  const done = tours.filter((t) => state.done.includes(t.key)).length;
+  const start = (t) => {
+    if (t.startPath && t.startPath !== pathname) {
+      navigate(t.startPath);
+      setTimeout(() => startTour(t.key), 600);
+    } else startTour(t.key);
+  };
+  return (
+    <section id="help-tours" className="card scroll-mt-24">
+      <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-4 py-3">
+        <span className="grid h-9 w-9 place-items-center rounded-lg bg-violet-100 text-violet-700"><Compass className="h-5 w-5" /></span>
+        <div className="min-w-0">
+          <h2 className="font-semibold text-slate-900">Guided tours</h2>
+          <p className="text-xs text-slate-500">Step-by-step walks through the pages you use. {done} of {tours.length} done.</p>
+        </div>
+        <span className="ml-auto h-1.5 w-32 overflow-hidden rounded-full bg-slate-100"><span className="block h-full rounded-full bg-violet-500" style={{ width: `${tours.length ? (done / tours.length) * 100 : 0}%` }} /></span>
+        <button type="button" onClick={() => setState(saveTourState(user?.id, { done: [], dismissed: [], offersOff: false }))}
+          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer" title="Mark all as not done and offer them again on each page">
+          <RotateCcw className="h-3.5 w-3.5" />Start over
+        </button>
+      </div>
+      {state.offersOff && (
+        <p className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-xs text-amber-900">
+          Tours are not offered automatically.{' '}
+          <button type="button" onClick={() => setState(saveTourState(user?.id, { offersOff: false }))} className="font-semibold underline cursor-pointer">Offer them again</button>
+        </p>
+      )}
+      <ul className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+        {tours.map((t) => {
+          const isDone = state.done.includes(t.key);
+          return (
+            <li key={t.key} className="flex flex-col rounded-xl border border-slate-200 p-3">
+              <div className="flex items-start gap-2">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-slate-900">{t.title}</span>
+                  <span className="block text-xs text-slate-500">{t.description}</span>
+                </span>
+                {isDone ? <Badge variant="success"><Check className="h-3 w-3" />Done</Badge> : <Badge variant="info">{t.steps.length} steps</Badge>}
+              </div>
+              <div className="mt-auto pt-3">
+                {t.startPath ? (
+                  <button type="button" onClick={() => start(t)} className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 cursor-pointer">
+                    <Compass className="h-3.5 w-3.5" />{isDone ? 'Take again' : 'Start tour'}
+                  </button>
+                ) : <p className="text-[11px] text-slate-500">{t.needs}</p>}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

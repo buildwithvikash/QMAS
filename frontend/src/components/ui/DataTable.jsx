@@ -89,9 +89,9 @@ export default function DataTable({
   const togglePage = () => setSelected((s) => { const n = new Set(s); pageKeys.forEach((k) => (allOnPage ? n.delete(k) : n.add(k))); return n; });
 
   return (
-    <div className="card overflow-hidden">
+    <div data-tour="table" className="card overflow-hidden">
       {showToolbar && (
-        <div className="px-3 py-3 border-b border-slate-100 space-y-2">
+        <div data-tour="filters" className="px-3 py-3 border-b border-slate-100 space-y-2">
           <div className="flex flex-wrap items-end gap-2">
             {leading}
             <div className="ml-auto flex items-center gap-2">

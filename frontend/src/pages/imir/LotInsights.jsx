@@ -19,7 +19,7 @@ export function BeforeYouInspect({ insights, onHistory }) {
   const { alerts, focus, basis } = insights;
   const watch = alerts.length > 0 || focus.length > 0;
   return (
-    <section className={`card h-full ${watch ? 'border-rose-200 bg-rose-50/30' : ''}`}>
+    <section data-tour="imir-before" className={`card h-full ${watch ? 'border-rose-200 bg-rose-50/30' : ''}`}>
       <div className="flex flex-wrap items-center gap-2 px-4 pt-3.5 pb-2">
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-violet-100"><Target className="w-4 h-4 text-violet-600" /></span>
         <h2 className="section-title">Before you inspect</h2>
@@ -69,7 +69,7 @@ export function SupplierRisk({ insights }) {
   const high = s.level === 'HIGH';
   const pTone = p?.level === 'HIGH' ? 'border-rose-200 bg-rose-50 text-rose-700' : p?.level === 'MEDIUM' ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700';
   return (
-    <section className={`card h-full ${high ? 'border-rose-200 bg-rose-50/30' : ''}`}>
+    <section data-tour="imir-risk" className={`card h-full ${high ? 'border-rose-200 bg-rose-50/30' : ''}`}>
       <div className="flex items-center gap-2 px-4 pt-3.5 pb-2">
         <span className="grid h-8 w-8 place-items-center rounded-lg bg-violet-100"><ShieldAlert className="w-4 h-4 text-violet-600" /></span>
         <h2 className="section-title">Supplier risk</h2>

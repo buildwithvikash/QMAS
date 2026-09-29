@@ -175,7 +175,7 @@ export default function FormatImportPage() {
           <Step n={3} title="Import" done={imported}>Items that already have an approved format are skipped: change those through a draft. For custom layouts use the <Link to="/formats" className="font-semibold text-blue-700 hover:underline">format builder</Link>.</Step>
         </div>
 
-        <section className="card p-4">
+        <section data-tour="import-upload" className="card p-4">
           <input ref={input} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden"
             onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); setTab(null); setEdited(new Set()); setReviewKey(null); }} />
           <div className="flex flex-wrap items-center gap-3">
