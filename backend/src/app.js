@@ -13,6 +13,7 @@ import aiRoutes from './modules/ai/ai.routes.js';
 import auditRoutes from './modules/audit/audit.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
 import deviationRoutes, { chainRouter } from './modules/deviation/deviation.routes.js';
+import reversalRoutes from './modules/workflow/reversal.routes.js';
 import dnRoutes from './modules/dn/dn.routes.js';
 import formatsRoutes from './modules/formats/formats.routes.js';
 import healthRoutes from './modules/health/health.routes.js';
@@ -78,6 +79,7 @@ export function createApp({ logger = defaultLogger } = {}) {
   api.use('/formats', formatsRoutes);
   api.use('/imirs', imirRoutes);
   api.use('/deviations', deviationRoutes);
+  api.use('/reversals', reversalRoutes);
   api.use('/tasks', tasksRoutes);
   api.use('/search', searchRoutes);
   api.use('/dns', dnRoutes);

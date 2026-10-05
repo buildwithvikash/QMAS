@@ -4,13 +4,15 @@ import { withTransaction } from '../../db/tx.js';
 import { AppError } from '../../shared/AppError.js';
 import { pageMeta } from '../../shared/sql.js';
 import { plantScope } from '../auth/access.service.js';
-import { history, logAction } from '../workflow/history.js';
-import { deviationActions, deviationBlock, deviationRole, seniorRoles, STAGE_ACTIONS } from '../workflow/rules.js';
+import { deviationSnapshot, history, logAction } from '../workflow/history.js';
+import { acceptDepartments, deviationActions, deviationBlock, deviationRole, seniorRoles, STAGE_ACTIONS } from '../workflow/rules.js';
 import * as repo from './deviation.repo.js';
 
 /**
  * Deviation track after the IQC Head holds a lot (slides 9–12):
+ *   offered to SCM and VD → accepted by one (it owns the deviation from then on)
  *   INITIATOR → SUB_HEAD [→ HEAD] → FINAL (IQC Head) [→ SENIOR → FINAL] → CLOSED
+ *   INITIATOR recommends rejection → own department's HEAD (approve / send back) → FINAL (IQC Head rejects)
  *                                              └ approve Segregation / Rework → UNDER_DEVIATION → QTY_VERIFICATION → CLOSED
  * The IMIR status follows the stage, so the incoming list shows where each lot is.
  */
@@ -60,6 +62,7 @@ export async function detail(id, user, db = getPool()) {
     history: await history(db, dev.imirId),
     allowedActions: deviationActions(user, dev, current),
     seniorRoles: seniorRoles(user, dev, current), // roles this user may decide in, highest first
+    acceptDepartments: dev.department ? [] : acceptDepartments(user, dev), // departments this user may accept it for
   };
 }
 
@@ -79,6 +82,7 @@ export async function act(ctx, user, id, body) {
     if (!STAGE_ACTIONS[dev.stage].includes(body.action)) {
       throw AppError.conflict(`Deviation ${dev.deviationNo} is at stage ${STAGE_LABEL[dev.stage]}; this action is not possible now.`, { code: 'WRONG_STAGE' });
     }
+    if (body.action === 'accept' && dev.department) throw AppError.conflict(`Deviation ${dev.deviationNo} has already been accepted by ${dev.department}.`, { code: 'ALREADY_ACCEPTED' });
     const role = deviationRole(user, dev, body.action, round);
     if (!role) throw AppError.forbidden(`You cannot act on this deviation at stage ${STAGE_LABEL[dev.stage]}.`);
     const blocked = deviationBlock(dev, body.action);
@@ -90,6 +94,7 @@ export async function act(ctx, user, id, body) {
 }
 
 export const STAGE_LABEL = {
+  UNASSIGNED: 'Waiting for SCM / VD to accept',
   INITIATOR: 'Department initiator',
   SUB_HEAD: 'Department Sub-Head',
   HEAD: 'Department Head',
@@ -105,6 +110,7 @@ export const STAGE_LABEL = {
  * status in step and records the history entry.
  */
 async function move(db, dev, { stage, set = {}, action, actorId = null, role = null, remark = null, payload = null }) {
+  const snapshot = await deviationSnapshot(db, dev.id);
   const cols = { stage, ...set };
   if (stage === 'CLOSED') cols.closed_at = new Date();
   const keys = Object.keys(cols);
@@ -112,13 +118,26 @@ async function move(db, dev, { stage, set = {}, action, actorId = null, role = n
 
   const imirStatus = stage === 'CLOSED' ? IMIR_STATUS_OF_OUTCOME[cols.outcome] : IMIR_STATUS_OF_STAGE[stage];
   await db.query('UPDATE qms.imir SET status = $2, closed_at = CASE WHEN $3::boolean THEN now() END WHERE id = $1', [dev.imirId, imirStatus, stage === 'CLOSED']);
-  await logAction(db, { imirId: dev.imirId, deviationId: dev.id, action, fromStatus: dev.imirStatus, toStatus: imirStatus, actorId, actingRole: role, remark, payload });
+  await logAction(db, { imirId: dev.imirId, deviationId: dev.id, action, fromStatus: dev.imirStatus, toStatus: imirStatus, actorId, actingRole: role, remark, payload, snapshot });
   dev.imirStatus = imirStatus;
   dev.stage = stage;
 }
 
 const HANDLERS = {
   // ── Department ──
+  /** The first SCM / VD initiator to accept takes the deviation: their department, and them as initiator. */
+  async accept(db, { user, role, dev, body }) {
+    const mine = acceptDepartments(user, dev);
+    const department = body.department ?? (mine.length === 1 ? mine[0] : null);
+    if (!department) throw AppError.unprocessable('Choose the department you accept this deviation for.', [{ path: 'department', message: 'Choose SCM or VD.' }]);
+    if (!mine.includes(department)) throw AppError.forbidden(`You cannot accept deviations for ${department}.`);
+    const acting = role === 'SYSTEM_ADMIN' ? role : `${department}_REQUESTOR`;
+    await move(db, dev, {
+      stage: 'INITIATOR', set: { department, initiator_id: user.id, accepted_at: new Date() },
+      action: 'ACCEPT', actorId: user.id, role: acting, remark: body.remark ?? null, payload: { department },
+    });
+  },
+
   async submit_form(db, { user, role, dev, body }) {
     const f = body.form;
     if (f.deviationQty > dev.inwardQty) throw AppError.unprocessable('Deviation quantity cannot exceed the inward quantity.', [{ path: 'form.deviationQty', message: `At most ${dev.inwardQty}.` }]);
@@ -136,19 +155,27 @@ const HANDLERS = {
     });
   },
 
+  /** A recommendation to reject goes to the department's Head first, then to the IQC Head. */
   async recommend_reject(db, { user, role, dev, body }) {
-    await move(db, dev, { stage: 'FINAL', set: { initiator_id: user.id, dept_outcome: 'REJECT_RECOMMENDED', senior_effective: null }, action: 'RECOMMEND_REJECT', actorId: user.id, role, remark: body.remark });
+    await move(db, dev, {
+      stage: 'HEAD', set: { initiator_id: dev.initiatorId ?? user.id, dept_outcome: 'REJECT_RECOMMENDED', approval_levels: ['HEAD'], current_level: 0, senior_effective: null },
+      action: 'RECOMMEND_REJECT', actorId: user.id, role, remark: body.remark,
+    });
   },
 
   async dept_approve(db, { user, role, dev, body }) {
     const next = dev.currentLevel + 1;
     const nextLevel = dev.approvalLevels[next];
     if (nextLevel) await move(db, dev, { stage: nextLevel, set: { current_level: next }, action: 'DEPT_APPROVE', actorId: user.id, role, remark: body.remark ?? null });
-    else await move(db, dev, { stage: 'FINAL', set: { dept_outcome: 'APPROVED', current_level: null }, action: 'DEPT_APPROVE', actorId: user.id, role, remark: body.remark ?? null });
+    else {
+      // Approving a recommendation to reject keeps it one: the IQC Head then rejects the lot.
+      const outcome = dev.deptOutcome === 'REJECT_RECOMMENDED' ? 'REJECT_RECOMMENDED' : 'APPROVED';
+      await move(db, dev, { stage: 'FINAL', set: { dept_outcome: outcome, current_level: null }, action: 'DEPT_APPROVE', actorId: user.id, role, remark: body.remark ?? null, payload: { outcome } });
+    }
   },
 
   async send_back(db, { user, role, dev, body }) {
-    await move(db, dev, { stage: 'INITIATOR', set: { current_level: null }, action: 'SEND_BACK', actorId: user.id, role, remark: body.remark });
+    await move(db, dev, { stage: 'INITIATOR', set: { current_level: null, dept_outcome: null }, action: 'SEND_BACK', actorId: user.id, role, remark: body.remark });
   },
 
   async dept_reject(db, { user, role, dev, body }) {

@@ -1,5 +1,5 @@
 import { deviationFormSchema, ESCALATION_RANKS } from '@qmas/shared';
-import { ArrowLeft, CheckCircle2, CornerUpLeft, FileWarning, Gavel, Scale, Send, ShieldAlert, ThumbsDown, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, CornerUpLeft, FileWarning, Gavel, Hand, Scale, Send, ShieldAlert, ThumbsDown, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import ExportLinks from '../../components/ui/ExportLinks.jsx';
@@ -23,6 +23,7 @@ import HistoryPanel from './HistoryPanel.jsx';
 import RoundsPanel from './RoundsPanel.jsx';
 import { ActivityLayout, KeyFacts, LinkedRecords, StageHistory } from './RecordSide.jsx';
 import { fieldLabel, formatValue } from './historyFormat.js';
+import ReversalPanel from './ReversalPanel.jsx';
 import { DeviationStage } from './workflowUi.jsx';
 
 /** Buttons for the simple decisions: a remark and (for escalation) the authorities. */
@@ -33,7 +34,7 @@ const DECISIONS = {
   final_approve: { label: 'Approve deviation', icon: CheckCircle2, variant: 'success', help: 'Use As Is closes the lot now. Segregation and Rework wait for the department to enter OK / Not-OK quantities (14 days).' },
   final_reject: { label: 'Reject lot', icon: XCircle, variant: 'danger', help: 'The lot is rejected and the IMIR closes.' },
   escalate: { label: 'Escalate to seniors', icon: ShieldAlert, variant: 'secondary', help: 'Selected authorities decide in parallel. The highest-ranked decision is final; the Central Operations Head has 24 hours, after which CQA decides.' },
-  recommend_reject: { label: 'Recommend rejection', icon: ThumbsDown, variant: 'secondary', help: 'No Deviation Form: the IQC Head decides on your recommendation.' },
+  recommend_reject: { label: 'Recommend rejection', icon: ThumbsDown, variant: 'secondary', help: "No Deviation Form: your department's Head approves the recommendation (or sends it back), then the IQC Head rejects the lot." },
   verify_qty: { label: 'Verify quantities', icon: CheckCircle2, variant: 'success', help: 'The lot closes as accepted under deviation.', remark: 'optional' },
   return_qty: { label: 'Return quantities', icon: CornerUpLeft, variant: 'secondary', help: 'The department corrects the quantities.' },
   override: { label: 'Override', icon: Gavel, variant: 'danger', help: 'Your decision replaces the senior outcome (Rule 4). It is recorded with your reason.' },
@@ -48,6 +49,10 @@ export default function DeviationPage() {
 
   const can = (a) => d.allowedActions.includes(a);
   const buttons = d.allowedActions.filter((a) => DECISIONS[a] && a !== 'recommend_reject');
+  const recommendation = d.deptOutcome === 'REJECT_RECOMMENDED' && d.stage === 'HEAD';
+  const decision = (a) => (recommendation && a === 'dept_approve'
+    ? { ...DECISIONS[a], label: 'Approve recommendation', variant: 'danger', icon: ThumbsDown, help: 'The recommendation goes to the IQC Head, who rejects the lot.' }
+    : recommendation && a === 'send_back' ? { ...DECISIONS[a], help: 'The initiator clarifies or acts as asked, then recommends again or fills the Deviation Form.' } : DECISIONS[a]);
 
   return (
     <div className="pb-10">
@@ -64,10 +69,15 @@ export default function DeviationPage() {
               <h2 className="text-sm font-semibold text-slate-900 mb-1">Your turn</h2>
               <StageHint d={d} />
               <div className="flex flex-wrap gap-2 mt-3">
-                {buttons.map((a) => <Button key={a} variant={DECISIONS[a].variant} icon={DECISIONS[a].icon} onClick={() => setDialog(a)}>{DECISIONS[a].label}</Button>)}
+                {buttons.map((a) => <Button key={a} variant={decision(a).variant} icon={decision(a).icon} onClick={() => setDialog(a)}>{decision(a).label}</Button>)}
               </div>
             </section>
           )}
+          {can('accept') && <AcceptPanel d={d} />}
+          {!d.department && d.stage === 'INITIATOR' && !can('accept') && (
+            <p className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">Sent to SCM and VD. Whichever department accepts it first becomes responsible for it.</p>
+          )}
+          <ReversalPanel entityType="DEVIATION" entityId={d.id} recordNo={d.deviationNo} />
           <LotJourney status={d.imirStatus} history={d.history} deviation={d} />
           <Facts d={d} />
           {can('submit_form') ? <DeviationForm d={d} onRecommendReject={() => setDialog('recommend_reject')} /> : <FormView d={d} />}
@@ -83,7 +93,7 @@ export default function DeviationPage() {
             ]} />
             <StageHistory rows={stageRows({ history: d.history, current: currentStage(journeySteps({ status: d.imirStatus, history: d.history, deviation: d })) })} />
             <KeyFacts rows={[
-              { label: 'Department', value: d.department },
+              { label: 'Department', value: d.department ?? 'Not accepted yet' },
               { label: 'Approval chain', value: d.approvalLevels?.map((l) => (l === 'SUB_HEAD' ? 'Sub-Head' : 'Head')).join(', then ') },
               { label: 'Initiator', value: d.initiatorName },
               d.stage === 'UNDER_DEVIATION' ? { label: 'Quantities due', at: d.qtyDueAt, tone: 'warn' } : null,
@@ -91,7 +101,7 @@ export default function DeviationPage() {
           </ActivityLayout>
         </div>
       </div>
-      {dialog && <DecisionDialog d={d} action={dialog} onClose={() => setDialog(null)} />}
+      {dialog && <DecisionDialog d={d} action={dialog} config={decision(dialog)} onClose={() => setDialog(null)} />}
     </div>
   );
 }
@@ -110,7 +120,7 @@ function Facts({ d }) {
         {fact('GRN', `${d.grnNo} · ${formatDate(d.grnDate)}`)}
         {fact('Inward qty', formatQty(d.inwardQty, d.uom))}
         {fact('Plant', d.plantName)}
-        {fact('Department', d.department)}
+        {fact('Department', d.department ?? 'SCM / VD (not accepted yet)')}
         {fact('Suggested', d.suggestedActions.map((a) => ACTION_NAMES[a]).join(', '))}
         {d.qtyDueAt && d.stage !== 'CLOSED' && fact('Quantities due', formatDateTime(d.qtyDueAt))}
         {d.okQty !== null && fact('OK / Not OK', `${formatQty(d.okQty, d.uom)} / ${formatQty(d.notOkQty, d.uom)}`)}
@@ -125,8 +135,9 @@ function Facts({ d }) {
 function StageHint({ d }) {
   const hints = {
     SUB_HEAD: 'Review the Deviation Form below.',
-    HEAD: 'Review the Deviation Form below.',
-    FINAL: d.seniorEffective === 'APPROVE' ? 'Senior authorities approved: the deviation can only be approved.'
+    HEAD: d.deptOutcome === 'REJECT_RECOMMENDED' ? `The ${d.department} initiator recommends rejecting the lot. Approve the recommendation, or send it back for clarification.` : 'Review the Deviation Form below.',
+    FINAL: d.deptOutcome === 'REJECT_RECOMMENDED' ? `${d.department} recommends rejecting the lot${d.history.some((h) => h.action === 'DEPT_APPROVE' && h.payload?.outcome === 'REJECT_RECOMMENDED') ? ' and its Head approved' : ''}: reject the lot.`
+      : d.seniorEffective === 'APPROVE' ? 'Senior authorities approved: the deviation can only be approved.'
       : d.seniorEffective === 'REJECT' ? 'Senior authorities rejected: the lot can only be rejected.'
       : d.deptOutcome === 'APPROVED' ? 'The department approved the deviation.' : 'The department did not approve the deviation.',
     SENIOR: 'Senior escalation is open.',
@@ -172,7 +183,7 @@ function DeviationForm({ d, onRecommendReject }) {
     <section className="card border-blue-200 p-4 space-y-4">
       <div>
         <h2 className="text-sm font-bold text-slate-800">Deviation Form</h2>
-        <p className="text-xs text-slate-500">{d.seniorEffective === 'CHANGE_TYPE' ? 'Senior authorities asked for a different deviation type. Change the action and submit again.' : `Fill the form for ${d.department}; it goes to your approver, then to the IQC Head.`}</p>
+        <p className="text-xs text-slate-500">{d.seniorEffective === 'CHANGE_TYPE' ? 'Senior authorities asked for a different deviation type. Change the action and submit again.' : `Fill the form for ${d.department}; it goes to your approver, then to the IQC Head. To reject the lot instead, recommend rejection: it goes to your Head first.`}</p>
       </div>
       <FormError message={formError} />
       <div className="grid gap-3 sm:grid-cols-3">
@@ -373,8 +384,35 @@ function SeniorDecision({ d }) {
   );
 }
 
-function DecisionDialog({ d, action, onClose }) {
-  const c = DECISIONS[action];
+/** The deviation was sent to SCM and VD: the first to accept it is responsible for it. */
+function AcceptPanel({ d }) {
+  const [run, { isLoading, originalArgs }] = useDeviationActionMutation();
+  const [error, setError] = useState(null);
+  const accept = async (department) => {
+    setError(null);
+    try {
+      await run({ id: d.id, action: 'accept', rowVersion: d.rowVersion, department }).unwrap();
+      done(`Accepted for ${department}. Fill the Deviation Form, or recommend rejection.`);
+    } catch (err) {
+      setError(apiError(err).message);
+    }
+  };
+  return (
+    <section className="card border-blue-300 border-l-4 border-l-blue-600 p-4">
+      <h2 className="text-sm font-semibold text-slate-900 mb-1">Your turn: <span className="font-normal text-slate-700">accept this deviation</span></h2>
+      <p className="text-xs text-slate-600">It was sent to SCM and VD. Whoever accepts it first becomes responsible: fills the Deviation Form or recommends rejecting the lot.</p>
+      <FormError message={error} />
+      <div className="flex flex-wrap gap-2 mt-3">
+        {d.acceptDepartments.map((dept) => (
+          <Button key={dept} icon={Hand} loading={isLoading && originalArgs?.department === dept} onClick={() => accept(dept)}>Accept for {dept}</Button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DecisionDialog({ d, action, config, onClose }) {
+  const c = config;
   const [remark, setRemark] = useState('');
   const [authorities, setAuthorities] = useState([]);
   const [decision, setDecision] = useState(null);

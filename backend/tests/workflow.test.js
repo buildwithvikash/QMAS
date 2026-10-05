@@ -58,11 +58,12 @@ const ok = (res) => {
   return res.body.data;
 };
 
-/** A failed lot escalated by the Incharge and held by the IQC Head for a department. */
+/** A failed lot escalated by the Incharge and held by the IQC Head (sent to SCM and VD); `department` accepts it. */
 async function heldLot(department = 'SCM', suggestedActions = ['SEGREGATION']) {
   const m = await submittedLot();
   ok(await imirAct(A.incharge, m.id, { action: 'escalate', remark: 'Dia over size' }));
-  const held = ok(await imirAct(A.head, m.id, { action: 'hold', remark: 'Hold for deviation', department, suggestedActions }));
+  const held = ok(await imirAct(A.head, m.id, { action: 'hold', remark: 'Hold for deviation', suggestedActions }));
+  if (department) ok(await devAct(department === 'SCM' ? A.scm : A.vd, held.deviation.id, { action: 'accept' }));
   return { imirId: m.id, devId: held.deviation.id, imir: held };
 }
 
@@ -104,7 +105,7 @@ describe('Incharge review', () => {
     const m = await submittedLot({ pass: true });
     expect(m.allowedActions).toEqual([]);
     const seen = ok(await A.incharge.get(`/api/v1/imirs/${m.id}`));
-    expect(seen.allowedActions).toEqual(['approve', 'revert', 'escalate']);
+    expect(seen.allowedActions).toEqual(['approve', 'reject', 'revert', 'escalate']);
     expect((await tasksOf(A.incharge)).some((t) => t.id === m.id && t.task === 'Review inspection')).toBe(true);
 
     const done = ok(await imirAct(A.incharge, m.id, { action: 'approve', remark: 'Fine' }));
@@ -115,17 +116,30 @@ describe('Incharge review', () => {
     expect((await tasksOf(A.incharge)).some((t) => t.id === m.id)).toBe(false);
   });
 
-  it('cannot approve a failed lot, and only the plant\'s own Incharge may review', async () => {
+  it('approves a failed lot only with a final approval remark, and only the plant\'s own Incharge may review', async () => {
     const m = await submittedLot();
-    expect(ok(await A.incharge.get(`/api/v1/imirs/${m.id}`)).allowedActions).toEqual(['revert', 'escalate']);
+    expect(ok(await A.incharge.get(`/api/v1/imirs/${m.id}`)).allowedActions).toEqual(['approve', 'reject', 'revert', 'escalate']);
     const bad = await imirAct(A.incharge, m.id, { action: 'approve' });
-    expect(bad.status).toBe(409);
-    expect(bad.body.message).toBe('Only a lot that passed inspection can be approved. Escalate a failed lot to the IQC Head.');
+    expect(bad.status).toBe(422);
+    expect(bad.body.message).toBe('Enter the final approval remark: why this failed lot is accepted.');
     expect((await imirAct(A.otherIncharge, m.id, { action: 'escalate', remark: 'x' })).status).toBe(403);
     expect((await imirAct(A.inspector, m.id, { action: 'escalate', remark: 'x' })).status).toBe(403);
     expect((await imirAct(A.head, m.id, { action: 'hold', remark: 'x', department: 'SCM', suggestedActions: ['UAI'] })).status).toBe(409);
     const stale = await A.incharge.post(`/api/v1/imirs/${m.id}/actions`).send({ action: 'escalate', remark: 'x', rowVersion: 1 });
     expect(stale.body.code).toBe('STALE_VERSION');
+    const done = ok(await imirAct(A.incharge, m.id, { action: 'approve', remark: 'Over size within functional limits' }));
+    expect(done.status).toBe('CLOSED_ACCEPTED');
+    expect(done.history.at(-1)).toMatchObject({ action: 'APPROVE', remark: 'Over size within functional limits', payload: { result: 'NOK' } });
+  });
+
+  it('the Incharge rejects a lot; a DN can then be raised', async () => {
+    const m = await submittedLot();
+    expect((await imirAct(A.incharge, m.id, { action: 'reject' })).status).toBe(422); // reason required
+    const done = ok(await imirAct(A.incharge, m.id, { action: 'reject', remark: 'Dia over size, return to vendor' }));
+    expect(done).toMatchObject({ status: 'CLOSED_REJECTED' });
+    expect(done.closedAt).toBeTruthy();
+    expect(done.history.at(-1)).toMatchObject({ action: 'REJECT', actingRole: 'IQC_INCHARGE', toStatus: 'CLOSED_REJECTED' });
+    expect(ok(await A.incharge.get(`/api/v1/imirs/${m.id}`)).allowedActions).toContain('raise_dn');
   });
 
   it('sends a lot back to the inspector, who corrects and resubmits it', async () => {
@@ -152,10 +166,21 @@ describe('Incharge review', () => {
 });
 
 describe('deviation through the department', () => {
-  it('runs hold → form → send back → approve → final approve → quantities → closed', async () => {
-    const { imirId, devId, imir } = await heldLot('SCM', ['SEGREGATION', 'REWORK']);
-    expect(imir).toMatchObject({ status: 'DEPT_REVIEW', deviation: { department: 'SCM', stage: 'INITIATOR' } });
-    let d = ok(await A.scm.get(`/api/v1/deviations/${devId}`));
+  it('runs hold → accept → form → send back → approve → final approve → quantities → closed', async () => {
+    const { imirId, devId, imir } = await heldLot(null, ['SEGREGATION', 'REWORK']);
+    expect(imir).toMatchObject({ status: 'DEPT_REVIEW', deviation: { department: null, stage: 'INITIATOR' } });
+    // Offered to both departments: either may accept; the first one owns it.
+    expect((await tasksOf(A.scm)).find((t) => t.id === devId)).toMatchObject({ task: 'Waiting for SCM / VD to accept', actions: ['accept'] });
+    expect((await tasksOf(A.vd)).find((t) => t.id === devId)).toMatchObject({ actions: ['accept'] });
+    expect(ok(await A.scm.get(`/api/v1/deviations/${devId}`))).toMatchObject({ allowedActions: ['accept'], acceptDepartments: ['SCM'] });
+    expect((await devAct(A.scm, devId, { action: 'submit_form', form: FORM })).status).toBe(403); // accept first
+    expect((await devAct(A.scm, devId, { action: 'accept', department: 'VD' })).status).toBe(403);
+    let d = ok(await devAct(A.scm, devId, { action: 'accept' }));
+    expect(d).toMatchObject({ department: 'SCM', stage: 'INITIATOR', allowedActions: ['submit_form', 'recommend_reject'] });
+    expect(d.acceptedAt).toBeTruthy();
+    expect((await devAct(A.vd, devId, { action: 'accept' })).status).toBe(409); // already taken
+    expect((await tasksOf(A.vd)).some((t) => t.id === devId)).toBe(false);
+    d = ok(await A.scm.get(`/api/v1/deviations/${devId}`));
     expect(d.deviationNo).toMatch(/^DEV1115\d{4}\d{3}$/);
     expect(d).toMatchObject({ suggestedActions: ['SEGREGATION', 'REWORK'], holdRemark: 'Hold for deviation', specification: 'Dia: 10 ± 0.1', allowedActions: ['submit_form', 'recommend_reject'] });
     expect(d.iqcObservation).toBe('Dia: S1 10.2 mm');
@@ -198,7 +223,7 @@ describe('deviation through the department', () => {
 
     const m = ok(await A.inspector.get(`/api/v1/imirs/${imirId}`));
     expect(m.history.map((h) => h.action)).toEqual([
-      'SUBMIT', 'ESCALATE', 'HOLD', 'SUBMIT_FORM', 'SEND_BACK', 'SUBMIT_FORM', 'DEPT_APPROVE', 'FINAL_APPROVE', 'ENTER_QTY', 'RETURN_QTY', 'ENTER_QTY', 'VERIFY_QTY',
+      'SUBMIT', 'ESCALATE', 'HOLD', 'ACCEPT', 'SUBMIT_FORM', 'SEND_BACK', 'SUBMIT_FORM', 'DEPT_APPROVE', 'FINAL_APPROVE', 'ENTER_QTY', 'RETURN_QTY', 'ENTER_QTY', 'VERIFY_QTY',
     ]);
     const { rows } = await getPool().query('SELECT count(*)::int AS n FROM audit.audit_log WHERE table_name = $1 AND row_pk = $2', ['qms.deviation', devId]);
     expect(rows[0].n).toBeGreaterThan(5);
@@ -219,11 +244,28 @@ describe('deviation through the department', () => {
     expect(r).toMatchObject({ stage: 'CLOSED', outcome: 'REJECTED', imirStatus: 'CLOSED_REJECTED' });
   });
 
-  it('an initiator can recommend rejection without filling the form', async () => {
+  it('a recommendation to reject goes to the department Head (approve or send back), then the IQC Head rejects', async () => {
     const { devId } = await heldLot('VD', ['REWORK']);
-    const d = ok(await devAct(A.vd, devId, { action: 'recommend_reject', remark: 'Cannot be reworked' }));
-    expect(d).toMatchObject({ stage: 'FINAL', deptOutcome: 'REJECT_RECOMMENDED' });
+    let d = ok(await devAct(A.vd, devId, { action: 'recommend_reject', remark: 'Cannot be reworked' }));
+    expect(d).toMatchObject({ stage: 'HEAD', deptOutcome: 'REJECT_RECOMMENDED', imirStatus: 'DEPT_REVIEW' });
+    expect((await devAct(A.vdSub, devId, { action: 'dept_approve' })).status).toBe(403); // the Head's step
+    expect(ok(await A.vdHead.get(`/api/v1/deviations/${devId}`)).allowedActions).toEqual(['dept_approve', 'send_back']);
+    expect((await tasksOf(A.vdHead)).some((t) => t.id === devId)).toBe(true);
+    d = ok(await devAct(A.vdHead, devId, { action: 'send_back', remark: 'Give the rework trial result' }));
+    expect(d).toMatchObject({ stage: 'INITIATOR', deptOutcome: null });
+    ok(await devAct(A.vd, devId, { action: 'recommend_reject', remark: 'Rework trial failed' }));
+    d = ok(await devAct(A.vdHead, devId, { action: 'dept_approve', remark: 'Agree' }));
+    expect(d).toMatchObject({ stage: 'FINAL', deptOutcome: 'REJECT_RECOMMENDED', imirStatus: 'IQC_HEAD_FINAL' });
     expect(ok(await A.head.get(`/api/v1/deviations/${devId}`)).allowedActions).toEqual(['final_reject']);
+    d = ok(await devAct(A.head, devId, { action: 'final_reject', remark: 'Rejected as recommended' }));
+    expect(d).toMatchObject({ stage: 'CLOSED', outcome: 'REJECTED', imirStatus: 'CLOSED_REJECTED' });
+  });
+
+  it('only the user who accepted the deviation works on it', async () => {
+    const { devId } = await heldLot('SCM');
+    const scm2 = (await agentWithRoles([{ roleCode: 'SCM_REQUESTOR', plantId: await plantId('1115') }])).agent;
+    expect(ok(await scm2.get(`/api/v1/deviations/${devId}`)).allowedActions).toEqual([]);
+    expect((await devAct(scm2, devId, { action: 'submit_form', form: FORM })).status).toBe(403);
   });
 
   it('follows the configured approval chain for forms submitted after a change', async () => {
@@ -329,6 +371,79 @@ describe('quantity deadline', () => {
   });
 });
 
+describe('reversal', () => {
+  const reversalOf = async (agent, type, id) => ok(await agent.get(`/api/v1/reversals/record/${type}/${id}`));
+
+  it('the responsible user asks, the admin reverses an IMIR approval, and the audit trail keeps it', async () => {
+    const m = await submittedLot({ pass: true });
+    ok(await imirAct(A.incharge, m.id, { action: 'approve', remark: 'Fine' }));
+    // The Incharge took the last step, so may ask; the inspector may not.
+    expect((await reversalOf(A.inspector, 'IMIR', m.id)).canRequest).toBe(false);
+    const panel = await reversalOf(A.incharge, 'IMIR', m.id);
+    expect(panel).toMatchObject({ canRequest: true, canReview: false, status: 'CLOSED_ACCEPTED', pending: null });
+    expect(panel.steps.map((s) => [s.action, s.beforeStatus])).toEqual([['APPROVE', 'SUBMITTED'], ['SUBMIT', 'IN_INSPECTION']]);
+    expect((await A.inspector.post('/api/v1/reversals').send({ entityType: 'IMIR', entityId: m.id, reason: 'x' })).status).toBe(403);
+    expect((await A.incharge.post('/api/v1/reversals').send({ entityType: 'IMIR', entityId: m.id, reason: ' ' })).status).toBe(422);
+
+    const asked = ok(await A.incharge.post('/api/v1/reversals').send({ entityType: 'IMIR', entityId: m.id, stepId: panel.steps[0].id, reason: 'Approved the wrong lot' }));
+    expect(asked.pending).toMatchObject({ state: 'PENDING', statusAtRequest: 'CLOSED_ACCEPTED', reason: 'Approved the wrong lot' });
+    expect((await A.incharge.post('/api/v1/reversals').send({ entityType: 'IMIR', entityId: m.id, reason: 'again' })).status).toBe(409);
+    expect((await A.incharge.get('/api/v1/reversals')).status).toBe(403);
+
+    const list = ok(await A.admin.get('/api/v1/reversals').query({ state: 'PENDING' }));
+    expect(list.some((r) => r.id === asked.pending.id)).toBe(true);
+    const req = ok(await A.admin.get(`/api/v1/reversals/${asked.pending.id}`));
+    expect(req).toMatchObject({ currentStatus: 'CLOSED_ACCEPTED', requestedStepAction: 'APPROVE' });
+    const done = ok(await A.admin.post(`/api/v1/reversals/${asked.pending.id}/approve`).send({ stepId: panel.steps[0].id, remark: 'Reopened for review' }));
+    expect(done).toMatchObject({
+      state: 'REVERSED', previousStatus: 'CLOSED_ACCEPTED', revertedStatus: 'SUBMITTED', revertedStatusLabel: 'Incharge review', reviewRemark: 'Reopened for review', undoneStepAction: 'APPROVE',
+    });
+    expect(done.reviewedByName).toBeTruthy();
+    expect(done.requestedByName).toBeTruthy();
+
+    const back = ok(await A.incharge.get(`/api/v1/imirs/${m.id}`));
+    expect(back).toMatchObject({ status: 'SUBMITTED', closedAt: null, allowedActions: ['approve', 'reject', 'revert', 'escalate'] });
+    expect(back.history.map((h) => h.action)).toEqual(['SUBMIT', 'APPROVE', 'REVERSAL_REQUEST', 'REVERSED']);
+    expect(back.history.at(-1)).toMatchObject({ fromStatus: 'CLOSED_ACCEPTED', toStatus: 'SUBMITTED', payload: { reason: 'Approved the wrong lot', undoneAction: 'APPROVE' } });
+    // The undone step is not offered again; the lot can be decided anew.
+    expect((await reversalOf(A.incharge, 'IMIR', m.id)).steps.map((s) => s.action)).toEqual(['SUBMIT']);
+    ok(await imirAct(A.incharge, m.id, { action: 'reject', remark: 'Second look: reject' }));
+    await expect(getPool().query('UPDATE qms.reversal_request SET reason = $2 WHERE id = $1', [asked.pending.id, 'changed'])).rejects.toThrow(/cannot be changed/);
+  });
+
+  it('reverses a deviation to before it was accepted, and an admin can reject a request', async () => {
+    const { devId, imirId } = await heldLot('SCM');
+    ok(await devAct(A.scm, devId, { action: 'submit_form', form: FORM }));
+    // The Sub-Head holds the current step; the SCM initiator took the last one.
+    expect((await reversalOf(A.scmSub, 'DEVIATION', devId)).canRequest).toBe(true);
+    const panel = await reversalOf(A.scm, 'DEVIATION', devId);
+    expect(panel.steps.map((s) => [s.action, s.beforeStatus])).toEqual([['SUBMIT_FORM', 'INITIATOR'], ['ACCEPT', 'UNASSIGNED']]);
+
+    let asked = ok(await A.scm.post('/api/v1/reversals').send({ entityType: 'DEVIATION', entityId: devId, reason: 'Should be VD' }));
+    const rejected = ok(await A.admin.post(`/api/v1/reversals/${asked.pending.id}/reject`).send({ remark: 'SCM owns it' }));
+    expect(rejected).toMatchObject({ state: 'REJECTED', reviewRemark: 'SCM owns it' });
+
+    asked = ok(await A.scm.post('/api/v1/reversals').send({ entityType: 'DEVIATION', entityId: devId, reason: 'Should be VD, really' }));
+    const accept = panel.steps.find((s) => s.action === 'ACCEPT');
+    ok(await A.admin.post(`/api/v1/reversals/${asked.pending.id}/approve`).send({ stepId: accept.id }));
+    const d = ok(await A.vd.get(`/api/v1/deviations/${devId}`));
+    expect(d).toMatchObject({ department: null, stage: 'INITIATOR', initiatorId: null, formSubmittedAt: null, imirStatus: 'DEPT_REVIEW', allowedActions: ['accept'] });
+    ok(await devAct(A.vd, devId, { action: 'accept' }));
+    const m = ok(await A.inspector.get(`/api/v1/imirs/${imirId}`));
+    expect(m.history.filter((h) => h.deviationId).map((h) => h.action)).toEqual(['HOLD', 'ACCEPT', 'SUBMIT_FORM', 'REVERSAL_REQUEST', 'REVERSAL_REJECTED', 'REVERSAL_REQUEST', 'REVERSED', 'ACCEPT']);
+  });
+
+  it('a request is refused once the record has moved on', async () => {
+    const m = await submittedLot();
+    const asked = ok(await A.incharge.post('/api/v1/reversals').send({ entityType: 'IMIR', entityId: m.id, reason: 'Inspector entered the wrong sample' }));
+    ok(await imirAct(A.incharge, m.id, { action: 'escalate', remark: 'Over size' }));
+    const step = (await reversalOf(A.admin, 'IMIR', m.id)).steps.at(-1);
+    const late = await A.admin.post(`/api/v1/reversals/${asked.pending.id}/approve`).send({ stepId: step.id });
+    expect(late.status).toBe(409);
+    expect(late.body.code).toBe('RECORD_MOVED');
+  });
+});
+
 describe('System Admin', () => {
   it('can act for the department and for any senior authority', async () => {
     const { devId, imirId } = await heldLot();
@@ -344,7 +459,7 @@ describe('System Admin', () => {
     d = ok(await A.admin.post(`/api/v1/deviations/${devId}/actions`).send({ action: 'senior_decide', roleCode: 'CQA_HEAD', decision: 'APPROVE', remark: 'For CQA' }));
     expect(d).toMatchObject({ stage: 'FINAL', seniorEffective: 'APPROVE' });
     const m = ok(await A.inspector.get(`/api/v1/imirs/${imirId}`));
-    const steps = m.history.filter((h) => h.deviationId && h.action !== 'HOLD');
+    const steps = m.history.filter((h) => h.deviationId && !['HOLD', 'ACCEPT'].includes(h.action)); // accepted by the SCM requestor
     expect(steps.every((h) => !h.actingRole || h.actingRole === 'SYSTEM_ADMIN')).toBe(true);
     expect(steps.find((h) => h.action === 'SENIOR_DECISION').payload.forRole).toBe('PLANT_HEAD');
   });

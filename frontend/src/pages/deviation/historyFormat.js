@@ -38,10 +38,12 @@ export function formatValue(key, v, unit) {
 export const HISTORY_LABELS = {
   SUBMIT: 'Inspection submitted',
   APPROVE: 'Approved by Incharge',
+  REJECT: 'Rejected by Incharge',
   REVERT: 'Sent back to inspector',
   ESCALATE: 'Escalated',
   HEAD_APPROVE: 'Approved by IQC Head',
   HOLD: 'Put on hold',
+  ACCEPT: 'Accepted by department',
   SUBMIT_FORM: 'Deviation Form submitted',
   RECOMMEND_REJECT: 'Rejection recommended',
   DEPT_APPROVE: 'Approved by department',
@@ -62,6 +64,9 @@ export const HISTORY_LABELS = {
   DN_RESUBMIT: 'CAPA resubmission asked',
   DN_CLOSE: 'Defect notification closed',
   CAPA_REMINDER: 'CAPA overdue reminder',
+  REVERSAL_REQUEST: 'Reversal requested',
+  REVERSED: 'Reversed by admin',
+  REVERSAL_REJECTED: 'Reversal request rejected',
 };
 
 /** The one-line detail of a step (result, deviation number, decision…), or null. */
@@ -69,7 +74,12 @@ export function stepDetail(h) {
   const p = h.payload ?? {};
   switch (h.action) {
     case 'SUBMIT': return `Result ${p.result}${p.defectiveSamples?.length ? `, NOK in sample ${p.defectiveSamples.join(', ')}` : ''}`;
-    case 'HOLD': return `${p.deviationNo} → ${p.department}; suggested ${p.suggestedActions.map((a) => ACTION_NAMES[a]).join(', ')}`;
+    case 'HOLD': return `${p.deviationNo} → ${p.department ?? 'SCM and VD'}; suggested ${p.suggestedActions.map((a) => ACTION_NAMES[a]).join(', ')}`;
+    case 'ACCEPT': return p.department ? `Taken by ${p.department}` : null;
+    case 'APPROVE': case 'REJECT': return p.result === 'NOK' ? 'Lot had failed inspection' : null;
+    case 'DEPT_APPROVE': return p.outcome === 'REJECT_RECOMMENDED' ? 'Recommendation to reject approved' : null;
+    case 'REVERSAL_REQUEST': return p.statusLabel ? `At "${p.statusLabel}"` : null;
+    case 'REVERSED': return p.fromLabel ? `${p.fromLabel} → ${p.toLabel} (undid "${HISTORY_LABELS[p.undoneAction] ?? p.undoneAction}")` : null;
     case 'SUBMIT_FORM': return `Revision ${p.revision}: ${ACTION_NAMES[p.action]}, ${p.severity.toLowerCase()}, qty ${p.deviationQty}`;
     case 'ESCALATE': return p.authorities ? `Round ${p.round} to ${p.authorities.map((r) => ROLE_SHORT[r]).join(', ')}` : null;
     case 'SENIOR_DECISION': return `${DECISION_NAMES[p.decision]}${h.actingRole === 'SYSTEM_ADMIN' && p.forRole ? ` (on behalf of ${ROLE_SHORT[p.forRole]})` : ''}`;

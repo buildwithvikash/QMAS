@@ -9,7 +9,7 @@ import { plantScope } from '../auth/access.service.js';
 import { notifyUsers } from '../notifications/notify.js';
 import * as imirRepo from '../imir/imir.repo.js';
 import { issueNumber } from '../numbering/numbering.service.js';
-import { history, logAction } from '../workflow/history.js';
+import { dnSnapshot, history, logAction } from '../workflow/history.js';
 import { actingRole } from '../workflow/rules.js';
 import * as repo from './dn.repo.js';
 
@@ -72,9 +72,12 @@ export async function detail(id, user, db = getPool()) {
 
 // ── Raising ───────────────────────────────────────────────────────────────────
 
-/** A DN can be raised once the lot has been escalated to the IQC Head (slide 7), one per lot. */
+/** A DN can be raised once the lot was escalated to the IQC Head (slide 7) or rejected by the Incharge, one per lot. */
 export async function canRaiseFrom(db, imir) {
-  const { rows } = await db.query("SELECT 1 FROM qms.imir_action WHERE imir_id = $1 AND action = 'ESCALATE' AND deviation_id IS NULL LIMIT 1", [imir.id]);
+  const { rows } = await db.query(
+    "SELECT 1 FROM qms.imir_action WHERE imir_id = $1 AND deviation_id IS NULL AND (action = 'ESCALATE' OR (action = 'REJECT' AND $2 = 'CLOSED_REJECTED')) LIMIT 1",
+    [imir.id, imir.status],
+  );
   return rows.length > 0;
 }
 
@@ -86,7 +89,7 @@ export async function create(ctx, user, { imirId }) {
     if (!role) throw AppError.forbidden('You cannot raise defect notifications for this plant.');
     const existing = await repo.summaryForImir(db, imirId);
     if (existing) throw AppError.conflict(`DN ${existing.dnNo} already exists for this lot.`, { code: 'DN_EXISTS', errors: [{ path: 'dnId', message: existing.id }] });
-    if (!(await canRaiseFrom(db, imir))) throw AppError.conflict('A DN can be raised once the lot has been escalated to the IQC Head.', { code: 'NOT_ESCALATED' });
+    if (!(await canRaiseFrom(db, imir))) throw AppError.conflict('A DN can be raised once the lot has been escalated to the IQC Head or rejected.', { code: 'NOT_ESCALATED' });
 
     const now = new Date();
     const { docNo } = await issueNumber(db, { docType: 'DN', plantId: imir.plantId, src: 'IL', at: now, userId: user.id });
@@ -243,7 +246,8 @@ export async function act(ctx, user, id, body) {
     const role = actingRole(user, { permission: body.action === 'submit_capa' ? P.DN_MANAGE : P.DN_APPROVE_CAPA, plantId: dn.plantId });
     if (!role) throw AppError.forbidden(body.action === 'submit_capa' ? 'You cannot submit CAPA for this plant.' : 'You cannot review CAPA for this plant.');
     if (dn.rowVersion !== body.rowVersion) throw AppError.staleVersion('This DN');
-    const log = (action, toStatus, payload = null) => logAction(db, { imirId: dn.imirId, dnId: id, action, fromStatus: dn.status, toStatus, actorId: user.id, actingRole: role, remark: body.remark ?? null, payload });
+    const snapshot = await dnSnapshot(db, id);
+    const log = (action, toStatus, payload = null) => logAction(db, { imirId: dn.imirId, dnId: id, action, fromStatus: dn.status, toStatus, actorId: user.id, actingRole: role, remark: body.remark ?? null, payload, snapshot });
 
     if (body.action === 'submit_capa') {
       const lines = await repo.lines(db, id);

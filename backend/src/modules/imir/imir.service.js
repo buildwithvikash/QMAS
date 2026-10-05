@@ -5,7 +5,7 @@ import { AppError } from '../../shared/AppError.js';
 import { pageMeta } from '../../shared/sql.js';
 import { plantScope } from '../auth/access.service.js';
 import { issueNumber } from '../numbering/numbering.service.js';
-import { history, logAction } from '../workflow/history.js';
+import { history, imirSnapshot, logAction } from '../workflow/history.js';
 import { actingRole, imirReviewActions } from '../workflow/rules.js';
 import { summaryForImir } from '../dn/dn.repo.js';
 import * as repo from './imir.repo.js';
@@ -140,8 +140,8 @@ export async function detail(id, user, db = getPool()) {
     if (!evaluation.missing.length && imir.model) allowedActions.push('submit');
   }
   if (user) allowedActions.push(...imirReviewActions(user, imir));
-  // DN: once the lot was escalated to the IQC Head, one per lot (slide 7).
-  if (user && !dn && steps.some((h) => h.action === 'ESCALATE' && !h.deviationId) && actingRole(user, { permission: PERMISSIONS.DN_MANAGE, plantId: imir.plantId })) {
+  // DN: once the lot was escalated to the IQC Head or rejected by the Incharge, one per lot (slide 7).
+  if (user && !dn && steps.some((h) => (h.action === 'ESCALATE' || (h.action === 'REJECT' && imir.status === 'CLOSED_REJECTED')) && !h.deviationId) && actingRole(user, { permission: PERMISSIONS.DN_MANAGE, plantId: imir.plantId })) {
     allowedActions.push('raise_dn');
   }
   return { ...imir, checkpoints: merged, cells, attachments, evaluation, history: steps, deviation, dn, allowedActions };
@@ -284,6 +284,7 @@ export async function submit(ctx, user, id, { rowVersion, deviceId }) {
     if (missing.length) {
       throw AppError.unprocessable(`${missing.length} required observation${missing.length > 1 ? 's are' : ' is'} still empty.`, missing.map((m) => ({ path: `${m.checkpointUid}${m.sampleNo ? `:${m.sampleNo}` : ''}`, message: m.field })));
     }
+    const snapshot = await imirSnapshot(db, id);
     for (const cp of full.checkpoints) {
       await db.query('UPDATE qms.imir_checkpoint SET result = $3 WHERE imir_id = $1 AND checkpoint_uid = $2', [id, cp.uid, checkpointResults[cp.uid]]);
       if (cp.section === 'RELIABILITY' && cp.manualResult) {
@@ -299,7 +300,7 @@ export async function submit(ctx, user, id, { rowVersion, deviceId }) {
       [id, result, defectiveSamples, user.id],
     );
     await db.query('DELETE FROM qms.imir_checkout WHERE imir_id = $1', [id]);
-    await logAction(db, { imirId: id, action: 'SUBMIT', fromStatus: imir.status, toStatus: 'SUBMITTED', actorId: user.id, actingRole: inspectingRole(user, imir), payload: { result, defectiveSamples } });
+    await logAction(db, { imirId: id, action: 'SUBMIT', fromStatus: imir.status, toStatus: 'SUBMITTED', actorId: user.id, actingRole: inspectingRole(user, imir), payload: { result, defectiveSamples }, snapshot });
   });
   return detail(id, user);
 }

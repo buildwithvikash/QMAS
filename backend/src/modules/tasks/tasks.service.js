@@ -71,7 +71,7 @@ export async function myTasks(user) {
     const actions = deviationActions(user, d, round);
     if (!actions.some((a) => a !== 'override')) continue; // overriding is a right, not a task
     tasks.push({
-      kind: 'deviation', entity: 'DEVIATION', id: d.id, docNo: d.deviationNo, imirNo: d.imirNo, link: `/deviations/${d.id}`, task: STAGE_LABEL[d.stage],
+      kind: 'deviation', entity: 'DEVIATION', id: d.id, docNo: d.deviationNo, imirNo: d.imirNo, link: `/deviations/${d.id}`, task: d.department ? STAGE_LABEL[d.stage] : STAGE_LABEL.UNASSIGNED,
       stage: d.stage, department: d.department, actions, plantSapCode: d.plantSapCode, plantName: d.plantName, itemCode: d.itemCode, itemDescription: d.itemDescription,
       vendorName: d.vendorName, since: d.updatedAt, dueAt: d.stage === 'UNDER_DEVIATION' ? d.qtyDueAt : (round?.steps ?? []).filter((x) => x.status === 'PENDING' && x.dueAt).map((x) => x.dueAt).sort()[0] ?? null,
     });

@@ -65,7 +65,8 @@ export const HELP_TOPICS = [
     tone: 'bg-amber-100 text-amber-600',
     permission: P.DEVIATION_VIEW,
     articles: [
-      { q: 'How does a deviation get approved?', a: 'The SCM or VD initiator fills the deviation form, the department Sub-Head and Head approve, and the IQC Head takes the final decision. Senior authorities decide escalated cases.', to: '/deviations' },
+      { q: 'How does a deviation get approved?', a: 'A held lot goes to SCM and VD together; whichever initiator accepts it first is responsible. They fill the deviation form, the department Sub-Head and Head approve, and the IQC Head takes the final decision. Senior authorities decide escalated cases. A recommendation to reject the lot goes to the department Head first (approve or send back), then the IQC Head rejects the lot.', to: '/deviations' },
+      { q: 'A step was taken by mistake. Can it be undone?', a: 'Yes. The person responsible for the current step (or who took the last one) clicks Request reversal on the IMIR, deviation or DN page, chooses the step to undo and gives a reason. An admin reviews it under Administration → Reversal Requests and sets the record back, or rejects the request. Every reversal is kept in the audit trail.' },
       { q: 'Who approves in my department?', a: 'The approval chain per department and plant is set under Master Config › Deviation Approval.', to: '/masters/approval-chain' },
       { q: 'The deviation is overdue', a: 'Overdue steps are escalated automatically and the next person is told. Open the deviation to see who holds it now.' },
     ],

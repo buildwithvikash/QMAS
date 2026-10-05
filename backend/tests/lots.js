@@ -29,8 +29,11 @@ export const VIS = { section: 'VISUAL', checkpoint: 'Aesthetic', specification: 
 export const REL = { section: 'RELIABILITY', checkpoint: 'Static load', specification: '200 kg for 5 min', frequencyMonths: 6 };
 
 /** Creates the item (if needed) and approves a format for it through the API. */
+let approver = null; // one signed-in IQC Head per test file (sign-ins are rate-limited)
+
 export async function approveFormat(itemCode, checkpoints = [DIM, VIS]) {
-  const { agent: hd } = await agentWithRoles([{ roleCode: 'IQC_HEAD', plantId: await plantId('1115') }]);
+  approver ??= agentWithRoles([{ roleCode: 'IQC_HEAD', plantId: await plantId('1115') }]);
+  const { agent: hd } = await approver;
   let { rows } = await getPool().query('SELECT id FROM mst.item WHERE item_code = $1', [itemCode]);
   if (!rows[0]) ({ rows } = await getPool().query("INSERT INTO mst.item (item_code, description) VALUES ($1, 'Test bracket') RETURNING id", [itemCode]));
   const d = (await hd.post(`/api/v1/formats/items/${rows[0].id}/drafts`).send({ from: 'BLANK' })).body.data;

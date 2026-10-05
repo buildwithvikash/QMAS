@@ -18,6 +18,7 @@ import { useUnsavedWarning } from '../../hooks/useUnsavedWarning.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import HistoryPanel from '../deviation/HistoryPanel.jsx';
 import { ActivityLayout, KeyFacts, LinkedRecords, StageHistory } from '../deviation/RecordSide.jsx';
+import ReversalPanel from '../deviation/ReversalPanel.jsx';
 import { CapaAssessment, RootCauseSuggestions } from './DnAi.jsx';
 import { ImirStatus } from '../imir/imirUi.jsx';
 import { DeviationStage, DnStatus } from '../deviation/workflowUi.jsx';
@@ -58,6 +59,7 @@ export default function DnPage() {
       <div className="p-5 space-y-4">
         <div className="space-y-4 min-w-0">
           <YourTurn dn={dn} />
+          <ReversalPanel entityType="DN" entityId={dn.id} recordNo={dn.dnNo} />
           <Stepper title="DN route" steps={dnSteps(dn)} since={dn.history.at(-1)?.at} />
           <Facts dn={dn} />
           {editable ? <DnForm key={dn.rowVersion} dn={dn} /> : <DnView dn={dn} />}
@@ -68,7 +70,7 @@ export default function DnPage() {
           <ActivityLayout history={<HistoryPanel imirId={dn.imirId} history={dn.history} owner="DN" current={currentStage(dnSteps(dn))} />}>
             <LinkedRecords items={[
               dn.imirId && { kind: 'imir', label: dn.imirNo, sub: `Inspection report, ${dn.itemCode}`, to: `/imirs/${dn.imirId}`, badge: <ImirStatus status={dn.imirStatus} /> },
-              dn.deviation && { kind: 'deviation', label: dn.deviation.deviationNo, sub: `Deviation, ${dn.deviation.department}`, to: `/deviations/${dn.deviation.id}`, badge: <DeviationStage stage={dn.deviation.stage} outcome={dn.deviation.outcome} /> },
+              dn.deviation && { kind: 'deviation', label: dn.deviation.deviationNo, sub: `Deviation, ${dn.deviation.department ?? 'SCM / VD'}`, to: `/deviations/${dn.deviation.id}`, badge: <DeviationStage stage={dn.deviation.stage} outcome={dn.deviation.outcome} /> },
             ]} />
             <StageHistory rows={stageRows({ history: dn.history.filter((h) => h.dnId), current: currentStage(dnSteps(dn)) })} />
             <KeyFacts rows={[

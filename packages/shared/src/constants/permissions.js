@@ -45,6 +45,7 @@ export const PERMISSIONS = Object.freeze({
   AI_VOICE_TIDY: 'ai.voice_tidy',
   SUPPORT_MANAGE: 'support.manage',
   SYSTEM_MONITOR: 'system.monitor',
+  WORKFLOW_REVERSE: 'workflow.reverse',
 });
 
 export const PERMISSION_DEFINITIONS = Object.freeze([
@@ -63,10 +64,10 @@ export const PERMISSION_DEFINITIONS = Object.freeze([
   { key: PERMISSIONS.FORMATS_IMPORT, module: 'Inspection Formats', description: 'Import formats in bulk from Excel (template, check, import)' },
   { key: PERMISSIONS.IMIR_VIEW, module: 'Incoming Inspection', description: 'View incoming lots and IMIRs' },
   { key: PERMISSIONS.IMIR_INSPECT, module: 'Incoming Inspection', description: 'Record observations and submit IMIRs, also on a tablet' },
-  { key: PERMISSIONS.IMIR_REVIEW, module: 'Incoming Inspection', description: 'Incharge review: approve, revert, escalate' },
+  { key: PERMISSIONS.IMIR_REVIEW, module: 'Incoming Inspection', description: 'Incharge review: approve, reject, send back or escalate to the IQC Head' },
   { key: PERMISSIONS.IMIR_HEAD_DECIDE, module: 'Incoming Inspection', description: 'IQC Head decision: approve or hold' },
   { key: PERMISSIONS.DEVIATION_VIEW, module: 'Deviation', description: 'View deviations' },
-  { key: PERMISSIONS.DEVIATION_INITIATE, module: 'Deviation', description: 'Fill the Deviation Form as SCM/VD initiator' },
+  { key: PERMISSIONS.DEVIATION_INITIATE, module: 'Deviation', description: 'Accept a deviation for SCM/VD and fill the Deviation Form as initiator' },
   { key: PERMISSIONS.DEVIATION_APPROVE, module: 'Deviation', description: 'Approve deviations as SCM/VD Sub-Head or Head' },
   { key: PERMISSIONS.DEVIATION_FINAL_DECIDE, module: 'Deviation', description: 'IQC Head final decision and escalation' },
   { key: PERMISSIONS.ESCALATION_DECIDE, module: 'Deviation', description: 'Decide as a senior authority' },
@@ -87,6 +88,7 @@ export const PERMISSION_DEFINITIONS = Object.freeze([
   { key: PERMISSIONS.AI_VOICE_TIDY, module: 'AI Assistant', description: '"Tidy & add" for dictated observations and remarks: AI cleans the wording (numbers, units). Dictation itself needs no permission' },
   { key: PERMISSIONS.SUPPORT_MANAGE, module: 'Help & Support', description: 'Work on help-desk tickets from all users: reply, assign, change status and priority' },
   { key: PERMISSIONS.SYSTEM_MONITOR, module: 'Administration', description: 'System health, the error log (server, worker and browser crashes) and monitoring alerts' },
+  { key: PERMISSIONS.WORKFLOW_REVERSE, module: 'Administration', description: 'Review reversal requests and set an IMIR, deviation or DN / CAPA back to an earlier step (every reversal is kept in the audit trail)' },
 ]);
 
 const P = PERMISSIONS;

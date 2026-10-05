@@ -28,6 +28,7 @@ const ApprovalChainPage = lazy(() => import('../pages/masters/ApprovalChainPage.
 const DevicesPage = lazy(() => import('../pages/admin/DevicesPage.jsx'));
 const SapSyncPage = lazy(() => import('../pages/admin/SapSyncPage.jsx'));
 const SystemHealthPage = lazy(() => import('../pages/admin/SystemHealthPage.jsx'));
+const ReversalsPage = lazy(() => import('../pages/admin/ReversalsPage.jsx'));
 const ErrorLogPage = lazy(() => import('../pages/admin/ErrorLogPage.jsx'));
 const InsightsPage = lazy(() => import('../pages/ai/InsightsPage.jsx'));
 const AskPage = lazy(() => import('../pages/ai/AskPage.jsx'));
@@ -128,6 +129,7 @@ export const ROUTE_SECTIONS = [
       { path: '/admin/devices', label: 'Tablets', permission: P.DEVICES_MANAGE, element: <DevicesPage /> },
       { path: '/admin/sap-sync', label: 'SAP Sync', permission: P.INTEGRATION_MONITOR, element: <SapSyncPage /> },
       { path: '/admin/audit', label: 'Audit Trail', permission: P.AUDIT_VIEW, element: <AuditTrailPage /> },
+      { path: '/admin/reversals', label: 'Reversal Requests', permission: P.WORKFLOW_REVERSE, element: <ReversalsPage /> },
       { path: '/admin/system-health', label: 'System Health', permission: P.SYSTEM_MONITOR, element: <SystemHealthPage /> },
       { path: '/admin/error-log', label: 'Error Log', permission: P.SYSTEM_MONITOR, element: <ErrorLogPage /> },
     ],

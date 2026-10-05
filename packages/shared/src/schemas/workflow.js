@@ -22,17 +22,18 @@ const checkpointRemarks = z
 /** POST /imirs/:id/actions. `submit` is the inspector's; the rest are Incharge and IQC Head decisions. */
 export const imirActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('submit'), rowVersion, deviceId: z.uuid().optional() }),
-  // IQC Incharge (slide 7)
-  z.object({ action: z.literal('approve'), rowVersion, remark: optionalTrimmed('Remark', 1000), checkpointRemarks }),
+  // IQC Incharge (slide 7): approve (a failed lot needs a remark), reject, send back or escalate.
+  z.object({ action: z.literal('approve'), rowVersion, remark: optionalTrimmed('Final approval remark', 1000), checkpointRemarks }),
+  z.object({ action: z.literal('reject'), rowVersion, remark: remark('Reason for rejecting'), checkpointRemarks }),
   z.object({ action: z.literal('revert'), rowVersion, remark: remark('Reason for sending back'), checkpointRemarks }),
   z.object({ action: z.literal('escalate'), rowVersion, remark: remark('Non-conformance remark'), checkpointRemarks }),
   // Plant IQC Head (slide 8)
-  z.object({ action: z.literal('head_approve'), rowVersion, remark: remark() }),
+  z.object({ action: z.literal('head_approve'), rowVersion, remark: remark('Final approval remark') }),
+  // The deviation goes to SCM and VD together; the department that accepts it owns it.
   z.object({
     action: z.literal('hold'),
     rowVersion,
     remark: remark('Hold remark'),
-    department: z.enum(DEPARTMENTS, { error: 'Choose SCM or VD.' }),
     suggestedActions: z.array(z.enum(DEVIATION_ACTION_CODES)).min(1, 'Suggest at least one action.').max(3).transform((a) => [...new Set(a)]),
   }),
 ]);
@@ -53,7 +54,8 @@ const qty = (label) => z.number({ error: `Enter the ${label}.` }).min(0, `${labe
 
 /** POST /deviations/:id/actions */
 export const deviationActionSchema = z.discriminatedUnion('action', [
-  // SCM / VD initiator
+  // SCM / VD initiator: the first to accept takes the deviation for their department.
+  z.object({ action: z.literal('accept'), rowVersion, department: z.enum(DEPARTMENTS, { error: 'Choose SCM or VD.' }).optional(), remark: optionalTrimmed('Remark', 1000) }),
   z.object({ action: z.literal('submit_form'), rowVersion, remark: optionalTrimmed('Remark', 1000), form: deviationFormSchema }),
   z.object({ action: z.literal('recommend_reject'), rowVersion, remark: remark('Reason') }),
   // SCM / VD Sub-Head, Head
@@ -97,4 +99,23 @@ export const deptApprovalChainSchema = z.object({
     .refine((l) => new Set(l).size === l.length, 'A level can appear only once.')
     .refine((l) => l.length < 2 || l[0] === 'SUB_HEAD', 'Sub-Head approves before Head.'),
   rowVersion,
+});
+
+/** Reversal of a workflow step: requested by the person responsible now, decided by an admin. */
+export const REVERSAL_ENTITIES = Object.freeze(['IMIR', 'DEVIATION', 'DN']);
+export const REVERSAL_STATES = Object.freeze(['PENDING', 'REVERSED', 'REJECTED', 'WITHDRAWN']);
+
+export const reversalRequestSchema = z.object({
+  entityType: z.enum(REVERSAL_ENTITIES),
+  entityId: z.uuid(),
+  stepId: z.coerce.number().int().positive().optional(),
+  reason: remark('Reason for the reversal'),
+});
+
+export const reversalApproveSchema = z.object({ stepId: z.coerce.number().int().positive({ error: 'Choose the step to go back to.' }), remark: optionalTrimmed('Remark', 1000) });
+export const reversalRejectSchema = z.object({ remark: remark('Reason for rejecting') });
+
+export const reversalListQuery = listQuery.extend({
+  state: z.enum(REVERSAL_STATES).optional(),
+  entityType: z.enum(REVERSAL_ENTITIES).optional(),
 });

@@ -1,4 +1,4 @@
-import { CheckCircle2, CornerUpLeft, FileWarning, FileX2, PauseCircle, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, CornerUpLeft, FileWarning, FileX2, PauseCircle, ShieldAlert, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
@@ -13,11 +13,12 @@ import { ACTION_NAMES } from '../deviation/workflowLabels.js';
 import { DeviationStage, DnStatus } from '../deviation/workflowUi.jsx';
 
 const ACTIONS = {
-  approve: { label: 'Approve', icon: CheckCircle2, variant: 'success', title: 'Approve IMIR', help: 'The lot is accepted and the IMIR closes.', remarkRequired: false },
+  approve: { label: 'Approve', icon: CheckCircle2, variant: 'success', title: 'Approve IMIR', help: 'The lot is accepted and the IMIR closes.', remarkLabel: 'Final approval remark', remarkRequired: false },
+  reject: { label: 'Reject', icon: XCircle, variant: 'danger', title: 'Reject lot', help: 'The lot is rejected and the IMIR closes. A DN can then be raised to the vendor.', remarkLabel: 'Reason for rejecting', checkpoints: true },
   revert: { label: 'Send back', icon: CornerUpLeft, variant: 'secondary', title: 'Send back to inspector', help: 'The inspector can correct the observations and submit again.', remarkLabel: 'Reason for sending back', checkpoints: true },
   escalate: { label: 'Escalate to IQC Head', icon: ShieldAlert, variant: 'danger', title: 'Escalate to IQC Head', help: 'Describe the non-conformance. The IQC Head approves the lot or holds it for a deviation.', remarkLabel: 'Non-conformance remark', checkpoints: true },
-  head_approve: { label: 'Approve', icon: CheckCircle2, variant: 'success', title: 'Approve escalated lot', help: 'The lot is accepted and the IMIR closes.' },
-  hold: { label: 'Hold for deviation', icon: PauseCircle, variant: 'danger', title: 'Hold lot for deviation', help: 'A deviation is raised and sent to the chosen department, whose initiator fills the Deviation Form.', remarkLabel: 'Hold remark' },
+  head_approve: { label: 'Approve', icon: CheckCircle2, variant: 'success', title: 'Approve escalated lot', help: 'The lot is accepted and the IMIR closes.', remarkLabel: 'Final approval remark' },
+  hold: { label: 'Hold for deviation', icon: PauseCircle, variant: 'danger', title: 'Hold lot for deviation', help: 'A deviation is raised and sent to SCM and VD. Whichever department accepts it first becomes responsible and fills the Deviation Form.', remarkLabel: 'Hold remark' },
 };
 
 /** Incharge / IQC Head decisions on a submitted IMIR ("Your turn"), plus the link to its deviation. */
@@ -48,7 +49,7 @@ export default function ReviewPanel({ imir }) {
         <Link to={`/deviations/${imir.deviation.id}`} className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm hover:bg-amber-100">
           <FileWarning className="w-4 h-4 text-amber-600" />
           <span className="font-mono font-semibold">{imir.deviation.deviationNo}</span>
-          <span className="text-slate-500">· {imir.deviation.department}</span>
+          <span className="text-slate-500">· {imir.deviation.department ?? 'SCM / VD (not accepted yet)'}</span>
           <span className="ml-auto"><DeviationStage stage={imir.deviation.stage} outcome={imir.deviation.outcome} /></span>
         </Link>
       )}
@@ -61,7 +62,7 @@ export default function ReviewPanel({ imir }) {
           {canRaiseDn && <Button variant="secondary" icon={FileX2} loading={raising} onClick={raiseDn}>Raise DN to vendor</Button>}
         </div>
       )}
-      {imir.status === 'SUBMITTED' && imir.result === 'NOK' && actions.includes('escalate') && <p className="text-xs text-slate-500">A failed lot cannot be approved by the Incharge: send it back or escalate it.</p>}
+      {imir.status === 'SUBMITTED' && imir.result === 'NOK' && actions.includes('approve') && <p className="text-xs text-slate-500">This lot failed inspection: approving it needs a final approval remark. You can also reject it, send it back or escalate it to the IQC Head.</p>}
       {open && <ActionDialog imir={imir} action={open} onClose={() => setOpen(null)} />}
     </section>
   );
@@ -71,13 +72,13 @@ function ActionDialog({ imir, action, onClose }) {
   const c = ACTIONS[action];
   const [remark, setRemark] = useState('');
   const [cpRemarks, setCpRemarks] = useState(() => Object.fromEntries(imir.checkpoints.map((cp) => [cp.uid, cp.inchargeRemark ?? ''])));
-  const [department, setDepartment] = useState('SCM');
   const [suggested, setSuggested] = useState([]);
   const [error, setError] = useState(null);
   const [run, { isLoading }] = useImirActionMutation();
   const navigate = useNavigate();
   const failed = imir.checkpoints.filter((cp) => imir.evaluation?.checkpointResults?.[cp.uid] === 'NOK' || cp.result === 'NOK');
-  const remarkRequired = c.remarkRequired !== false;
+  // Accepting a failed lot needs the reason, like the IQC Head's approval.
+  const remarkRequired = c.remarkRequired !== false || (action === 'approve' && imir.result !== 'OK');
 
   const save = async () => {
     setError(null);
@@ -85,15 +86,16 @@ function ActionDialog({ imir, action, onClose }) {
     if (action === 'hold' && !suggested.length) return setError('Suggest at least one action.');
     const body = { id: imir.id, action, rowVersion: imir.rowVersion, remark: remark.trim() || null };
     if (c.checkpoints) body.checkpointRemarks = failed.map((cp) => ({ checkpointUid: cp.uid, remark: cpRemarks[cp.uid]?.trim() || null }));
-    if (action === 'hold') Object.assign(body, { department, suggestedActions: suggested });
+    if (action === 'hold') body.suggestedActions = suggested;
     try {
       const res = await run(body).unwrap();
       const said = {
         approve: `${imir.imirNo} accepted and closed.`,
+        reject: `${imir.imirNo} rejected and closed.`,
         head_approve: `${imir.imirNo} accepted and closed.`,
         revert: `${imir.imirNo} sent back to the inspector.`,
         escalate: `${imir.imirNo} sent to the IQC Head.`,
-        hold: `Deviation ${res.deviation?.deviationNo ?? ''} raised for ${department}.`,
+        hold: `Deviation ${res.deviation?.deviationNo ?? ''} raised and sent to SCM and VD.`,
       }[action];
       done(said, action === 'hold' && res.deviation ? { label: 'Open deviation', go: () => navigate(`/deviations/${res.deviation.id}`) } : { label: 'My tasks', go: () => navigate('/') });
       onClose();
@@ -110,16 +112,6 @@ function ActionDialog({ imir, action, onClose }) {
       <div className="space-y-4">
         {action === 'hold' && (
           <>
-            <fieldset>
-              <legend className="block text-[11px] font-medium text-slate-500 mb-1">Department <span className="text-rose-500">*</span></legend>
-              <div className="flex gap-2">
-                {[['SCM', 'Supply Chain (SCM)'], ['VD', 'Vendor Development (VD)']].map(([v, l]) => (
-                  <label key={v} className={`flex-1 cursor-pointer rounded-lg border px-3 py-2 text-sm ${department === v ? 'border-blue-400 bg-blue-50 text-blue-800' : 'border-slate-200'}`}>
-                    <input type="radio" name="dept" value={v} checked={department === v} onChange={() => setDepartment(v)} className="mr-2" />{l}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
             <fieldset>
               <legend className="block text-[11px] font-medium text-slate-500 mb-1">Suggested action <span className="text-rose-500">*</span></legend>
               <div className="flex flex-wrap gap-2">
