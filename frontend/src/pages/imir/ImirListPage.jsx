@@ -1,9 +1,10 @@
 import { LIST_FIELDS, PERMISSIONS as P } from '@qmas/shared';
 import { CheckCircle2, ClipboardCheck, ExternalLink, FileSpreadsheet, FileWarning, FileX2, Hourglass, Layers, PackageOpen, Printer, RefreshCw, SearchCheck, Tablet } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useGetImirCountsQuery, useGetImirsQuery } from '../../api/imirApi.js';
 import { useGetLookupsQuery } from '../../api/mastersApi.js';
+import { useGetMyTasksQuery } from '../../api/workflowApi.js';
 import DataTable from '../../components/ui/DataTable.jsx';
 import FilterChips from '../../components/ui/FilterChips.jsx';
 import { DateRange, FilterSelect, SearchBox } from '../../components/ui/ListFilters.jsx';
@@ -38,6 +39,9 @@ export default function ImirListPage() {
   const { can } = useAccess();
   const navigate = useNavigate();
   const [preview, setPreview] = useState(null);
+  // Lots waiting for the signed-in user (inspection, review, deviation or DN step): a blinking dot.
+  const { data: tasks } = useGetMyTasksQuery(undefined, { pollingInterval: 60_000 });
+  const mine = useMemo(() => new Set((tasks ?? []).map((t) => t.imirId).filter(Boolean)), [tasks]);
 
   const f = list.filters;
   const statusValue = f.status ? `s:${f.status}` : f.statusGroup ? `g:${f.statusGroup}` : undefined;
@@ -67,7 +71,8 @@ export default function ImirListPage() {
       sortable: true,
       text: (r) => r.imirNo ?? '',
       render: (r) => (
-        <div>
+        <div className="flex items-center gap-2">
+          {mine.has(r.id) && <ActionDot />}
           {r.imirNo
             ? <Link to={`/imirs/${r.id}`} onClick={(e) => e.stopPropagation()} className="font-mono text-xs font-semibold text-blue-700 underline decoration-blue-300 underline-offset-2 hover:decoration-blue-700">{r.imirNo}</Link>
             : <span className="text-xs text-slate-400">not opened</span>}
@@ -94,6 +99,14 @@ export default function ImirListPage() {
       ),
     },
     { key: 'result', header: 'Result', text: (r) => r.result ?? '', render: (r) => <ImirResult result={r.result} /> },
+    { key: 'model', header: 'Model', text: (r) => r.model ?? '', render: (r) => <span className="text-sm">{r.model ?? '—'}</span> },
+    { key: 'invoiceNo', header: 'Invoice No.', text: (r) => r.invoiceNo ?? '', render: (r) => <span className="text-sm whitespace-nowrap">{r.invoiceNo ?? '—'}</span> },
+    { key: 'inspector', header: 'Inspector', text: (r) => r.submittedByName ?? r.inspectedByName ?? '', render: (r) => <Person name={r.submittedByName ?? r.inspectedByName} /> },
+    { key: 'incharge', header: 'IQC In-Charge', text: (r) => r.inchargeName ?? '', render: (r) => <Person name={r.inchargeName} /> },
+    { key: 'head', header: 'IQC Head', text: (r) => r.headName ?? '', render: (r) => <Person name={r.headName} /> },
+    { key: 'requester', header: 'SCM / VD Requester', text: (r) => r.requesterName ?? '', render: (r) => <Person name={r.requesterName} /> },
+    { key: 'deviationNo', header: 'Deviation', text: (r) => r.deviationNo ?? '', render: (r) => (r.deviationNo ? <Link to={`/deviations/${r.deviationId}`} onClick={(e) => e.stopPropagation()} className="font-mono text-xs text-blue-700 hover:underline whitespace-nowrap">{r.deviationNo}</Link> : <span className="text-slate-400">—</span>) },
+    { key: 'dnNo', header: 'DN', text: (r) => r.dnNo ?? '', render: (r) => (r.dnNo ? <Link to={`/dns/${r.dnId}`} onClick={(e) => e.stopPropagation()} className="font-mono text-xs text-blue-700 hover:underline whitespace-nowrap">{r.dnNo}</Link> : <span className="text-slate-400">—</span>) },
     { key: 'createdAt', header: 'Received', sortable: true, text: (r) => formatDate(r.createdAt), render: (r) => <span className="text-xs text-slate-500 whitespace-nowrap" title={formatDate(r.createdAt)}>{formatRelative(r.createdAt)}</span> },
   ];
 
@@ -115,7 +128,7 @@ export default function ImirListPage() {
 
   return (
     <div>
-      <PageHeader icon={PackageOpen} title="Incoming Lots" subtitle="Inward lots from SAP (QA32) and their inspection reports">
+      <PageHeader icon={PackageOpen} title="Incoming Lots" subtitle="Inward lots from SAP (QA32) and their inspection reports. A blinking dot marks a lot waiting for you; Columns chooses what you see.">
         {can(P.INTEGRATION_MONITOR) && (
           <Link to="/admin/sap-sync" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700">
             <RefreshCw className="w-4 h-4" />SAP sync
@@ -155,5 +168,18 @@ export default function ImirListPage() {
       </div>
       {preview && <ImirPreview key={preview} id={preview} onClose={() => setPreview(null)} />}
     </div>
+  );
+}
+
+/** A person's name in a list cell, or a dash. */
+const Person = ({ name }) => (name ? <span className="text-sm whitespace-nowrap">{name}</span> : <span className="text-slate-400">—</span>);
+
+/** Blinking dot: this lot needs an action from the signed-in user. Gone once it is done. */
+function ActionDot() {
+  return (
+    <span className="relative flex h-2.5 w-2.5 shrink-0" title="Your action is needed" role="img" aria-label="Your action is needed">
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-rose-600" />
+    </span>
   );
 }

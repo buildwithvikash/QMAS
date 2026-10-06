@@ -1,4 +1,4 @@
-import { PERMISSIONS, rankOf, ROLES } from '@qmas/shared';
+import { DEPARTMENTS, PERMISSIONS, rankOf, ROLES } from '@qmas/shared';
 
 /**
  * Who may take which workflow action. One place for the rules, used to authorize each action,
@@ -33,8 +33,7 @@ export const IMIR_REVIEW_ACTIONS = Object.freeze({
 });
 
 /** Why an allowed-by-role review action cannot be taken, or null. */
-export function imirReviewBlock(imir, action) {
-  if (action === 'approve' && imir.result !== 'OK') return 'Only a lot that passed inspection can be approved. Escalate a failed lot to the IQC Head.';
+export function imirReviewBlock() {
   return null;
 }
 
@@ -47,7 +46,7 @@ export function imirReviewActions(user, imir) {
 // ── Deviation ─────────────────────────────────────────────────────────────────
 
 export const STAGE_ACTIONS = Object.freeze({
-  INITIATOR: ['submit_form', 'recommend_reject'],
+  INITIATOR: ['accept', 'submit_form', 'recommend_reject'],
   SUB_HEAD: ['dept_approve', 'send_back', 'dept_reject'],
   HEAD: ['dept_approve', 'send_back', 'dept_reject'],
   FINAL: ['final_approve', 'final_reject', 'escalate', 'override'],
@@ -68,24 +67,38 @@ export function seniorRoles(user, dev, round) {
     .sort((a, b) => rankOf(b) - rankOf(a));
 }
 
+/** Departments the user may accept a deviation for (System Admin: both). */
+export function acceptDepartments(user, dev) {
+  return DEPARTMENTS.filter((d) => actingRole(user, { permission: P.DEVIATION_INITIATE, roles: [`${d}_REQUESTOR`], plantId: dev.plantId }));
+}
+
 /** The role the user acts in for `action` on this deviation, or null if they may not. */
 export function deviationRole(user, dev, action, round) {
   const { department: dept, plantId } = dev;
   switch (action) {
+    case 'accept':
+      return dev.department ? null : actingRole(user, { permission: P.DEVIATION_INITIATE, roles: DEPARTMENTS.map((d) => `${d}_REQUESTOR`), plantId });
     case 'submit_form':
     case 'recommend_reject':
-    case 'enter_qty':
-      return actingRole(user, { permission: P.DEVIATION_INITIATE, roles: [`${dept}_REQUESTOR`], plantId });
+    case 'enter_qty': {
+      if (!dept) return null;
+      const role = actingRole(user, { permission: P.DEVIATION_INITIATE, roles: [`${dept}_REQUESTOR`], plantId });
+      // Once accepted, the deviation is the accepting user's (System Admin can stand in).
+      if (role && role !== ROLES.SYSTEM_ADMIN && dev.acceptedAt && dev.initiatorId && dev.initiatorId !== user.id) return null;
+      return role;
+    }
     case 'dept_approve':
     case 'send_back':
     case 'dept_reject':
-      return actingRole(user, { permission: P.DEVIATION_APPROVE, roles: [`${dept}_${dev.stage}`], plantId });
+      return dept ? actingRole(user, { permission: P.DEVIATION_APPROVE, roles: [`${dept}_${dev.stage}`], plantId }) : null;
     case 'final_approve':
     case 'final_reject':
     case 'escalate':
+      return actingRole(user, { permission: P.DEVIATION_FINAL_DECIDE, plantId });
+    // The IQC In-Charge checks the OK / Not-OK quantities.
     case 'verify_qty':
     case 'return_qty':
-      return actingRole(user, { permission: P.DEVIATION_FINAL_DECIDE, plantId });
+      return actingRole(user, { permission: P.IMIR_REVIEW, plantId });
     case 'senior_decide':
       return seniorRoles(user, dev, round)[0] ?? null;
     case 'override':
@@ -99,13 +112,18 @@ export function deviationRole(user, dev, action, round) {
 export function deviationBlock(dev, action) {
   const senior = dev.seniorEffective;
   switch (action) {
+    case 'dept_reject':
+      return dev.deptOutcome === 'REJECT_RECOMMENDED' ? 'This is a recommendation to reject the lot: approve it or send it back.' : null;
     case 'final_approve':
       if (!dev.formSubmittedAt) return 'The department has not filled the Deviation Form, so the deviation can only be rejected.';
       if (senior === 'REJECT') return 'Senior authorities rejected this deviation; it can only be rejected.';
       if (senior !== 'APPROVE' && dev.deptOutcome !== 'APPROVED') return 'The department did not approve this deviation. Reject it, or escalate it to senior authorities.';
       return null;
     case 'final_reject':
-      return senior === 'APPROVE' ? 'Senior authorities approved this deviation; it can only be approved.' : null;
+      if (senior === 'APPROVE') return 'Senior authorities approved this deviation; it can only be approved.';
+      // Once the department has taken the lot through the deviation, the lot is no longer rejected here.
+      if (senior !== 'REJECT' && dev.deptOutcome === 'APPROVED') return 'The department approved this deviation, so the lot cannot be rejected now. Approve it, or escalate it to the senior authorities.';
+      return null;
     case 'escalate':
       if (SENIOR_FINAL.includes(senior)) return 'Senior authorities have already decided this deviation.';
       if (!dev.formSubmittedAt) return 'Escalate only after the department has filled the Deviation Form.';

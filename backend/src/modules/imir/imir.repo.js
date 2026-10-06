@@ -108,7 +108,16 @@ export async function list(db, f, scope) {
   const { rows } = await db.query(
     `${IMIR_SELECT.replace('SELECT m.id,', `SELECT count(*) OVER () AS total,
         (SELECT dx.id FROM qms.deviation dx WHERE dx.imir_id = m.id ORDER BY dx.id DESC LIMIT 1) AS deviation_id,
-        (SELECT nx.id FROM qms.defect_notification nx WHERE nx.imir_id = m.id ORDER BY nx.id DESC LIMIT 1) AS dn_id, m.id,`)}
+        (SELECT nx.id FROM qms.defect_notification nx WHERE nx.imir_id = m.id ORDER BY nx.id DESC LIMIT 1) AS dn_id,
+        (SELECT dx.deviation_no FROM qms.deviation dx WHERE dx.imir_id = m.id ORDER BY dx.id DESC LIMIT 1) AS deviation_no,
+        (SELECT nx.dn_no FROM qms.defect_notification nx WHERE nx.imir_id = m.id ORDER BY nx.id DESC LIMIT 1) AS dn_no,
+        -- Who worked on the lot, for the optional columns of the list.
+        (SELECT au.full_name FROM qms.imir_action a JOIN core.app_user au ON au.id = a.actor_id
+          WHERE a.imir_id = m.id AND a.deviation_id IS NULL AND a.action IN ('APPROVE', 'REVERT', 'ESCALATE') ORDER BY a.id DESC LIMIT 1) AS incharge_name,
+        (SELECT au.full_name FROM qms.imir_action a JOIN core.app_user au ON au.id = a.actor_id
+          WHERE a.imir_id = m.id AND a.action IN ('HEAD_APPROVE', 'HOLD') ORDER BY a.id DESC LIMIT 1) AS head_name,
+        (SELECT concat_ws(' · ', ru.full_name, dx.department) FROM qms.deviation dx JOIN core.app_user ru ON ru.id = dx.initiator_id
+          WHERE dx.imir_id = m.id ORDER BY dx.id DESC LIMIT 1) AS requester_name, m.id,`)}
       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
       ${orderBy(SORTABLE, f.sort, f.order, 'createdAt')}
       LIMIT ${arg(f.pageSize)} OFFSET ${arg(offsetOf(f))}`,

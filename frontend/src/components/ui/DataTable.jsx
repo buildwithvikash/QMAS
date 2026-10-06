@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Columns3, Download, Eye, Inbox, Info, MoreVertical, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown, Columns3, Download, Eye, Inbox, Info, LayoutGrid, List, MoreVertical, X } from 'lucide-react';
 import PopMenu from './PopMenu.jsx';
 import { useState } from 'react';
 import { loadPref, savePref } from '../../utils/prefs.js';
@@ -16,6 +16,30 @@ function useHiddenColumns(tableId) {
       return next;
     });
   return [hidden, toggle];
+}
+
+/** List or card view for a table, remembered on this device; list unless the viewer chose cards. */
+function useView(tableId) {
+  const [view, setView] = useState(() => (tableId ? loadPref(`view:${tableId}`, 'list') : 'list'));
+  const choose = (v) => {
+    setView(v);
+    if (tableId) savePref(`view:${tableId}`, v);
+  };
+  return [view, choose];
+}
+
+function ViewSwitch({ view, onChange }) {
+  const btn = (v, Icon, label) => (
+    <button type="button" aria-pressed={view === v} onClick={() => onChange(v)} title={`${label} view`}
+      className={`inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium cursor-pointer ${view === v ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200' : 'text-slate-500 hover:text-slate-800'}`}>
+      <Icon className="h-4 w-4" /><span className="hidden lg:inline">{label}</span>
+    </button>
+  );
+  return (
+    <div role="group" aria-label="View" className="hidden md:inline-flex items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+      {btn('list', List, 'List')}{btn('cards', LayoutGrid, 'Cards')}
+    </div>
+  );
 }
 
 /** A small menu that opens below its button (in a portal, so the table does not clip it). */
@@ -69,13 +93,16 @@ function downloadCsv(name, cols, rows) {
  *   Rows: `onRowClick`, `onPreview(row)` (eye button), `rowMenu(row)` → [{ label, icon, onClick, danger }]
  *   (⋮ menu), `activeKey` (the row shown in a preview), `selectable` + `exportName` (tick rows and
  *   export them as CSV), `pagination` = { meta, onPage, onPageSize } (numbered pages in the card).
- * On narrow screens each row is a card.
+ * Tables with a `tableId` can also be shown as cards (List / Cards switch, list by default,
+ * remembered per table). On narrow screens each row is always a card.
  */
 export default function DataTable({
   columns, rows = [], loading, error, sort, onSort, rowKey = 'id', empty = 'No records found.', emptyAction, onRowClick, tableId, toolbar, leading, filter,
   onPreview, rowMenu, activeKey, selectable = false, exportName = 'export', pagination,
 }) {
   const [hidden, toggle] = useHiddenColumns(tableId);
+  const [view, setView] = useView(tableId);
+  const cards = view === 'cards';
   const [selected, setSelected] = useState(() => new Set());
   const cols = columns.filter((c, i) => i === 0 || !hidden.has(c.key));
   const firstLoad = loading && rows.length === 0;
@@ -89,14 +116,15 @@ export default function DataTable({
   const togglePage = () => setSelected((s) => { const n = new Set(s); pageKeys.forEach((k) => (allOnPage ? n.delete(k) : n.add(k))); return n; });
 
   return (
-    <div className="card overflow-hidden">
+    <div data-tour="table" className="card overflow-hidden">
       {showToolbar && (
-        <div className="px-3 py-3 border-b border-slate-100 space-y-2">
+        <div data-tour="filters" className="px-3 py-3 border-b border-slate-100 space-y-2">
           <div className="flex flex-wrap items-end gap-2">
             {leading}
             <div className="ml-auto flex items-center gap-2">
               {filter && <FilterBuilder {...filter} />}
               {tableId && <ColumnPicker columns={columns} hidden={hidden} onToggle={toggle} />}
+              {tableId && <ViewSwitch view={view} onChange={setView} />}
             </div>
           </div>
           {toolbar}
@@ -116,7 +144,7 @@ export default function DataTable({
       )}
 
       {/* Table: tablets in landscape and desktops */}
-      <div className={`relative overflow-x-auto ${loading && !firstLoad ? 'opacity-70' : ''} transition-opacity hidden md:block`}>
+      <div className={`relative overflow-x-auto ${loading && !firstLoad ? 'opacity-70' : ''} transition-opacity hidden ${cards ? '' : 'md:block'}`}>
         <table className="w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50">
             <tr>
@@ -215,32 +243,42 @@ export default function DataTable({
         </table>
       </div>
 
-      {/* Cards: phones and tablets in portrait */}
-      <div className="md:hidden divide-y divide-slate-100">
-        {firstLoad && Array.from({ length: 4 }, (_, i) => (
-          <div key={i} className="p-4 space-y-2"><div className="skeleton h-4 w-1/2" /><div className="skeleton h-3 w-3/4" /><div className="skeleton h-3 w-2/3" /></div>
+      {/* Cards: always on phones and portrait tablets; on wider screens when the card view is chosen. */}
+      <div className={cards
+        ? `grid gap-3 p-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 ${loading && !firstLoad ? 'opacity-70' : ''} transition-opacity`
+        : 'md:hidden divide-y divide-slate-100'}>
+        {firstLoad && Array.from({ length: cards ? 8 : 4 }, (_, i) => (
+          <div key={i} className={`p-4 space-y-2 ${cards ? 'rounded-xl border border-slate-200' : ''}`}><div className="skeleton h-4 w-1/2" /><div className="skeleton h-3 w-3/4" /><div className="skeleton h-3 w-2/3" /></div>
         ))}
         {rows.map((row) => {
           const [head, ...rest] = cols;
+          const k = row[rowKey];
+          const on = activeKey !== undefined && activeKey === k;
+          const picked = selected.has(k);
           return (
-            <div key={row[rowKey]} onClick={onRowClick ? (e) => !e.target.closest('button, a, input') && onRowClick(row) : undefined} className={`p-4 ${onRowClick ? 'cursor-pointer active:bg-slate-50' : ''}`}>
+            <div key={k} onClick={onRowClick ? (e) => !e.target.closest('button, a, input, label') && onRowClick(row) : undefined}
+              className={`p-4 ${onRowClick ? 'cursor-pointer active:bg-slate-50' : ''} ${cards ? `rounded-xl border bg-white transition-colors ${on ? 'border-blue-400 ring-2 ring-blue-100' : picked ? 'border-blue-300 bg-blue-50/40' : 'border-slate-200 hover:border-blue-300 hover:shadow-sm'}` : ''}`}>
               <div className="flex items-start gap-2">
+                {selectable && cards && (
+                  <input type="checkbox" aria-label="Select" className="mt-0.5 w-4 h-4 accent-blue-600 cursor-pointer" checked={picked} onChange={() => toggleRow(k)} />
+                )}
                 <div className="flex-1 min-w-0">{head.render ? head.render(row) : row[head.key]}</div>
-                {onPreview && <button type="button" onClick={() => onPreview(row)} aria-label="Preview" className="p-1.5 rounded-lg border border-slate-200 text-slate-500"><Eye className="w-4 h-4" /></button>}
+                {onPreview && <button type="button" onClick={() => onPreview(row)} aria-label="Preview" className={`p-1.5 rounded-lg border cursor-pointer ${on ? 'border-blue-300 bg-blue-100 text-blue-700' : 'border-slate-200 text-slate-500 hover:text-blue-700'}`}><Eye className="w-4 h-4" /></button>}
                 {rowMenu && <RowMenu items={rowMenu(row)} />}
               </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2">
-                {rest.map((c) => (
+                {/* Fields with nothing in them are left out, so a card shows what the row has. */}
+                {rest.filter((c) => !c.header || !c.text || textOf(c, row) !== '').map((c) => (
                   <div key={c.key} className={`min-w-0 ${c.header ? '' : 'col-span-2'}`}>
                     {c.header && <dt className="eyebrow">{c.header}</dt>}
-                    <dd className="text-sm text-slate-700 min-w-0">{c.render ? c.render(row) : (row[c.key] ?? '—')}</dd>
+                    <dd className="text-sm text-slate-700 min-w-0 break-words [&_*]:whitespace-normal">{c.render ? c.render(row) : (row[c.key] ?? '—')}</dd>
                   </div>
                 ))}
               </dl>
             </div>
           );
         })}
-        {!loading && rows.length === 0 && <EmptyState error={error} empty={empty} action={emptyAction} />}
+        {!loading && rows.length === 0 && <div className={cards ? 'col-span-full' : ''}><EmptyState error={error} empty={empty} action={emptyAction} /></div>}
       </div>
 
       {pagination && <Pagination {...pagination} inCard />}

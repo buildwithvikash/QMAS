@@ -8,10 +8,10 @@ const STEPS = [
   { key: 'inspect', label: 'Inspection', statuses: ['OPEN', 'IN_INSPECTION'], holder: () => 'IQC Inspector' },
   { key: 'review', label: 'Incharge review', statuses: ['SUBMITTED'], holder: () => 'IQC Incharge' },
   { key: 'head', label: 'IQC Head', statuses: ['WITH_IQC_HEAD'], optional: true, holder: () => 'Plant IQC Head' },
-  { key: 'dept', label: 'SCM / VD', statuses: ['DEPT_REVIEW'], optional: true, holder: (d) => (d ? `${d.department} ${DEPT_ROLE[d.stage] ?? ''}`.trim() : 'SCM / VD') },
+  { key: 'dept', label: 'SCM / VD', statuses: ['DEPT_REVIEW'], optional: true, holder: (d) => (d?.department ? `${d.department} ${DEPT_ROLE[d.stage] ?? ''}`.trim() : 'SCM / VD (first to accept)') },
   { key: 'final', label: 'Final decision', statuses: ['IQC_HEAD_FINAL'], optional: true, holder: () => 'Plant IQC Head' },
   { key: 'senior', label: 'Senior escalation', statuses: ['SENIOR_ESCALATION'], optional: true, holder: () => 'Senior authorities' },
-  { key: 'qty', label: 'Quantities', statuses: ['UNDER_DEVIATION', 'QTY_VERIFICATION'], optional: true, holder: (d, s) => (s === 'QTY_VERIFICATION' ? 'Plant IQC Head (verify)' : `${d?.department ?? 'SCM / VD'} initiator (enter OK / Not OK)`) },
+  { key: 'qty', label: 'Quantities', statuses: ['UNDER_DEVIATION', 'QTY_VERIFICATION'], optional: true, holder: (d, s) => (s === 'QTY_VERIFICATION' ? 'IQC In-Charge (verify)' : `${d?.department ?? 'SCM / VD'} initiator (enter OK / Not OK)`) },
   { key: 'closed', label: 'Closed', statuses: Object.keys(CLOSED) },
 ];
 
@@ -44,7 +44,8 @@ export function currentStage(steps) {
 
 // Short outcome of each workflow step, for the Status column of the stage history.
 const STEP_STATUS = {
-  SUBMIT: ['Submitted', 'info'], APPROVE: ['Approved', 'good'], REVERT: ['Sent back', 'warn'], ESCALATE: ['Escalated', 'esc'],
+  SUBMIT: ['Submitted', 'info'], APPROVE: ['Approved', 'good'], REJECT: ['Rejected', 'bad'], REVERT: ['Sent back', 'warn'], ESCALATE: ['Escalated', 'esc'],
+  ACCEPT: ['Accepted', 'info'], REVERSAL_REQUEST: ['Reversal asked', 'warn'], REVERSED: ['Reversed', 'esc'], REVERSAL_REJECTED: ['Reversal refused', 'warn'],
   HEAD_APPROVE: ['Approved', 'good'], HOLD: ['On hold', 'esc'], SUBMIT_FORM: ['Form submitted', 'info'], RECOMMEND_REJECT: ['Reject recommended', 'bad'],
   DEPT_APPROVE: ['Approved', 'good'], SEND_BACK: ['Sent back', 'warn'], DEPT_REJECT: ['Rejected', 'bad'], FINAL_APPROVE: ['Approved', 'good'],
   FINAL_REJECT: ['Rejected', 'bad'], SENIOR_DECISION: ['Decided', 'esc'], SENIOR_RESULT: ['Decided', 'esc'], OVERRIDE: ['Overridden', 'esc'],
@@ -66,8 +67,9 @@ const HISTORY_STAGE_FALLBACK = {
   SENIOR_DECISION: 'Senior escalation', SENIOR_RESULT: 'Senior escalation', OVERRIDE: 'Senior escalation', SUBMIT: 'Inspection', AUTO_CLOSE: 'Quantities', OPS_TIMEOUT: 'Senior escalation', CAPA_REMINDER: 'Vendor CAPA' };
 
 /**
- * Rows of the stage history table: optionally the record's start (e.g. received from SAP), each
- * workflow step (stage, who, role, when, outcome) and, while open, the stage it waits in now.
+ * Rows of the stage history table, newest first: while open, the stage it waits in now; each
+ * workflow step (stage, who, role, when, outcome); and optionally the record's start (e.g. received
+ * from SAP) at the bottom.
  */
 export function stageRows({ history = [], current, start }) {
   const rows = [];
@@ -80,7 +82,7 @@ export function stageRows({ history = [], current, start }) {
   if (current && !current.closed) {
     rows.push({ key: 'now', stage: current.label, user: null, role: current.holder ?? null, at: history.at(-1)?.at ?? start?.at, status: 'Pending', tone: 'pending', pending: true });
   }
-  return rows;
+  return rows.reverse();
 }
 
 /** Raised → CAPA from the vendor → IQC Head review → closed. */

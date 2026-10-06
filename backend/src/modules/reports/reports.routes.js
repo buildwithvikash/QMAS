@@ -20,6 +20,9 @@ router.get('/reports/:key', canReport, validate({ params: z.object({ key: z.stri
   res.setHeader('Cache-Control', 'private, no-store');
   res.end(await toXlsx(report));
 });
-router.get('/dashboard/summary', requirePermission(PERMISSIONS.DASHBOARD_VIEW), async (req, res) => ok(res, await dashboardSummary(req.user)));
+const period = z.enum(['7', '30', '90']).transform(Number).optional();
+router.get('/dashboard/summary', requirePermission(PERMISSIONS.DASHBOARD_VIEW), validate({ query: z.object({ trendDays: period, glanceDays: period }) }), async (req, res) => {
+  ok(res, await dashboardSummary(req.user, query(req)));
+});
 
 export default router;

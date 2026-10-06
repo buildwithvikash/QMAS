@@ -30,6 +30,19 @@ export async function usersWith(db, { permission, roles = null, plantId }) {
   return rows;
 }
 
+/** Active users who may review reversal requests (System Admin included: this is the admin's inbox). */
+async function reversalReviewers(db) {
+  const { rows } = await db.query(
+    `SELECT DISTINCT u.id, u.email, u.full_name
+       FROM core.user_role ur
+       JOIN core.role_permission rp ON rp.role_code = ur.role_code AND rp.permission_key = $1
+       JOIN core.app_user u ON u.id = ur.user_id
+      WHERE u.is_active AND ur.valid_from <= current_date AND (ur.valid_to IS NULL OR ur.valid_to >= current_date)`,
+    [P.WORKFLOW_REVERSE],
+  );
+  return rows;
+}
+
 async function usersById(db, ids) {
   const list = [...new Set(ids.filter(Boolean))];
   if (!list.length) return [];
@@ -71,7 +84,7 @@ async function context(db, { imirId, deviationId, dnId, actorId, actingRole }) {
     [imirId],
   );
   const d = deviationId
-    ? (await db.query('SELECT id, deviation_no, department, stage, initiator_id, qty_due_at, action, severity, deviation_qty FROM qms.deviation WHERE id = $1', [deviationId])).rows[0]
+    ? (await db.query('SELECT id, deviation_no, department, stage, dept_outcome, initiator_id, qty_due_at, action, severity, deviation_qty FROM qms.deviation WHERE id = $1', [deviationId])).rows[0]
     : null;
   const n = dnId ? (await db.query('SELECT id, dn_no, created_by, capa_due_at, defective_qty, capa_applicable FROM qms.defect_notification WHERE id = $1', [dnId])).rows[0] : null;
   const actor = actorId
@@ -101,7 +114,9 @@ const STAGE = {
 // Workflow steps in the "Recent activity" table: label and colour.
 const STEP = {
   SUBMIT: ['Inspection submitted', 'info'], APPROVE: ['Approved by Incharge', 'good'], REVERT: ['Sent back to inspector', 'warn'],
-  ESCALATE: ['Escalated', 'esc'], HEAD_APPROVE: ['Approved by IQC Head', 'good'], HOLD: ['Put on hold', 'esc'],
+  REJECT: ['Rejected by Incharge', 'bad'], ESCALATE: ['Escalated', 'esc'], HEAD_APPROVE: ['Approved by IQC Head', 'good'], HOLD: ['Put on hold', 'esc'],
+  ACCEPT: ['Accepted by department', 'info'], REVERSAL_REQUEST: ['Reversal requested', 'warn'], REVERSED: ['Reversed by admin', 'esc'],
+  REVERSAL_REJECTED: ['Reversal request rejected', 'warn'],
   SUBMIT_FORM: ['Deviation Form submitted', 'info'], RECOMMEND_REJECT: ['Rejection recommended', 'bad'], DEPT_APPROVE: ['Approved by department', 'good'],
   SEND_BACK: ['Sent back to initiator', 'warn'], DEPT_REJECT: ['Rejected by department', 'bad'], FINAL_APPROVE: ['Deviation approved', 'good'],
   FINAL_REJECT: ['Deviation rejected', 'bad'], SENIOR_DECISION: ['Senior decision', 'esc'], SENIOR_RESULT: ['Senior escalation decided', 'esc'],
@@ -129,7 +144,7 @@ function factsOf({ imir, dev, dn }) {
   if (dev) {
     facts.push(
       ['Deviation no.', dev.deviation_no, true],
-      ['Department', dev.department],
+      ['Department', dev.department ?? 'SCM / VD (not accepted yet)'],
       ['Action · severity', dev.action ? `${WORD[dev.action] ?? dev.action}${dev.severity ? ` · ${cap(dev.severity)}` : ''}` : null],
       ['Deviation qty', num(dev.deviation_qty)],
     );
@@ -154,7 +169,9 @@ export async function notifyForAction(db, entry) {
   const imirLink = `/imirs/${imir.id}`;
   const devLink = dev && `/deviations/${dev.id}`;
   const dnLink = dn && `/dns/${dn.id}`;
-  const requestors = () => dev && usersWith(db, { permission: P.DEVIATION_INITIATE, roles: [`${dev.department}_REQUESTOR`], plantId });
+  const requestors = (dept = dev?.department) => dev && usersWith(db, { permission: P.DEVIATION_INITIATE, roles: dept ? [`${dept}_REQUESTOR`] : ['SCM_REQUESTOR', 'VD_REQUESTOR'], plantId });
+  const record = dn ? `DN ${dn.dn_no}` : dev ? `Deviation ${dev.deviation_no}` : `IMIR ${imir.imir_no}`;
+  const recordLink = dnLink ?? devLink ?? imirLink;
   const iqcHead = () => usersWith(db, { permission: P.DEVIATION_FINAL_DECIDE, plantId });
   const stakeholders = () => usersById(db, [imir.inspected_by, dev?.initiator_id, dn?.created_by]);
   const by = actor ? `${actor.full_name}${actor.role_name ? `, ${actor.role_name}` : ''}` : 'QMAS';
@@ -176,7 +193,7 @@ export async function notifyForAction(db, entry) {
   switch (action) {
     case 'SUBMIT':
       return send(usersWith(db, { permission: P.IMIR_REVIEW, plantId }), 'REVIEW', `IMIR ${imir.imir_no} submitted (${imir.result}) — review needed`, lot, imirLink, {
-        tone: 'action', todo: `Review the inspection by ${by} and approve it, send it back, or escalate it to the IQC Head.`, button: 'Review the IMIR',
+        tone: 'action', todo: `Review the inspection by ${by}: approve it, send it back, or escalate it to the IQC Head.`, button: 'Review the IMIR',
         reason: 'You get this as IQC Incharge of this plant.',
       });
     case 'REVERT':
@@ -188,6 +205,11 @@ export async function notifyForAction(db, entry) {
     case 'HEAD_APPROVE':
       return send(usersById(db, [imir.inspected_by]), 'CLOSED', `IMIR ${imir.imir_no} accepted`, lot, imirLink, {
         tone: 'good', pill: 'Accepted', todo: `The lot was accepted by ${by}. No action needed.`, button: openImir,
+        reason: 'You get this because you inspected this lot.',
+      });
+    case 'REJECT':
+      return send(usersById(db, [imir.inspected_by]), 'CLOSED', `IMIR ${imir.imir_no} rejected`, `${remark ?? ''}\n\n${lot}`, imirLink, {
+        tone: 'bad', pill: 'Rejected', todo: `The lot was rejected by ${by}. A DN can now be raised to the vendor.`, button: openImir,
         reason: 'You get this because you inspected this lot.',
       });
     case 'ESCALATE':
@@ -202,12 +224,32 @@ export async function notifyForAction(db, entry) {
         button: 'Record your decision', reason: 'You get this as one of the senior authorities this deviation was escalated to.',
       });
     case 'HOLD':
-      return send(requestors(), 'DEVIATION', `Deviation ${dev.deviation_no}: fill the Deviation Form`, `IMIR ${imir.imir_no} is on hold for ${dev.department}.\n${remark ?? ''}\n\n${lot}`, devLink, {
-        tone: 'action', pill: 'On hold', todo: `The lot is on hold for ${dev.department}. Fill in and submit the Deviation Form.`, button: 'Fill the Deviation Form',
-        reason: `You get this as ${dev.department} Requestor of this plant.`,
+      return send(requestors(null), 'DEVIATION', `Deviation ${dev.deviation_no}: accept it for your department`, `IMIR ${imir.imir_no} is on hold for SCM / VD.\n${remark ?? ''}\n\n${lot}`, devLink, {
+        tone: 'action', pill: 'On hold', todo: 'The lot is on hold for a deviation and was sent to SCM and VD. Whoever accepts it first becomes responsible and fills the Deviation Form.',
+        button: 'Open the deviation', reason: 'You get this as SCM / VD Requestor of this plant.',
       });
+    case 'ACCEPT': {
+      const other = dev.department === 'SCM' ? 'VD' : 'SCM';
+      return send(requestors(other), 'INFO', `Deviation ${dev.deviation_no} accepted by ${dev.department}`, lot, devLink, {
+        tone: 'info', pill: `Taken by ${dev.department}`, todo: `${by} accepted this deviation for ${dev.department}. No action needed from ${other}.`, button: openDev,
+        reason: `You get this as ${other} Requestor of this plant, because the deviation was also offered to you.`,
+      });
+    }
     case 'SUBMIT_FORM':
     case 'DEPT_APPROVE':
+    case 'RECOMMEND_REJECT':
+      if (dev.stage === 'HEAD' && dev.dept_outcome === 'REJECT_RECOMMENDED') {
+        return send(usersWith(db, { permission: P.DEVIATION_APPROVE, roles: [`${dev.department}_HEAD`], plantId }), 'APPROVE', `Deviation ${dev.deviation_no}: rejection of the lot recommended — your approval needed`, `${remark ?? ''}\n\n${lot}`, devLink, {
+          tone: 'action', pill: 'Reject recommended', todo: `${by} recommends rejecting the lot. Approve the recommendation (the IQC Head then rejects the lot), or send it back for clarification.`,
+          button: 'Review the recommendation', reason: `You get this as ${dev.department} Head.`,
+        });
+      }
+      if (dev.stage === 'FINAL' && dev.dept_outcome === 'REJECT_RECOMMENDED') {
+        return send(iqcHead(), 'DECIDE', `Deviation ${dev.deviation_no}: ${dev.department} Head approved rejecting the lot`, `${remark ?? ''}\n\n${lot}`, devLink, {
+          tone: 'action', pill: 'Reject recommended', todo: `${dev.department} recommends rejecting the lot and its Head approved. Reject the lot.`, button: 'Take the final decision',
+          reason: 'You get this as Plant IQC Head.',
+        });
+      }
       if (dev.stage === 'SUB_HEAD' || dev.stage === 'HEAD') {
         return send(usersWith(db, { permission: P.DEVIATION_APPROVE, roles: [`${dev.department}_${dev.stage}`], plantId }), 'APPROVE', `Deviation ${dev.deviation_no} waiting for your approval`, lot, devLink, {
           tone: 'action', todo: 'Check the Deviation Form and approve it, send it back to the initiator, or reject it.', button: 'Review the form',
@@ -219,7 +261,6 @@ export async function notifyForAction(db, entry) {
         button: 'Take the final decision', reason: 'You get this as Plant IQC Head.',
       });
     case 'DEPT_REJECT':
-    case 'RECOMMEND_REJECT':
       return send(iqcHead(), 'DECIDE', `Deviation ${dev.deviation_no} not approved by ${dev.department} — final decision needed`, `${remark ?? ''}\n\n${lot}`, devLink, {
         tone: 'action', pill: 'Not approved', todo: `${dev.department} did not approve the deviation. Take the final decision.`, button: 'Take the final decision',
         reason: 'You get this as Plant IQC Head.',
@@ -267,9 +308,9 @@ export async function notifyForAction(db, entry) {
         reason: 'You get this because you worked on this lot.',
       });
     case 'ENTER_QTY':
-      return send(iqcHead(), 'QTY', `Deviation ${dev.deviation_no}: quantities to verify`, `OK ${payload?.okQty} · Not OK ${payload?.notOkQty}\n\n${lot}`, devLink, {
+      return send(usersWith(db, { permission: P.IMIR_REVIEW, plantId }), 'QTY', `Deviation ${dev.deviation_no}: quantities to verify`, `OK ${payload?.okQty} · Not OK ${payload?.notOkQty}\n\n${lot}`, devLink, {
         tone: 'action', todo: `Verify the quantities entered by ${by}: OK ${num(payload?.okQty)} · Not OK ${num(payload?.notOkQty)}. Accept them or return them for correction.`,
-        button: 'Verify quantities', reason: 'You get this as Plant IQC Head.',
+        button: 'Verify quantities', reason: 'You get this as IQC In-Charge of this plant.',
       });
     case 'FINAL_REJECT':
       return send(stakeholders(), 'CLOSED', `Deviation ${dev.deviation_no} rejected — lot rejected`, `${remark ?? ''}\n\n${lot}`, devLink, {
@@ -306,6 +347,20 @@ export async function notifyForAction(db, entry) {
         button: openDn, reason: 'You get this as IQC Incharge of this plant. Reminders repeat every 2 days while the CAPA is overdue.',
       });
     }
+    case 'REVERSAL_REQUEST':
+      return send(reversalReviewers(db), 'REVERSAL', `${record}: reversal requested`, `${remark ?? ''}\n\n${lot}`, '/admin/reversals', {
+        tone: 'action', pill: 'Reversal request', todo: `${by} asks to reverse a step on ${record}. Review the request: reverse the step or reject the request.`,
+        button: 'Review the request', reason: 'You get this because you can reverse workflow steps.',
+      });
+    case 'REVERSED':
+      return send(usersById(db, [payload?.requestedBy, imir.inspected_by, dev?.initiator_id]), 'REVERSED', `${record} set back to ${payload?.toLabel ?? 'an earlier step'}`, `${remark ?? ''}\n\n${lot}`, recordLink, {
+        tone: 'sendback', pill: 'Reversed', todo: `${by} reversed ${record} from "${payload?.fromLabel ?? '—'}" to "${payload?.toLabel ?? '—'}". Continue from there.`,
+        button: 'Open the record', reason: 'You get this because you asked for the reversal or worked on this lot.',
+      });
+    case 'REVERSAL_REJECTED':
+      return send(usersById(db, [payload?.requestedBy]), 'REVERSAL', `${record}: reversal request not accepted`, `${remark ?? ''}\n\n${lot}`, recordLink, {
+        tone: 'bad', todo: `${by} did not reverse the step. The reason is below.`, button: 'Open the record', reason: 'You get this because you asked for the reversal.',
+      });
     default:
       return 0;
   }

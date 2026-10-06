@@ -1,4 +1,6 @@
 import { loadAccess } from '../modules/auth/access.service.js';
+import { clientIp } from '../modules/auth/clientInfo.js';
+import { assertAllowed } from '../modules/network/network.service.js';
 import { endedMessage, sessionEnded } from '../modules/auth/sessions.js';
 import { ACCESS_COOKIE, verifyAccessToken } from '../modules/auth/tokens.js';
 import { AppError } from '../shared/AppError.js';
@@ -24,6 +26,13 @@ export async function authenticate(req, _res, next) {
   if (access.isLocked) return next(AppError.unauthorized(endedMessage('LOCKED'), { code: 'SESSION_ENDED' }));
   const ended = await sessionEnded(payload.sid);
   if (ended) return next(AppError.unauthorized(endedMessage(ended), { code: 'SESSION_ENDED' }));
+  // Company network only, unless an admin approved external access (checked on every request,
+  // so access ends the moment a grant lapses or is revoked).
+  try {
+    req.network = await assertAllowed(access.id, clientIp(req));
+  } catch (err) {
+    return next(err);
+  }
   req.user = access;
   req.sessionId = payload.sid;
   next();

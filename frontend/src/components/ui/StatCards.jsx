@@ -17,7 +17,7 @@ const TONES = {
  */
 export default function StatCards({ cards, total }) {
   return (
-    <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]">
+    <div data-tour="stats" className="grid gap-3 grid-cols-2 sm:grid-cols-3 xl:grid-cols-[repeat(auto-fit,minmax(10.5rem,1fr))]">
       {cards.map((c) => {
         const t = TONES[c.tone] ?? TONES.blue;
         const Icon = c.icon;

@@ -3,6 +3,7 @@ import { getEnv } from '../../config/env.js';
 import { getPool } from '../../db/pool.js';
 import { withTransaction } from '../../db/tx.js';
 import { AppError } from '../../shared/AppError.js';
+import { evaluate as evaluateNetwork, DENIED_MESSAGE } from '../network/network.service.js';
 import { invalidateAccess, loadAccess } from './access.service.js';
 import { burnPasswordCheck, hashPassword, passwordProblems, verifyPassword } from './password.js';
 import { attachHostName, createSession, endedMessage, endSessions, forgetSessionChecks, sessionRefreshed } from './sessions.js';
@@ -99,6 +100,12 @@ export async function login({ employeeCode, password }, meta) {
   if (user.is_locked) {
     await recordAuthEvent(pool, 'LOGIN_FAILED', { ...eventMeta, detail: { reason: 'ADMIN_LOCKED' } });
     throw AppError.unauthorized('This account has been locked by an administrator. Contact the administrator to unlock it.', { code: 'ACCOUNT_LOCKED_BY_ADMIN' });
+  }
+  // Outside the company network only with an admin-approved external access.
+  const net = await evaluateNetwork(user.id, meta.ip);
+  if (!net.allowed) {
+    await recordAuthEvent(pool, 'LOGIN_FAILED', { ...eventMeta, detail: { reason: 'EXTERNAL_NETWORK' } });
+    throw AppError.forbidden(DENIED_MESSAGE, { code: 'EXTERNAL_ACCESS_DENIED' });
   }
 
   const rt = await withTransaction({ userId: user.id, requestId: meta.requestId }, async (db) => {

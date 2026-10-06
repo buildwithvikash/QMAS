@@ -1,5 +1,5 @@
 import { loginSchema } from '@qmas/shared';
-import { ArrowRight, Eye, EyeOff, Info, Lock, User } from 'lucide-react';
+import { ArrowRight, Eye, EyeOff, Globe, Info, Lock, User } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useSelector } from 'react-redux';
@@ -34,6 +34,8 @@ export default function LoginPage() {
   // Why the last session ended (signed out by an administrator, account locked, password reset).
   const endedMessage = useSelector((s) => s.auth.endedMessage);
   const notice = location.state?.notice ?? endedMessage;
+  const deniedNow = error?.data?.code === 'EXTERNAL_ACCESS_DENIED' ? error.data.message : null;
+  const denied = deniedNow ?? (!error && endedMessage && /company network/.test(endedMessage) ? endedMessage : null);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -52,12 +54,18 @@ export default function LoginPage() {
   return (
     <AuthShell title="Welcome to QMAS" subtitle="Sign in to continue to your account">
       <form onSubmit={submit} noValidate className="space-y-5">
-        {notice && !error && (
+        {notice && !error && !denied && (
           <p className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-900">
             <Info className="w-4 h-4 mt-0.5 shrink-0" />{notice}
           </p>
         )}
-        <FormError message={error && !Object.keys(apiError(error).fieldErrors).length ? apiError(error).message : ''} />
+        {denied ? (
+          // Outside the company network without approved external access.
+          <div role="alert" className="flex gap-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900">
+            <Globe className="w-5 h-5 mt-0.5 shrink-0" />
+            <div><p className="font-semibold">Access denied: outside the company network</p><p className="mt-0.5">{denied}</p></div>
+          </div>
+        ) : <FormError message={error && !Object.keys(apiError(error).fieldErrors).length ? apiError(error).message : ''} />}
         <TextInput
           label="Employee code"
           size="lg"

@@ -1,16 +1,14 @@
-import { capaSchema, DN_MAX_IMAGES, PERMISSIONS } from '@qmas/shared';
+import { capaSchema, DN_MAX_IMAGES } from '@qmas/shared';
 import { ArrowLeft, CheckCircle2, CornerUpLeft, FileSearch, FileText, FileX2, ImagePlus, Mail, Paperclip, Plus, Printer, Save, Send, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useParams } from 'react-router-dom';
-import { useGetAiStatusQuery } from '../../api/aiApi.js';
 import { useDeleteDnFileMutation, useDnActionMutation, useGetDnQuery, useMailDnToSelfMutation, useUpdateDnMutation, useUploadDnFileMutation } from '../../api/dnApi.js';
 import Button from '../../components/ui/Button.jsx';
 import ExportLinks from '../../components/ui/ExportLinks.jsx';
 import { FormError, TextArea, TextInput, Toggle } from '../../components/ui/fields.jsx';
 import Loader from '../../components/ui/Loader.jsx';
 import PageHeader from '../../components/ui/PageHeader.jsx';
-import { useAccess } from '../../hooks/useAccess.js';
 import { useZodForm } from '../../hooks/useZodForm.js';
 import { apiError } from '../../utils/apiError.js';
 import { done } from '../../utils/notify.jsx';
@@ -18,7 +16,7 @@ import { useUnsavedWarning } from '../../hooks/useUnsavedWarning.js';
 import { formatDate, formatDateTime, formatQty } from '../../utils/format.js';
 import HistoryPanel from '../deviation/HistoryPanel.jsx';
 import { ActivityLayout, KeyFacts, LinkedRecords, StageHistory } from '../deviation/RecordSide.jsx';
-import { CapaAssessment, RootCauseSuggestions } from './DnAi.jsx';
+import ReversalPanel from '../deviation/ReversalPanel.jsx';
 import { ImirStatus } from '../imir/imirUi.jsx';
 import { DeviationStage, DnStatus } from '../deviation/workflowUi.jsx';
 import { currentStage, dnSteps, stageRows } from '../imir/journey.js';
@@ -29,10 +27,6 @@ export default function DnPage() {
   const { id } = useParams();
   const { data: dn, isLoading, error } = useGetDnQuery(id);
   const [mail, { isLoading: mailing }] = useMailDnToSelfMutation();
-  const { can } = useAccess();
-  const anyAi = can(PERMISSIONS.AI_ROOT_CAUSE) || can(PERMISSIONS.AI_CAPA_REVIEW);
-  const { data: aiStatus } = useGetAiStatusQuery(undefined, { skip: !anyAi });
-  const ai = !!aiStatus?.configured;
   if (isLoading) return <Loader />;
   if (error) return <p className="p-6 text-sm text-rose-600">{apiError(error).message}</p>;
   const editable = dn.allowedActions.includes('edit');
@@ -58,17 +52,16 @@ export default function DnPage() {
       <div className="p-5 space-y-4">
         <div className="space-y-4 min-w-0">
           <YourTurn dn={dn} />
+          <ReversalPanel entityType="DN" entityId={dn.id} recordNo={dn.dnNo} />
           <Stepper title="DN route" steps={dnSteps(dn)} since={dn.history.at(-1)?.at} />
           <Facts dn={dn} />
           {editable ? <DnForm key={dn.rowVersion} dn={dn} /> : <DnView dn={dn} />}
           <Images dn={dn} editable={editable} />
-          {ai && can(PERMISSIONS.AI_ROOT_CAUSE) && <RootCauseSuggestions dn={dn} />}
           <CapaSection dn={dn} />
-          {ai && can(PERMISSIONS.AI_CAPA_REVIEW) && dn.capas.length > 0 && <CapaAssessment key={dn.capas.at(-1).id} dn={dn} />}
           <ActivityLayout history={<HistoryPanel imirId={dn.imirId} history={dn.history} owner="DN" current={currentStage(dnSteps(dn))} />}>
             <LinkedRecords items={[
               dn.imirId && { kind: 'imir', label: dn.imirNo, sub: `Inspection report, ${dn.itemCode}`, to: `/imirs/${dn.imirId}`, badge: <ImirStatus status={dn.imirStatus} /> },
-              dn.deviation && { kind: 'deviation', label: dn.deviation.deviationNo, sub: `Deviation, ${dn.deviation.department}`, to: `/deviations/${dn.deviation.id}`, badge: <DeviationStage stage={dn.deviation.stage} outcome={dn.deviation.outcome} /> },
+              dn.deviation && { kind: 'deviation', label: dn.deviation.deviationNo, sub: `Deviation, ${dn.deviation.department ?? 'SCM / VD'}`, to: `/deviations/${dn.deviation.id}`, badge: <DeviationStage stage={dn.deviation.stage} outcome={dn.deviation.outcome} /> },
             ]} />
             <StageHistory rows={stageRows({ history: dn.history.filter((h) => h.dnId), current: currentStage(dnSteps(dn)) })} />
             <KeyFacts rows={[

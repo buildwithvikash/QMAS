@@ -7,7 +7,7 @@ const FEATURES = [
   { icon: ClipboardCheck, tone: 'bg-emerald-500', title: 'Inspection Management', text: 'Create, review and approve formats' },
   { icon: BellRing, tone: 'bg-blue-500', title: 'Deviation Tracking', text: 'Track and raise notifications' },
   { icon: Settings2, tone: 'bg-amber-500', title: 'CAPA Management', text: 'Handle corrective and preventive actions' },
-  { icon: BarChart3, tone: 'bg-violet-500', title: 'Reports & Insights', text: 'Get real-time status and analytics' },
+  { icon: BarChart3, tone: 'bg-violet-500', title: 'Reports & Analytics', text: 'Get real-time status and analytics' },
 ];
 
 const STRIP = [

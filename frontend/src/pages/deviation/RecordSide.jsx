@@ -83,8 +83,8 @@ const STATUS_TONE = {
 };
 
 /**
- * Stage history as a table: stage, user, user role, date and time, status — oldest first, with
- * the stage the record waits in now as the last (pending) row. rows from stageRows().
+ * Stage history as a table: stage, user, user role, date and time, status — newest first, with
+ * the stage the record waits in now as the first (pending) row. rows from stageRows().
  */
 export function StageHistory({ rows, title = 'Stage history' }) {
   if (!rows.length) return null;

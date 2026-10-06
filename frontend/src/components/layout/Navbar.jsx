@@ -1,7 +1,9 @@
-import { Bug, CircleHelp, Inbox, KeyRound, LifeBuoy, LogOut, Monitor, Moon, Search, Sun } from 'lucide-react';
+import { Bug, Building2, CircleHelp, Compass, Globe, Inbox, KeyRound, LifeBuoy, LogOut, Monitor, Moon, Search, Sun } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import toast from 'react-hot-toast';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { startTour, tourFor } from '../../app/tours.js';
+import { useGetNetworkStatusQuery } from '../../api/networkApi.js';
 import { useLogoutMutation } from '../../api/authApi.js';
 import { THEMES, useTheme } from '../../app/theme.js';
 import * as engine from '../../offline/engine.js';
@@ -57,7 +59,7 @@ export default function Navbar() {
         </div>
       </Link>
 
-      <button type="button" onClick={openSearch}
+      <button type="button" data-tour="search" onClick={openSearch}
         className="hidden md:flex items-center gap-2.5 ml-6 w-full max-w-md px-3.5 py-2 rounded-lg border border-slate-200 bg-canvas text-sm text-slate-500 hover:bg-white hover:border-blue-300 transition-colors cursor-pointer">
         <Search className="w-4 h-4" />
         <span className="flex-1 text-left">Search IMIR, DN, deviation, item, vendor…</span>
@@ -66,12 +68,14 @@ export default function Navbar() {
 
       <div className="ml-auto flex items-center">
       <button type="button" onClick={openSearch} aria-label="Search" className="md:hidden p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer"><Search className="w-5 h-5 text-slate-600" /></button>
+      <NetworkBadge />
       <ThemeButton />
       <HelpMenu />
       <NotificationBell />
       <div className="relative">
         <button
           type="button"
+          data-tour="user-menu"
           onClick={() => setMenuOpen((o) => !o)}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
@@ -136,9 +140,12 @@ export default function Navbar() {
 /** "?" in the top bar: help, report a problem from the page you are on, and your tickets. */
 function HelpMenu() {
   const item = 'flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-50 cursor-pointer';
+  const { can } = useAccess();
+  const { pathname } = useLocation();
+  const tour = tourFor(pathname, can);
   return (
     <PopMenu width="w-64" button={({ open, toggle }) => (
-      <button type="button" onClick={toggle} aria-label="Help and support" aria-haspopup="menu" aria-expanded={open} title="Help & support"
+      <button type="button" data-tour="help" onClick={toggle} aria-label="Help and support" aria-haspopup="menu" aria-expanded={open} title="Help & support"
         className="p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
         <CircleHelp className="w-5 h-5 text-slate-600" />
       </button>
@@ -147,7 +154,12 @@ function HelpMenu() {
       <button type="button" role="menuitem" data-close onClick={() => openReportIssue({ kind: 'BUG' })} className={item}>
         <Bug className="w-4 h-4 text-rose-500" /><span className="flex-1 text-left">Report a problem on this page</span>
       </button>
+      <button type="button" role="menuitem" data-close disabled={!tour} onClick={() => tour && startTour(tour.key)} className={`${item} disabled:cursor-default disabled:opacity-50`}
+        title={tour ? tour.description : 'No tour for this page yet'}>
+        <Compass className="w-4 h-4 text-violet-600" /><span className="flex-1 text-left">{tour ? 'Tour of this page' : 'No tour for this page'}</span>
+      </button>
       <Link role="menuitem" data-close to="/help" className={item}><LifeBuoy className="w-4 h-4 text-blue-600" />Help Center &amp; guides</Link>
+      <Link role="menuitem" data-close to="/help#help-tours" className={item}><Compass className="w-4 h-4 text-slate-500" />All guided tours</Link>
       <Link role="menuitem" data-close to="/help/tickets" className={item}><Inbox className="w-4 h-4 text-slate-500" />My tickets</Link>
     </PopMenu>
   );
@@ -161,7 +173,7 @@ function ThemeButton() {
   const next = resolved === 'dark' ? 'light' : 'dark';
   const Icon = resolved === 'dark' ? Sun : Moon;
   return (
-    <button type="button" onClick={() => setChoice(next)} aria-label={`Switch to ${next} mode`} title={`Switch to ${next} mode`}
+    <button type="button" data-tour="theme" onClick={() => setChoice(next)} aria-label={`Switch to ${next} mode`} title={`Switch to ${next} mode`}
       className="p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
       <Icon className="w-5 h-5 text-slate-600" />
     </button>
@@ -187,5 +199,27 @@ function ThemeChoice() {
         })}
       </div>
     </div>
+  );
+}
+
+/**
+ * Where the user is connecting from: the company network, or outside it with approved external
+ * access (until when). Refreshed every few minutes.
+ */
+function NetworkBadge() {
+  const { data } = useGetNetworkStatusQuery(undefined, { pollingInterval: 5 * 60_000 });
+  if (!data) return null;
+  const external = data.network === 'EXTERNAL';
+  const until = data.externalAccess ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(data.externalAccess.endsAt)) : null;
+  const title = external
+    ? `Outside the company network (${data.ip ?? 'unknown address'})${until ? `. External access approved until ${until}.` : '.'}`
+    : `Company network (${data.ip ?? ''})`;
+  const Icon = external ? Globe : Building2;
+  return (
+    <span title={title} aria-label={title}
+      className={`mr-1 hidden sm:inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ${external ? 'bg-amber-50 text-amber-800 ring-amber-200' : 'bg-emerald-50 text-emerald-700 ring-emerald-200'}`}>
+      <Icon className="h-3.5 w-3.5" />
+      {external ? (until ? `External · until ${until}` : 'External network') : 'Company network'}
+    </span>
   );
 }

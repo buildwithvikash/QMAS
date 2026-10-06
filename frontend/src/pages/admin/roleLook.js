@@ -17,12 +17,6 @@ for (const section of ROUTE_SECTIONS) {
 export const EXTRA_PAGES = [
   { permission: PERMISSIONS.SUPPORT_MANAGE, path: '/help/tickets?scope=all', label: 'Support Desk (all tickets)', section: 'Help & Support', note: 'Tabs on My Tickets: all tickets, assigned to me; reply, assign, set status' },
   // AI features inside other pages.
-  { permission: PERMISSIONS.AI_SEARCH, path: '/', label: 'AI: search in plain words', section: 'Home', note: 'In the search box (Ctrl K): a question becomes list filters' },
-  { permission: PERMISSIONS.AI_IMIR_SUMMARY, path: '/imirs', label: 'AI: inspection summary', section: 'Incoming Inspection', note: 'On a submitted IMIR' },
-  { permission: PERMISSIONS.AI_FAILURE_CHANCE, path: '/imirs', label: 'Chance this lot fails', section: 'Incoming Inspection', note: 'In Supplier risk on the IMIR page (from history, no AI service)' },
-  { permission: PERMISSIONS.AI_VOICE_TIDY, path: '/imirs', label: 'AI: tidy dictated text', section: 'Incoming Inspection', note: '"Tidy & add" on the inspection sheet when dictating' },
-  { permission: PERMISSIONS.AI_ROOT_CAUSE, path: '/dns', label: 'AI: root-cause suggestions', section: 'Defect Notification', note: 'On a DN' },
-  { permission: PERMISSIONS.AI_CAPA_REVIEW, path: '/dns', label: 'AI: CAPA assessment', section: 'Defect Notification', note: "On a DN with the vendor's CAPA" },
 ];
 for (const x of EXTRA_PAGES) PAGES_BY_PERMISSION.set(x.permission, [...(PAGES_BY_PERMISSION.get(x.permission) ?? []), x]);
 

@@ -1,0 +1,11 @@
+{
+  "SchemaVersion": "1",
+  "SolutionId": "a38eb4af-7aa6-4546-9d71-e69c35985d03",
+  "Projects": [
+    {
+      "Id": "e4598093-b9be-432b-924d-62768bab12f2",
+      "Type": "Flow",
+      "ProjectRelativePath": "MyProject/project.uiproj"
+    }
+  ]
+}

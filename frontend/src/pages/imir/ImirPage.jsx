@@ -1,12 +1,11 @@
-import { MAX_SAMPLES, PERMISSIONS } from '@qmas/shared';
+import { MAX_SAMPLES } from '@qmas/shared';
 import {
-  AlertTriangle, ArrowLeft, Boxes, Building2, Calendar, CheckCircle2, ClipboardCheck, CloudOff, Factory, FileText, FlaskConical, Hash, Info, Layers, ListChecks, Loader2,
+  AlertTriangle, ArrowLeft, Boxes, Building2, Calendar, CheckCircle2, ChevronDown, ChevronsDownUp, ChevronsUpDown, ClipboardCheck, CloudOff, Factory, FileText, FlaskConical, Hash, Info, Layers, ListChecks, Loader2,
   Package, Printer, Ruler, Save, Search, Send, Tablet, Tag, Trash2, UserRound, X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useGetAiStatusQuery, useGetLotInsightsQuery } from '../../api/aiApi.js';
 import { useDeleteAttachmentMutation, useGetImirQuery, useSaveInspectionMutation, useSubmitImirMutation, useUploadAttachmentMutation } from '../../api/imirApi.js';
 import Button from '../../components/ui/Button.jsx';
 import ExportLinks from '../../components/ui/ExportLinks.jsx';
@@ -14,7 +13,6 @@ import { Select, TextInput } from '../../components/ui/fields.jsx';
 import Loader from '../../components/ui/Loader.jsx';
 import Modal, { ConfirmDialog, ModalFooter } from '../../components/ui/Modal.jsx';
 import PageHeader from '../../components/ui/PageHeader.jsx';
-import { useAccess } from '../../hooks/useAccess.js';
 import * as engine from '../../offline/engine.js';
 import { applyPatch, evaluateSheet } from '../../offline/sheetModel.js';
 import * as store from '../../offline/store.js';
@@ -24,12 +22,12 @@ import { ImirResult, ImirStatus } from './imirUi.jsx';
 import InspectionSheet from './InspectionSheet.jsx';
 import { focusFirstMissing, sheetProgress } from './sheetNav.js';
 import { currentStage, journeySteps, stageRows } from './journey.js';
-import { AiSummary, BeforeYouInspect, SupplierRisk } from './LotInsights.jsx';
 import LotJourney from './LotJourney.jsx';
 import ReviewPanel from './ReviewPanel.jsx';
 import HistoryPanel from '../deviation/HistoryPanel.jsx';
 import RoundsPanel from '../deviation/RoundsPanel.jsx';
 import { LinkedRecords, StageHistory } from '../deviation/RecordSide.jsx';
+import ReversalPanel from '../deviation/ReversalPanel.jsx';
 import { DeviationStage, DnStatus } from '../deviation/workflowUi.jsx';
 
 /** Combines two save patches: later cells/entries win. */
@@ -77,11 +75,6 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
   const [save] = useSaveInspectionMutation();
   const navigate = useNavigate();
   const readOnly = mode === 'view' || !!sheet.pendingSubmit;
-  // History, drift, focus and supplier risk (no AI); unavailable offline, where the sheet works without it.
-  const { data: insights } = useGetLotInsightsQuery(sheet.id, { skip: sheet.status === 'AWAITING_FORMAT' });
-  const { can } = useAccess();
-  const aiAllowed = can(PERMISSIONS.AI_IMIR_SUMMARY);
-  const { data: aiStatus } = useGetAiStatusQuery(undefined, { skip: !aiAllowed });
 
   // Keep in step with the server copy when nothing is waiting to be saved.
   useEffect(() => {
@@ -133,9 +126,11 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
 
   const progress = sheetProgress(sheet);
   const [find, setFind] = useState('');
+  const [collapsed, setCollapsed] = useState(() => new Set()); // section keys; all expanded on opening
   const goToMissing = () => {
     if (!ev?.missing?.length) return;
     setFind(''); // a search could hide the empty cell
+    setCollapsed(new Set()); // so could a collapsed section
     setTimeout(() => focusFirstMissing(ev.missing), 60);
   };
   const saveDraft = async () => {
@@ -152,13 +147,19 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
     progress.present.visrel && { key: 'visrel', label: 'Visual & reliability tests', ...progress.visrel },
   ].filter(Boolean);
   const searchOn = sections.find((x) => x.key !== 'lot')?.key;
+  const allCollapsed = sections.every((x) => collapsed.has(x.key));
+  const toggleSection = (key) => setCollapsed((c) => {
+    const next = new Set(c);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
 
   const steps = journeySteps({ status: sheet.status, history: sheet.history, deviation: sheet.deviation });
   const stage = currentStage(steps);
   const since = sheet.history?.length ? sheet.history.at(-1).at : sheet.createdAt;
-  const showHistory = () => document.getElementById('imir-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const linked = [
-    sheet.deviation && { kind: 'deviation', label: sheet.deviation.deviationNo, sub: `Deviation, ${sheet.deviation.department}`, to: `/deviations/${sheet.deviation.id}`, badge: <DeviationStage stage={sheet.deviation.stage} outcome={sheet.deviation.outcome} /> },
+    sheet.deviation && { kind: 'deviation', label: sheet.deviation.deviationNo, sub: `Deviation, ${sheet.deviation.department ?? 'SCM / VD (not accepted yet)'}`, to: `/deviations/${sheet.deviation.id}`, badge: <DeviationStage stage={sheet.deviation.stage} outcome={sheet.deviation.outcome} /> },
     sheet.dn && { kind: 'dn', label: sheet.dn.dnNo, sub: 'Defect notification', to: `/dns/${sheet.dn.id}`, badge: <DnStatus status={sheet.dn.status} /> },
     sheet.formatVersionId && { kind: 'format', label: `${sheet.formatNo ?? 'Inspection format'} (v${sheet.formatVersionNo})`, sub: 'Inspection format used', to: `/formats/versions/${sheet.formatVersionId}` },
   ];
@@ -180,33 +181,41 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
 
         <LotJourney status={sheet.status} history={sheet.history ?? []} deviation={sheet.deviation} dn={sheet.dn} />
         {mode !== 'tablet' && <ReviewPanel imir={sheet} />}
-        {mode !== 'tablet' && aiAllowed && aiStatus?.configured && sheet.submittedAt && <AiSummary imirId={sheet.id} />}
+        {mode !== 'tablet' && sheet.imirNo && <ReversalPanel entityType="IMIR" entityId={sheet.id} recordNo={sheet.imirNo} />}
 
-        <div className={`grid gap-4 items-stretch ${opened && insights ? 'xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)_minmax(0,1fr)]' : 'xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]'}`}>
+        <div className="grid gap-4 items-stretch xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <GeneralInfo sheet={sheet} />
           <InspectionStatus sheet={sheet} stage={stage} since={since} progress={opened ? progress.pct : null} />
-          {opened && insights && <SupplierRisk insights={insights} />}
         </div>
 
-        <div className={`grid gap-4 items-stretch ${opened && insights ? 'xl:grid-cols-2' : ''}`}>
-          {opened && insights && <BeforeYouInspect insights={insights} onHistory={mode !== 'tablet' ? showHistory : undefined} />}
-          <div className="space-y-4">
-            <ModelDetails sheet={sheet} readOnly={readOnly} onPatch={onPatch} opened={opened} />
-            <AdditionalInfo sheet={sheet} />
-          </div>
+        <div className="grid gap-4 items-stretch xl:grid-cols-2">
+          <ModelDetails sheet={sheet} readOnly={readOnly} onPatch={onPatch} opened={opened} />
+          <AdditionalInfo sheet={sheet} />
         </div>
 
         {opened && sheet.checkpoints?.length > 0 && (
           <>
+            {/* Every section starts expanded; Collapse all keeps only the headers and their progress. */}
+            <div className="flex items-center justify-end gap-2">
+              <span className="mr-auto text-xs text-slate-500">{sections.length} section{sections.length === 1 ? '' : 's'}</span>
+              <button type="button" onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(sections.map((x) => x.key)))} aria-expanded={!allCollapsed}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer">
+                {allCollapsed ? <><ChevronsUpDown className="h-3.5 w-3.5" />Expand all</> : <><ChevronsDownUp className="h-3.5 w-3.5" />Collapse all</>}
+              </button>
+            </div>
             {sections.map((sec) => (
               <section key={sec.key} className="card overflow-hidden" aria-label={sec.label}>
-                <div className="flex flex-wrap items-center gap-3 border-b border-slate-200 px-4 py-2.5">
+                <div className={`flex flex-wrap items-center gap-3 px-4 py-2.5 ${collapsed.has(sec.key) ? '' : 'border-b border-slate-200'}`}>
                   <h2 className="flex items-center gap-2 text-base font-semibold text-slate-900">
+                    <button type="button" onClick={() => toggleSection(sec.key)} aria-expanded={!collapsed.has(sec.key)} aria-label={`${collapsed.has(sec.key) ? 'Expand' : 'Collapse'} ${sec.label}`}
+                      className="-ml-1 rounded p-0.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800 cursor-pointer">
+                      <ChevronDown className={`h-4 w-4 transition-transform ${collapsed.has(sec.key) ? '-rotate-90' : ''}`} />
+                    </button>
                     {sec.label}
                     {sec.total > 0 && <span className={`text-sm font-medium tabular ${sec.done === sec.total ? 'text-emerald-700' : 'text-slate-500'}`}>({sec.done}/{sec.total})</span>}
                     {sec.nok && <span className="w-2 h-2 rounded-full bg-rose-500" title="Has a NOK" />}
                   </h2>
-                  {sec.key === searchOn && (
+                  {sec.key === searchOn && !collapsed.has(sec.key) && (
                     <label className="relative ml-auto w-full sm:w-72">
                       <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                       <input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Search check point, specification…" aria-label="Search check points"
@@ -215,9 +224,9 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
                     </label>
                   )}
                 </div>
-                <InspectionSheet flat sheet={sheet} tab={sec.key} readOnly={readOnly} onPatch={onPatch} photosByCell={photosByCell} insights={insights} filter={sec.key === 'lot' ? '' : find}
+                {!collapsed.has(sec.key) && <InspectionSheet flat sheet={sheet} tab={sec.key} readOnly={readOnly} onPatch={onPatch} photosByCell={photosByCell} filter={sec.key === 'lot' ? '' : find}
                   onAddPhoto={readOnly ? undefined : (cp) => setDialog({ type: 'photo', cp })}
-                  onOpenPhotos={(cp, s) => setDialog({ type: 'photos', cp, sampleNo: s })} />
+                  onOpenPhotos={(cp, s) => setDialog({ type: 'photos', cp, sampleNo: s })} />}
               </section>
             ))}
             <SignOff sheet={sheet} readOnly={readOnly} onPatch={onPatch} />
@@ -240,7 +249,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
 
       {/* The report's actions stay at hand while scrolling. */}
       {ev && opened && !readOnly && (
-        <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-5 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div data-tour="imir-actions" className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-5 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500">Progress</span>
             <span className="w-24 h-1.5 rounded-full bg-slate-200 overflow-hidden"><span className={`block h-full rounded-full ${progress.pct === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`} style={{ width: `${progress.pct}%` }} /></span>
@@ -297,7 +306,7 @@ const CardHead = ({ icon: Icon, tone = 'bg-blue-100 text-blue-700', title, child
 /** Report header: the lot from SAP, with the format it is inspected against. */
 function GeneralInfo({ sheet }) {
   return (
-    <section className="card h-full">
+    <section data-tour="imir-info" className="card h-full">
       <CardHead icon={ClipboardCheck} title="General information" />
       <dl className="grid grid-cols-2 gap-x-3 gap-y-3 px-4 pb-4 md:grid-cols-4">
         <Field label="Inspection date" icon={Calendar}>{formatDate(sheet.inspectionStartedAt ?? sheet.openedAt)}</Field>
@@ -341,7 +350,7 @@ function InspectionStatus({ sheet, stage, since, progress }) {
     sheet.formatVersionId && { icon: FileText, label: 'Inspection format', value: `${sheet.formatNo ?? 'Format'} (v${sheet.formatVersionNo})`, to: `/formats/versions/${sheet.formatVersionId}` },
   ].filter(Boolean);
   return (
-    <section className="card h-full">
+    <section data-tour="imir-status" className="card h-full">
       <CardHead icon={Info} title="Inspection status" />
       <div className="flex items-center gap-4 px-4 pb-4">
         {progress !== null && <Ring pct={progress} />}
@@ -369,7 +378,7 @@ function ModelDetails({ sheet, readOnly, onPatch, opened }) {
   useEffect(() => setModel(sheet.model ?? ''), [sheet.model]);
   const missing = opened && !readOnly && !model.trim();
   return (
-    <section className="card">
+    <section data-tour="imir-model" className="card">
       <CardHead icon={Package} tone="bg-sky-100 text-sky-700" title="Model details">
         {sheet.drawingNo && <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700"><Ruler className="h-3.5 w-3.5 text-slate-400" />Drawing {sheet.drawingNo}{sheet.drawingRev ? ` rev ${sheet.drawingRev}` : ''}</span>}
       </CardHead>
@@ -419,6 +428,11 @@ function Signature({ role, step, pending, done: doneLabel }) {
           <div>
             <div className="text-sm font-semibold text-slate-900">{step.actorName ?? 'System'}</div>
             <div className="text-xs text-slate-600">{doneLabel(step)}, {formatDateTime(step.at)}</div>
+            {step.remark && (
+              <p className="mt-1 text-xs text-slate-700 whitespace-pre-line">
+                <span className="font-medium text-slate-500">{['APPROVE', 'HEAD_APPROVE'].includes(step.action) ? 'Final approval remark: ' : 'Remark: '}</span>{step.remark}
+              </p>
+            )}
           </div>
         </div>
       ) : (
@@ -428,7 +442,7 @@ function Signature({ role, step, pending, done: doneLabel }) {
   );
 }
 
-const DECIDED = { APPROVE: 'Approved', REVERT: 'Sent back', ESCALATE: 'Escalated to IQC Head', HEAD_APPROVE: 'Approved', HOLD: 'Held for deviation' };
+const DECIDED = { APPROVE: 'Approved', REJECT: 'Rejected', REVERT: 'Sent back', ESCALATE: 'Escalated to IQC Head', HEAD_APPROVE: 'Approved', HOLD: 'Held for deviation' };
 const OUTCOME = {
   CLOSED_ACCEPTED: ['Accepted', 'bg-emerald-600 text-white'],
   CLOSED_UNDER_DEVIATION: ['Accepted under deviation', 'bg-amber-500 text-white'],
@@ -441,7 +455,7 @@ function SignOff({ sheet, readOnly, onPatch }) {
   const [remark, setRemark] = useState(sheet.inspectorRemark ?? '');
   useEffect(() => setRemark(sheet.inspectorRemark ?? ''), [sheet.inspectorRemark]);
   const submitted = lastOf(sheet.history, ['SUBMIT']);
-  const reviewed = lastOf(sheet.history, ['APPROVE', 'REVERT', 'ESCALATE']);
+  const reviewed = lastOf(sheet.history, ['APPROVE', 'REJECT', 'REVERT', 'ESCALATE']);
   const decided = lastOf(sheet.history, ['HEAD_APPROVE', 'HOLD']);
   const outcome = OUTCOME[sheet.status];
   return (
