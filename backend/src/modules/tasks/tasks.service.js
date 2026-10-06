@@ -37,7 +37,7 @@ export async function myTasks(user) {
       if (!actingRole(user, { permission: P.IMIR_INSPECT, plantId: m.plantId })) continue;
       const sentBack = m.lastAction === 'REVERT';
       tasks.push({
-        kind: 'inspect', entity: 'IMIR', id: m.id, docNo: m.imirNo, link: `/imirs/${m.id}`,
+        kind: 'inspect', entity: 'IMIR', id: m.id, imirId: m.id, docNo: m.imirNo, link: `/imirs/${m.id}`,
         task: sentBack ? 'Correct and resubmit' : m.status === 'IN_INSPECTION' ? 'Continue inspection' : 'Inspect lot',
         status: m.status, sentBack, note: sentBack ? m.lastRemark : null, tablet: m.tablet,
         qty: m.inwardQty, uom: m.uom, plantSapCode: m.plantSapCode, plantName: m.plantName, itemCode: m.itemCode, itemDescription: m.itemDescription, vendorName: m.vendorName,
@@ -58,7 +58,7 @@ export async function myTasks(user) {
     const actions = imirReviewActions(user, m);
     if (!actions.length) continue;
     tasks.push({
-      kind: 'review', entity: 'IMIR', id: m.id, docNo: m.imirNo, link: `/imirs/${m.id}`, task: IMIR_TASK[m.status], status: m.status, result: m.result, actions,
+      kind: 'review', entity: 'IMIR', id: m.id, imirId: m.id, docNo: m.imirNo, link: `/imirs/${m.id}`, task: IMIR_TASK[m.status], status: m.status, result: m.result, actions,
       plantSapCode: m.plantSapCode, plantName: m.plantName, itemCode: m.itemCode, itemDescription: m.itemDescription, vendorName: m.vendorName, since: m.updatedAt,
     });
   }
@@ -71,7 +71,7 @@ export async function myTasks(user) {
     const actions = deviationActions(user, d, round);
     if (!actions.some((a) => a !== 'override')) continue; // overriding is a right, not a task
     tasks.push({
-      kind: 'deviation', entity: 'DEVIATION', id: d.id, docNo: d.deviationNo, imirNo: d.imirNo, link: `/deviations/${d.id}`, task: d.department ? STAGE_LABEL[d.stage] : STAGE_LABEL.UNASSIGNED,
+      kind: 'deviation', entity: 'DEVIATION', id: d.id, imirId: d.imirId, docNo: d.deviationNo, imirNo: d.imirNo, link: `/deviations/${d.id}`, task: d.department ? STAGE_LABEL[d.stage] : STAGE_LABEL.UNASSIGNED,
       stage: d.stage, department: d.department, actions, plantSapCode: d.plantSapCode, plantName: d.plantName, itemCode: d.itemCode, itemDescription: d.itemDescription,
       vendorName: d.vendorName, since: d.updatedAt, dueAt: d.stage === 'UNDER_DEVIATION' ? d.qtyDueAt : (round?.steps ?? []).filter((x) => x.status === 'PENDING' && x.dueAt).map((x) => x.dueAt).sort()[0] ?? null,
     });
@@ -80,7 +80,7 @@ export async function myTasks(user) {
   // Defect notifications: the vendor's CAPA to enter (Incharge) or to review (IQC Head).
   if (holds(user, P.DN_MANAGE) || holds(user, P.DN_APPROVE_CAPA)) {
     const { rows } = await db.query(
-      `SELECT n.id, n.dn_no, n.status, n.plant_id, n.capa_applicable, n.capa_due_at, n.created_at, n.updated_at, p.sap_code AS plant_sap_code, p.name AS plant_name,
+      `SELECT n.id, n.imir_id, n.dn_no, n.status, n.plant_id, n.capa_applicable, n.capa_due_at, n.created_at, n.updated_at, p.sap_code AS plant_sap_code, p.name AS plant_name,
               i.item_code, i.description AS item_description, v.name AS vendor_name
          FROM qms.defect_notification n JOIN core.plant p ON p.id = n.plant_id JOIN mst.item i ON i.id = n.item_id JOIN mst.vendor v ON v.id = n.vendor_id
         WHERE n.status IN ('OPEN', 'CAPA_SUBMITTED') ORDER BY n.created_at LIMIT 1000`,
@@ -90,7 +90,7 @@ export async function myTasks(user) {
       const submit = actions.includes('submit_capa');
       if (!submit && !actions.includes('approve_capa')) continue;
       tasks.push({
-        kind: 'capa', entity: 'DN', id: n.id, docNo: n.dnNo, link: `/dns/${n.id}`,
+        kind: 'capa', entity: 'DN', id: n.id, imirId: n.imirId, docNo: n.dnNo, link: `/dns/${n.id}`,
         task: submit ? (n.capaApplicable ? "Enter vendor's CAPA" : 'Send DN for closure') : 'Review CAPA', status: n.status, actions,
         plantSapCode: n.plantSapCode, plantName: n.plantName, itemCode: n.itemCode, itemDescription: n.itemDescription, vendorName: n.vendorName,
         since: submit ? n.createdAt : n.updatedAt, dueAt: submit && n.capaApplicable ? n.capaDueAt : null,

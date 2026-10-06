@@ -9,7 +9,7 @@ import * as repo from './imir.repo.js';
 /**
  * Review of a submitted IMIR (slides 7–8).
  *  Incharge:  approve → closed accepted (a failed lot needs a final approval remark);
- *             reject → closed rejected; revert → back to the inspector;
+ *             revert → back to the inspector;
  *             escalate with a non-conformance remark → IQC Head.
  *  IQC Head:  approve (with a final approval remark) → closed accepted;
  *             hold → deviation opened for SCM and VD together (the first to accept owns it).
@@ -50,7 +50,7 @@ export async function review(ctx, user, id, body) {
       deviationId = dev.id;
       payload = { departments: ['SCM', 'VD'], suggestedActions: body.suggestedActions, deviationNo: dev.deviationNo };
     }
-    if (body.action === 'approve' || body.action === 'reject') payload = { result: imir.result };
+    if (body.action === 'approve') payload = { result: imir.result };
     await logAction(db, { imirId: id, deviationId, action: body.action.toUpperCase(), fromStatus: imir.status, toStatus: rule.to, actorId: user.id, actingRole: role, remark: body.remark ?? null, payload, snapshot });
   });
 }
@@ -65,10 +65,15 @@ const LABEL = { approve: 'approved', reject: 'rejected', revert: 'sent back', es
 async function openDeviation(db, user, imir, { suggestedActions, remark }) {
   const { docNo } = await issueNumber(db, { docType: 'DEVIATION', plantId: imir.plantId, userId: user.id });
   const { specification, observation } = await failedCheckpointSummary(db, imir);
+  const { rows: esc } = await db.query(
+    "SELECT remark, actor_id, at FROM qms.imir_action WHERE imir_id = $1 AND action = 'ESCALATE' AND deviation_id IS NULL ORDER BY id DESC LIMIT 1",
+    [imir.id],
+  );
   const { rows } = await db.query(
-    `INSERT INTO qms.deviation (deviation_no, imir_id, plant_id, department, suggested_actions, hold_remark, stage, specification, iqc_observation, created_by, updated_by)
-     VALUES ($1, $2, $3, NULL, $4, $5, 'INITIATOR', $6, $7, $8, $8) RETURNING id`,
-    [docNo, imir.id, imir.plantId, suggestedActions, remark, specification, observation, user.id],
+    `INSERT INTO qms.deviation (deviation_no, imir_id, plant_id, department, suggested_actions, hold_remark, stage, specification, iqc_observation,
+            incharge_remark, incharge_remark_by, incharge_remark_at, created_by, updated_by)
+     VALUES ($1, $2, $3, NULL, $4, $5, 'INITIATOR', $6, $7, $8, $9, $10, $11, $11) RETURNING id`,
+    [docNo, imir.id, imir.plantId, suggestedActions, remark, specification, observation, esc[0]?.remark ?? null, esc[0]?.actor_id ?? null, esc[0]?.at ?? null, user.id],
   );
   return { id: rows[0].id, deviationNo: docNo };
 }

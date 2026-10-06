@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, CornerUpLeft, FileWarning, Gavel, Hand, Scale,
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import ExportLinks from '../../components/ui/ExportLinks.jsx';
-import { useDeviationActionMutation, useGetDeviationQuery } from '../../api/workflowApi.js';
+import { useDeviationActionMutation, useGetDeviationQuery, useSetDeviationInchargeRemarkMutation } from '../../api/workflowApi.js';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
 import { FormError, Select, TextArea, TextInput } from '../../components/ui/fields.jsx';
@@ -81,12 +81,13 @@ export default function DeviationPage() {
           <LotJourney status={d.imirStatus} history={d.history} deviation={d} />
           <Facts d={d} />
           {can('submit_form') ? <DeviationForm d={d} onRecommendReject={() => setDialog('recommend_reject')} /> : <FormView d={d} />}
+          <InchargeRemark key={d.rowVersion} d={d} />
           {can('enter_qty') && <QuantityForm d={d} />}
           {d.rounds.length > 0 && <EscalationBoard d={d} />}
         <ActivityLayout history={<HistoryPanel imirId={d.imirId} history={d.history} current={currentStage(journeySteps({ status: d.imirStatus, history: d.history, deviation: d }))} />}>
             <RoundsPanel history={d.history} loop="form" detail={(r) => <RevisionChanges d={d} round={r} />}
             waitingFor={d.stage === 'INITIATOR' ? 'Waiting for the initiator to submit again' : 'Waiting for the approver'} />
-            <RoundsPanel history={d.history} loop="qty" waitingFor="Waiting for the IQC Head to verify" />
+            <RoundsPanel history={d.history} loop="qty" waitingFor="Waiting for the IQC In-Charge to verify" />
             <LinkedRecords items={[
               { kind: 'imir', label: d.imirNo, sub: `Inspection report, ${d.itemCode}`, to: `/imirs/${d.imirId}`, badge: <ImirStatus status={d.imirStatus} /> },
               d.history.find((h) => h.action === 'DN_RAISE') && { kind: 'dn', label: d.history.find((h) => h.action === 'DN_RAISE').payload?.dnNo ?? 'Defect notification', sub: 'Defect notification', to: `/dns/${d.history.find((h) => h.action === 'DN_RAISE').dnId}` },
@@ -238,6 +239,39 @@ function RevisionChanges({ d, round }) {
   );
 }
 
+/** The IQC In-Charge's own remark on the Deviation Form (filled from the escalation remark at hold). */
+function InchargeRemark({ d }) {
+  const [text, setText] = useState(d.inchargeRemark ?? '');
+  const [error, setError] = useState(null);
+  const [save, { isLoading }] = useSetDeviationInchargeRemarkMutation();
+  const changed = (text.trim() || null) !== (d.inchargeRemark ?? null);
+  if (!d.canEditInchargeRemark && !d.inchargeRemark) return null;
+  const submit = async () => {
+    setError(null);
+    try {
+      await save({ id: d.id, remark: text.trim() || null, rowVersion: d.rowVersion }).unwrap();
+      done('In-Charge remark saved.');
+    } catch (err) {
+      setError(apiError(err).message);
+    }
+  };
+  return (
+    <section className="card p-4 space-y-2" aria-label="IQC In-Charge remark">
+      <div className="flex flex-wrap items-baseline gap-2">
+        <h2 className="text-sm font-bold text-slate-800">IQC In-Charge remark</h2>
+        {d.inchargeRemarkAt && <span className="ml-auto text-xs text-slate-500">{d.inchargeRemarkByName ?? ''} · {formatDateTime(d.inchargeRemarkAt)}</span>}
+      </div>
+      <FormError message={error} />
+      {d.canEditInchargeRemark ? (
+        <>
+          <TextArea label="Remark" value={text} onChange={(e) => setText(e.target.value)} maxLength={2000} placeholder="The In-Charge's view on this deviation" />
+          <div className="flex justify-end"><Button size="sm" loading={isLoading} disabled={!changed} onClick={submit}>Save remark</Button></div>
+        </>
+      ) : <p className="text-sm text-slate-800 whitespace-pre-line">{d.inchargeRemark}</p>}
+    </section>
+  );
+}
+
 function FormView({ d }) {
   if (!d.formSubmittedAt) return null;
   const row = (label, value) => (
@@ -273,7 +307,7 @@ function QuantityForm({ d }) {
     if (okQty === '' || notOkQty === '') return setError('Enter both quantities.');
     try {
       await run({ id: d.id, action: 'enter_qty', rowVersion: d.rowVersion, okQty: Number(okQty), notOkQty: Number(notOkQty), remark: remark.trim() || null }).unwrap();
-      done('Quantities sent to the IQC Head for verification.');
+      done('Quantities sent to the IQC In-Charge for verification.');
     } catch (err) {
       setError(apiError(err).message);
     }

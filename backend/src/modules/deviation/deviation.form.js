@@ -82,6 +82,7 @@ export async function buildDeviationForm(d, db = getPool()) {
   };
   block('SPECIFICATION', d.specification, 3);
   block('OBSERVATION BY IQC INCHARGE & HEAD', d.iqcObservation, 3);
+  block('IQC IN-CHARGE REMARK', d.inchargeRemark, 2);
   block('CORRECTION', d.correction, 3);
   block('CORRECTIVE ACTION', d.correctiveAction, 4);
 

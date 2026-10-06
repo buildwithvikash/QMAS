@@ -23,8 +23,6 @@ const MODULE_BY_PATH = [
   ['/dns', 'Defect notification & CAPA'],
   ['/formats', 'Inspection formats'],
   ['/reports', 'Reports & insights'],
-  ['/insights', 'Reports & insights'],
-  ['/ask', 'Reports & insights'],
   ['/masters', 'Master config'],
   ['/admin/users', 'Users & roles'],
   ['/admin/roles', 'Users & roles'],

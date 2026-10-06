@@ -1,4 +1,4 @@
-import { MAX_SAMPLES, PERMISSIONS } from '@qmas/shared';
+import { MAX_SAMPLES } from '@qmas/shared';
 import {
   AlertTriangle, ArrowLeft, Boxes, Building2, Calendar, CheckCircle2, ChevronDown, ChevronsDownUp, ChevronsUpDown, ClipboardCheck, CloudOff, Factory, FileText, FlaskConical, Hash, Info, Layers, ListChecks, Loader2,
   Package, Printer, Ruler, Save, Search, Send, Tablet, Tag, Trash2, UserRound, X,
@@ -6,7 +6,6 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useGetAiStatusQuery, useGetLotInsightsQuery } from '../../api/aiApi.js';
 import { useDeleteAttachmentMutation, useGetImirQuery, useSaveInspectionMutation, useSubmitImirMutation, useUploadAttachmentMutation } from '../../api/imirApi.js';
 import Button from '../../components/ui/Button.jsx';
 import ExportLinks from '../../components/ui/ExportLinks.jsx';
@@ -14,7 +13,6 @@ import { Select, TextInput } from '../../components/ui/fields.jsx';
 import Loader from '../../components/ui/Loader.jsx';
 import Modal, { ConfirmDialog, ModalFooter } from '../../components/ui/Modal.jsx';
 import PageHeader from '../../components/ui/PageHeader.jsx';
-import { useAccess } from '../../hooks/useAccess.js';
 import * as engine from '../../offline/engine.js';
 import { applyPatch, evaluateSheet } from '../../offline/sheetModel.js';
 import * as store from '../../offline/store.js';
@@ -24,7 +22,6 @@ import { ImirResult, ImirStatus } from './imirUi.jsx';
 import InspectionSheet from './InspectionSheet.jsx';
 import { focusFirstMissing, sheetProgress } from './sheetNav.js';
 import { currentStage, journeySteps, stageRows } from './journey.js';
-import { AiSummary, BeforeYouInspect, SupplierRisk } from './LotInsights.jsx';
 import LotJourney from './LotJourney.jsx';
 import ReviewPanel from './ReviewPanel.jsx';
 import HistoryPanel from '../deviation/HistoryPanel.jsx';
@@ -78,11 +75,6 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
   const [save] = useSaveInspectionMutation();
   const navigate = useNavigate();
   const readOnly = mode === 'view' || !!sheet.pendingSubmit;
-  // History, drift, focus and supplier risk (no AI); unavailable offline, where the sheet works without it.
-  const { data: insights } = useGetLotInsightsQuery(sheet.id, { skip: sheet.status === 'AWAITING_FORMAT' });
-  const { can } = useAccess();
-  const aiAllowed = can(PERMISSIONS.AI_IMIR_SUMMARY);
-  const { data: aiStatus } = useGetAiStatusQuery(undefined, { skip: !aiAllowed });
 
   // Keep in step with the server copy when nothing is waiting to be saved.
   useEffect(() => {
@@ -166,7 +158,6 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
   const steps = journeySteps({ status: sheet.status, history: sheet.history, deviation: sheet.deviation });
   const stage = currentStage(steps);
   const since = sheet.history?.length ? sheet.history.at(-1).at : sheet.createdAt;
-  const showHistory = () => document.getElementById('imir-history')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   const linked = [
     sheet.deviation && { kind: 'deviation', label: sheet.deviation.deviationNo, sub: `Deviation, ${sheet.deviation.department ?? 'SCM / VD (not accepted yet)'}`, to: `/deviations/${sheet.deviation.id}`, badge: <DeviationStage stage={sheet.deviation.stage} outcome={sheet.deviation.outcome} /> },
     sheet.dn && { kind: 'dn', label: sheet.dn.dnNo, sub: 'Defect notification', to: `/dns/${sheet.dn.id}`, badge: <DnStatus status={sheet.dn.status} /> },
@@ -191,20 +182,15 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
         <LotJourney status={sheet.status} history={sheet.history ?? []} deviation={sheet.deviation} dn={sheet.dn} />
         {mode !== 'tablet' && <ReviewPanel imir={sheet} />}
         {mode !== 'tablet' && sheet.imirNo && <ReversalPanel entityType="IMIR" entityId={sheet.id} recordNo={sheet.imirNo} />}
-        {mode !== 'tablet' && aiAllowed && aiStatus?.configured && sheet.submittedAt && <AiSummary imirId={sheet.id} />}
 
-        <div className={`grid gap-4 items-stretch ${opened && insights ? 'xl:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)_minmax(0,1fr)]' : 'xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]'}`}>
+        <div className="grid gap-4 items-stretch xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
           <GeneralInfo sheet={sheet} />
           <InspectionStatus sheet={sheet} stage={stage} since={since} progress={opened ? progress.pct : null} />
-          {opened && insights && <SupplierRisk insights={insights} />}
         </div>
 
-        <div className={`grid gap-4 items-stretch ${opened && insights ? 'xl:grid-cols-2' : ''}`}>
-          {opened && insights && <BeforeYouInspect insights={insights} onHistory={mode !== 'tablet' ? showHistory : undefined} />}
-          <div className="space-y-4">
-            <ModelDetails sheet={sheet} readOnly={readOnly} onPatch={onPatch} opened={opened} />
-            <AdditionalInfo sheet={sheet} />
-          </div>
+        <div className="grid gap-4 items-stretch xl:grid-cols-2">
+          <ModelDetails sheet={sheet} readOnly={readOnly} onPatch={onPatch} opened={opened} />
+          <AdditionalInfo sheet={sheet} />
         </div>
 
         {opened && sheet.checkpoints?.length > 0 && (
@@ -238,7 +224,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
                     </label>
                   )}
                 </div>
-                {!collapsed.has(sec.key) && <InspectionSheet flat sheet={sheet} tab={sec.key} readOnly={readOnly} onPatch={onPatch} photosByCell={photosByCell} insights={insights} filter={sec.key === 'lot' ? '' : find}
+                {!collapsed.has(sec.key) && <InspectionSheet flat sheet={sheet} tab={sec.key} readOnly={readOnly} onPatch={onPatch} photosByCell={photosByCell} filter={sec.key === 'lot' ? '' : find}
                   onAddPhoto={readOnly ? undefined : (cp) => setDialog({ type: 'photo', cp })}
                   onOpenPhotos={(cp, s) => setDialog({ type: 'photos', cp, sampleNo: s })} />}
               </section>
@@ -493,7 +479,7 @@ function SignOff({ sheet, readOnly, onPatch }) {
           : <span className="text-sm text-slate-600">Open: <ImirStatus status={sheet.status} /></span>}
         {sheet.deviation && <Link to={`/deviations/${sheet.deviation.id}`} className="text-sm text-blue-700 hover:underline">Deviation {sheet.deviation.deviationNo}</Link>}
       </div>
-      {sheet.allowedActions.some((a) => ['approve', 'reject', 'revert', 'escalate', 'head_approve', 'hold', 'raise_dn'].includes(a)) && <ReviewPanel imir={sheet} />}
+      {sheet.allowedActions.some((a) => ['approve', 'revert', 'escalate', 'head_approve', 'hold', 'raise_dn'].includes(a)) && <ReviewPanel imir={sheet} />}
     </section>
   );
 }

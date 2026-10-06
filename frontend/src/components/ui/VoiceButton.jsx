@@ -1,28 +1,18 @@
-import { PERMISSIONS } from '@qmas/shared';
-import { Loader2, Mic, Sparkles, Square } from 'lucide-react';
+import { Mic, Square } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { useGetAiStatusQuery, useTidyObservationMutation } from '../../api/aiApi.js';
-import { apiError } from '../../utils/apiError.js';
-import { useAccess } from '../../hooks/useAccess.js';
 
 const Recognition = typeof window !== 'undefined' ? window.SpeechRecognition ?? window.webkitSpeechRecognition : null;
 
 /**
  * Dictation for inspection text: the browser's speech recognition (Indian English) writes what the
- * inspector says; `onText` receives the text to add. With AI set up, "Tidy" turns the dictated text
- * into clean inspection wording (numbers as digits, units) before it is added. Hidden where the
- * browser has no speech recognition (it needs Chrome or Edge, and a secure address).
+ * inspector says; `onText` receives the text to add. Hidden where the browser has no speech
+ * recognition (it needs Chrome or Edge, and a secure address).
  */
-export default function VoiceButton({ onText, context = {}, className = '' }) {
+export default function VoiceButton({ onText, className = '' }) {
   const [listening, setListening] = useState(false);
   const [heard, setHeard] = useState('');
   const rec = useRef(null);
-  // "Tidy & add" (AI) needs ai.voice_tidy; plain dictation is for everyone who may type here.
-  const { can } = useAccess();
-  const mayTidy = can(PERMISSIONS.AI_VOICE_TIDY);
-  const { data: ai } = useGetAiStatusQuery(undefined, { skip: !mayTidy });
-  const [tidy, { isLoading: tidying }] = useTidyObservationMutation();
   useEffect(() => () => rec.current?.abort(), []);
   if (!Recognition) return null;
 
@@ -53,17 +43,9 @@ export default function VoiceButton({ onText, context = {}, className = '' }) {
   };
   const stop = () => rec.current?.stop();
 
-  const use = async (withAi) => {
-    let text = heard.trim();
+  const use = () => {
+    const text = heard.trim();
     if (!text) return;
-    if (withAi) {
-      try {
-        text = (await tidy({ text, ...context }).unwrap()).text;
-      } catch (err) {
-        toast.error(apiError(err).message);
-        return;
-      }
-    }
     onText(text);
     setHeard('');
   };
@@ -77,12 +59,7 @@ export default function VoiceButton({ onText, context = {}, className = '' }) {
       {heard && !listening && (
         <>
           <span className="max-w-56 truncate text-[11px] italic text-slate-500" title={heard}>“{heard}”</span>
-          <button type="button" onClick={() => use(false)} className="h-7 px-2 rounded-md bg-slate-100 text-[11px] font-medium text-slate-700 hover:bg-slate-200 cursor-pointer">Add</button>
-          {mayTidy && ai?.configured && (
-            <button type="button" onClick={() => use(true)} disabled={tidying} className="inline-flex items-center gap-1 h-7 px-2 rounded-md bg-violet-50 text-[11px] font-medium text-violet-800 hover:bg-violet-100 cursor-pointer disabled:opacity-60">
-              {tidying ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}Tidy &amp; add
-            </button>
-          )}
+          <button type="button" onClick={use} className="h-7 px-2 rounded-md bg-slate-100 text-[11px] font-medium text-slate-700 hover:bg-slate-200 cursor-pointer">Add</button>
         </>
       )}
       {listening && heard && <span className="max-w-56 truncate text-[11px] text-slate-500">{heard}</span>}

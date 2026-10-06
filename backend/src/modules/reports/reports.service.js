@@ -244,7 +244,8 @@ export async function toXlsx(report) {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 /** KPI tiles for Home, restricted to the plants the user may see. */
-export async function dashboardSummary(user) {
+/** Home dashboard. trendDays: the quality trend (7, 30 or 90 days); glanceDays: the lots summary. */
+export async function dashboardSummary(user, { trendDays = 30, glanceDays = 30 } = {}) {
   const scope = plantScope(user, PERMISSIONS.DASHBOARD_VIEW, 'view');
   const args = scope.all ? [] : [scope.plantIds];
   const plant = (col) => (scope.all ? 'true' : `${col} = ANY($1)`);
@@ -254,13 +255,14 @@ export async function dashboardSummary(user) {
     `SELECT count(*)::int AS received, count(*) FILTER (WHERE result = 'OK')::int AS ok, count(*) FILTER (WHERE result = 'NOK')::int AS nok,
             count(*) FILTER (WHERE status = 'CLOSED_ACCEPTED')::int AS accepted, count(*) FILTER (WHERE status = 'CLOSED_REJECTED')::int AS rejected,
             count(*) FILTER (WHERE status = 'CLOSED_UNDER_DEVIATION')::int AS under_deviation
-       FROM qms.imir m WHERE ${plant('m.plant_id')} AND m.created_at >= now() - interval '30 days'`,
+       FROM qms.imir m WHERE ${plant('m.plant_id')} AND m.created_at >= now() - make_interval(days => ${Number(glanceDays)})`,
     args,
   );
   const { rows: dv } = await pool.query(`SELECT stage, count(*)::int AS n FROM qms.deviation d WHERE ${plant('d.plant_id')} AND stage <> 'CLOSED' GROUP BY stage`, args);
   const { rows: dn } = await pool.query(
     `SELECT count(*) FILTER (WHERE status = 'OPEN')::int AS open, count(*) FILTER (WHERE status = 'CAPA_SUBMITTED')::int AS capa_submitted,
-            count(*) FILTER (WHERE status = 'OPEN' AND capa_applicable AND capa_due_at < now())::int AS capa_overdue
+            count(*) FILTER (WHERE status = 'OPEN' AND capa_applicable AND capa_due_at < now())::int AS capa_overdue,
+            count(*) FILTER (WHERE status = 'OPEN' AND capa_applicable AND capa_due_at < now() + interval '7 days')::int AS capa_due_soon
        FROM qms.defect_notification n WHERE ${plant('n.plant_id')}`,
     args,
   );
@@ -269,7 +271,7 @@ export async function dashboardSummary(user) {
   const { rows: trend } = await pool.query(
     `SELECT d::date AS day, count(m.id)::int AS received, count(m.id) FILTER (WHERE m.result = 'OK')::int AS ok,
             count(m.id) FILTER (WHERE m.result = 'NOK')::int AS nok
-       FROM generate_series((now() AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date - 29, (now() AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date, interval '1 day') d
+       FROM generate_series((now() AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date - ${Number(trendDays) - 1}, (now() AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date, interval '1 day') d
        LEFT JOIN qms.imir m ON ${LOCAL('m.created_at')} = d::date AND ${plant('m.plant_id')}
       GROUP BY d ORDER BY d`,
     args,
@@ -300,7 +302,9 @@ export async function dashboardSummary(user) {
   const devByStage = Object.fromEntries(dv.map((r) => [r.stage, r.n]));
   return {
     imirByStatus,
-    lots30Days: camelRows(l)[0],
+    lots30Days: camelRows(l)[0], // over glanceDays (30 by default)
+    trendDays: Number(trendDays),
+    glanceDays: Number(glanceDays),
     deviationsByStage: devByStage,
     openDeviations: dv.reduce((a, r) => a + r.n, 0),
     dn: camelRows(dn)[0],

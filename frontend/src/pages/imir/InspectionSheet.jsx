@@ -6,7 +6,6 @@ import PopMenu from '../../components/ui/PopMenu.jsx';
 import VoiceButton from '../../components/ui/VoiceButton.jsx';
 import { formatDate } from '../../utils/format.js';
 import { fmtNum } from '../formats/formatHelpers.js';
-import InsightChip from './InsightChip.jsx';
 import { groupsOf, moveFocus } from './sheetNav.js';
 
 const SAMPLES = Array.from({ length: MAX_SAMPLES }, (_, i) => i + 1);
@@ -17,13 +16,13 @@ const VALID_READING = /^-?\d*(\.\d{0,3})?$/;
  * The reading that decides a dimensional check: the one furthest out of spec, else the one using
  * most of the tolerance. Shown in the Result column (red: out of spec, amber: close to a limit).
  */
-function worstReading(cp, readings, stats) {
+function worstReading(cp, readings) {
   let best = null;
   for (const v of readings) {
     const nok = dimensionalDecision(v, cp) === 'NOK';
-    const use = toleranceUse(v, cp, stats?.mean ?? null) ?? 0;
+    const use = toleranceUse(v, cp) ?? 0;
     const score = (nok ? 10 : 0) + use;
-    if (!best || score > best.score) best = { value: v, score, nok, flag: nok ? null : readingFlag(v, cp, stats) };
+    if (!best || score > best.score) best = { value: v, score, nok, flag: nok ? null : readingFlag(v, cp) };
   }
   return best;
 }
@@ -43,12 +42,9 @@ const ResultPill = ({ result }) =>
  * (`tab`: 'dim' or 'visrel'; the sign-off tab is the page's own). X1…Xn are the required samples
  * (green); optional ones appear on request. Every change goes out as a save patch through
  * `onPatch`; the parent decides whether it goes to the server or the tablet's queue.
- * `insights` (optional) adds each checkpoint's history, drift and focus, and warns on readings
- * close to a limit or far from the usual values as they are typed.
+ * A reading close to a limit is pointed out as it is typed.
  */
-export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch, photosByCell = {}, onAddPhoto, onOpenPhotos, insights = null, filter = '', flat = false }) {
-  const insOf = (uid) => insights?.checkpoints?.[uid];
-  const focusOf = (uid) => insights?.focus?.find((f) => f.uid === uid);
+export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch, photosByCell = {}, onAddPhoto, onOpenPhotos, filter = '', flat = false }) {
   const n = sheet.sampleSize;
   const byCell = new Map(sheet.cells.map((c) => [cellKey(c.checkpointUid, c.sampleNo), c]));
   const results = sheet.evaluation?.checkpointResults ?? {};
@@ -158,7 +154,6 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
               <td className="px-2 py-1.5">
                 <div className="font-semibold text-slate-900">{cp.checkpoint}</div>
                 {cp.helpText && <div className="text-[11px] text-slate-400">{cp.helpText}</div>}
-                <InsightChip ins={insOf(cp.uid)} focus={focusOf(cp.uid)} />
               </td>
               <td className="px-2 py-1.5 text-right tabular text-slate-700">{cp.lsl !== null ? fmtNum(cp.lsl) : '—'}</td>
               <td className="px-2 py-1.5 text-right tabular text-slate-700">{cp.usl !== null ? fmtNum(cp.usl) : '—'}</td>
@@ -167,12 +162,12 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
               <td className="px-2 py-1.5 text-xs text-slate-600">{cp.instrument ?? '—'}</td>
               {shown.map((s, ci) => (
                 <td key={s} className={`px-1 py-1.5 ${s <= n ? 'bg-emerald-50/40' : ''}`}>
-                  <DimCell cp={cp} sampleNo={s} row={ri} col={ci + 1} lastCol={lastCol} value={byCell.get(cellKey(cp.uid, s))?.value ?? null} readOnly={readOnly} stats={insOf(cp.uid)?.stats}
+                  <DimCell cp={cp} sampleNo={s} row={ri} col={ci + 1} lastCol={lastCol} value={byCell.get(cellKey(cp.uid, s))?.value ?? null} readOnly={readOnly}
                     onCommit={(value) => onPatch({ cells: [{ checkpointUid: cp.uid, sampleNo: s, value }] })} />
                 </td>
               ))}
               {spacer}
-              <td className="px-2 text-center"><ReadingResult worst={worstReading(cp, shown.map((x) => byCell.get(cellKey(cp.uid, x))?.value).filter((v) => v !== null && v !== undefined), insOf(cp.uid)?.stats)} /></td>
+              <td className="px-2 text-center"><ReadingResult worst={worstReading(cp, shown.map((x) => byCell.get(cellKey(cp.uid, x))?.value).filter((v) => v !== null && v !== undefined))} /></td>
               <td className="px-2 text-center"><ResultPill result={results[cp.uid]} /></td>
               {remarkCell(cp)}
             </tr>
@@ -212,7 +207,6 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
                     <td className="px-2 py-1.5 align-top pt-2.5">
                       <div className="font-semibold text-slate-900">{cp.checkpoint}</div>
                       {cp.helpText && <div className="text-[11px] text-slate-400">{cp.helpText}</div>}
-                      <InsightChip ins={insOf(cp.uid)} focus={focusOf(cp.uid)} />
                       {!readOnly && (
                         <div className="mt-1 flex gap-1">
                           {emptyRequired.length > 0 && (
@@ -311,7 +305,7 @@ export default function InspectionSheet({ sheet, tab, readOnly = false, onPatch,
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {g.items.map((cp, ri) => <ReliabilityRow key={cp.uid} sr={ri + 1} cp={cp} readOnly={readOnly} onPatch={onPatch} remarks={remarkCell(cp, true)} chip={<InsightChip ins={insOf(cp.uid)} focus={focusOf(cp.uid)} />} />)}
+              {g.items.map((cp, ri) => <ReliabilityRow key={cp.uid} sr={ri + 1} cp={cp} readOnly={readOnly} onPatch={onPatch} remarks={remarkCell(cp, true)} />)}
             </tbody>
           </Table>
         ))}
@@ -478,7 +472,7 @@ function RemarkButton({ who, value, readOnly, onCommit, context, block = false }
 }
 
 /** Numeric cell: keeps what is typed locally and commits a valid reading on blur / Enter. */
-function DimCell({ cp, sampleNo, row, col, lastCol, value, readOnly, onCommit, stats }) {
+function DimCell({ cp, sampleNo, row, col, lastCol, value, readOnly, onCommit }) {
   const [text, setText] = useState(value === null ? '' : String(value));
   const focused = useRef(false);
   useEffect(() => {
@@ -495,11 +489,10 @@ function DimCell({ cp, sampleNo, row, col, lastCol, value, readOnly, onCommit, s
   };
   // Which limit a NOK reading broke, so the inspector sees "too big" or "too small" at a glance.
   const high = decision === 'NOK' && cp.usl !== null && Number(text) > cp.usl;
-  // In spec but worth a second look: close to a limit, or far from this item's usual values.
-  const flag = decision === 'OK' ? readingFlag(Number(text), cp, stats) : null;
+  // In spec but worth a second look: close to a limit.
+  const flag = decision === 'OK' ? readingFlag(Number(text), cp) : null;
   const hint = decision === 'NOK' ? (high ? `Above ${fmtNum(cp.usl)}` : `Below ${fmtNum(cp.lsl)}`)
-    : flag === 'NEAR_LIMIT' ? `In spec, but uses ${Math.round(toleranceUse(Number(text), cp, stats?.mean ?? null) * 100)} % of the tolerance`
-      : flag === 'UNUSUAL' ? `In spec, but unusual: this item's readings are usually around ${fmtNum(stats.mean)}` : undefined;
+    : flag === 'NEAR_LIMIT' ? `In spec, but uses ${Math.round(toleranceUse(Number(text), cp) * 100)} % of the tolerance` : undefined;
   const Dir = high ? ArrowUp : ArrowDown;
   if (readOnly) {
     return (
@@ -546,7 +539,7 @@ function DimCell({ cp, sampleNo, row, col, lastCol, value, readOnly, onCommit, s
   );
 }
 
-function ReliabilityRow({ sr, cp, readOnly, onPatch, remarks, chip }) {
+function ReliabilityRow({ sr, cp, readOnly, onPatch, remarks }) {
   const [text, setText] = useState(cp.textObservation ?? '');
   useEffect(() => setText(cp.textObservation ?? ''), [cp.textObservation]);
   const due = cp.isRequired;
@@ -556,7 +549,6 @@ function ReliabilityRow({ sr, cp, readOnly, onPatch, remarks, chip }) {
       <td className="px-2 py-2 align-top">
         <div className="font-semibold text-slate-900">{cp.checkpoint}</div>
         <div className="mt-1">{due ? <Badge variant="warning">Due on this lot</Badge> : <Badge variant="neutral">Not due</Badge>}</div>
-        {chip}
       </td>
       <td className="px-2 py-2 text-xs text-slate-600 align-top pt-3">{cp.specification}</td>
       <td className="px-2 py-2 text-xs text-slate-600 align-top pt-3 whitespace-nowrap">

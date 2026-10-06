@@ -64,6 +64,7 @@ export const HISTORY_LABELS = {
   DN_RESUBMIT: 'CAPA resubmission asked',
   DN_CLOSE: 'Defect notification closed',
   CAPA_REMINDER: 'CAPA overdue reminder',
+  INCHARGE_REMARK: 'In-Charge remark updated',
   REVERSAL_REQUEST: 'Reversal requested',
   REVERSED: 'Reversed by admin',
   REVERSAL_REJECTED: 'Reversal request rejected',

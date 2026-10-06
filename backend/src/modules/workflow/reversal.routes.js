@@ -8,8 +8,8 @@ import { body, ok, params, query } from '../../shared/http.js';
 import * as reversal from './reversal.service.js';
 
 /**
- * Reversal requests. Anyone signed in may read a record's panel and ask (the service checks they
- * are responsible for its current step); reviewing needs workflow.reverse.
+ * Reversal requests. Anyone signed in may ask to reverse their own decision (the service checks
+ * that nobody else acted since); reviewing needs workflow.reverse.
  */
 const router = Router();
 const canReverse = requirePermission(PERMISSIONS.WORKFLOW_REVERSE);
@@ -17,6 +17,7 @@ const canReverse = requirePermission(PERMISSIONS.WORKFLOW_REVERSE);
 router.get('/record/:entityType/:entityId', validate({ params: z.object({ entityType: z.enum(REVERSAL_ENTITIES), entityId: z.uuid() }) }), async (req, res) => {
   ok(res, await reversal.forRecord(req.user, params(req).entityType, params(req).entityId));
 });
+router.get('/mine', async (req, res) => ok(res, await reversal.mine(req.user)));
 router.post('/', validate({ body: reversalRequestSchema }), async (req, res) => {
   const b = body(req);
   await reversal.request(txContext(req), req.user, b);

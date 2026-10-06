@@ -5,7 +5,7 @@ import { AppError } from '../../shared/AppError.js';
 import { pageMeta } from '../../shared/sql.js';
 import { plantScope } from '../auth/access.service.js';
 import { deviationSnapshot, history, logAction } from '../workflow/history.js';
-import { acceptDepartments, deviationActions, deviationBlock, deviationRole, seniorRoles, STAGE_ACTIONS } from '../workflow/rules.js';
+import { acceptDepartments, actingRole, deviationActions, deviationBlock, deviationRole, seniorRoles, STAGE_ACTIONS } from '../workflow/rules.js';
 import * as repo from './deviation.repo.js';
 
 /**
@@ -63,7 +63,24 @@ export async function detail(id, user, db = getPool()) {
     allowedActions: deviationActions(user, dev, current),
     seniorRoles: seniorRoles(user, dev, current), // roles this user may decide in, highest first
     acceptDepartments: dev.department ? [] : acceptDepartments(user, dev), // departments this user may accept it for
+    canEditInchargeRemark: dev.stage !== 'CLOSED' && !!actingRole(user, { permission: PERMISSIONS.IMIR_REVIEW, plantId: dev.plantId }),
   };
+}
+
+/** The IQC In-Charge's remark on the Deviation Form, while the deviation is open. */
+export async function setInchargeRemark(ctx, user, id, { remark, rowVersion }) {
+  await withTransaction(ctx, async (db) => {
+    const dev = await repo.get(db, id, { forUpdate: true });
+    if (!dev) throw AppError.notFound('Deviation');
+    assertCanView(user, dev);
+    const role = actingRole(user, { permission: PERMISSIONS.IMIR_REVIEW, plantId: dev.plantId });
+    if (!role) throw AppError.forbidden('Only the IQC In-Charge of this plant can write the In-Charge remark.');
+    if (dev.stage === 'CLOSED') throw AppError.conflict(`Deviation ${dev.deviationNo} is closed.`, { code: 'WRONG_STAGE' });
+    if (dev.rowVersion !== rowVersion) throw AppError.staleVersion('This deviation');
+    await db.query('UPDATE qms.deviation SET incharge_remark = $2, incharge_remark_by = $3, incharge_remark_at = now() WHERE id = $1', [id, remark ?? null, user.id]);
+    await logAction(db, { imirId: dev.imirId, deviationId: id, action: 'INCHARGE_REMARK', actorId: user.id, actingRole: role, remark: remark ?? null });
+  });
+  return detail(id, user);
 }
 
 /** Adds the live resolution (effective decision, pending PDC, …) to an escalation round. */

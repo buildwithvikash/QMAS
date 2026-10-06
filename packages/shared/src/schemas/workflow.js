@@ -22,9 +22,8 @@ const checkpointRemarks = z
 /** POST /imirs/:id/actions. `submit` is the inspector's; the rest are Incharge and IQC Head decisions. */
 export const imirActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('submit'), rowVersion, deviceId: z.uuid().optional() }),
-  // IQC Incharge (slide 7): approve (a failed lot needs a remark), reject, send back or escalate.
+  // IQC Incharge (slide 7): approve (a failed lot needs a remark), send back or escalate.
   z.object({ action: z.literal('approve'), rowVersion, remark: optionalTrimmed('Final approval remark', 1000), checkpointRemarks }),
-  z.object({ action: z.literal('reject'), rowVersion, remark: remark('Reason for rejecting'), checkpointRemarks }),
   z.object({ action: z.literal('revert'), rowVersion, remark: remark('Reason for sending back'), checkpointRemarks }),
   z.object({ action: z.literal('escalate'), rowVersion, remark: remark('Non-conformance remark'), checkpointRemarks }),
   // Plant IQC Head (slide 8)
@@ -79,6 +78,9 @@ export const deviationActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('verify_qty'), rowVersion, remark: optionalTrimmed('Remark', 1000) }),
   z.object({ action: z.literal('return_qty'), rowVersion, remark: remark('Reason for returning') }),
 ]);
+
+/** PUT /deviations/:id/incharge-remark: the IQC In-Charge's remark on the Deviation Form. */
+export const deviationInchargeRemarkSchema = z.object({ remark: optionalTrimmed('In-Charge remark', 2000), rowVersion });
 
 export const deviationListQuery = listQuery.extend({
   stage: z.enum(DEVIATION_STAGES).optional(),

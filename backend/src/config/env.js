@@ -17,6 +17,9 @@ const schema = z.object({
   COOKIE_SECURE: bool.default(true),
   CORS_ORIGINS: z.string().default(''),
   TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
+  // Network access control (Administration → Network Access). Set to false only as a last resort,
+  // e.g. when the company ranges were saved wrongly and nobody can reach the admin page.
+  NETWORK_ACCESS_ENFORCE: z.union([z.literal(''), bool]).optional().transform((v) => (v === '' ? undefined : v)),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   LOGIN_MAX_ATTEMPTS: z.coerce.number().int().min(3).max(20).default(5),
   LOGIN_LOCK_MINUTES: z.coerce.number().int().min(1).max(24 * 60).default(15),
@@ -36,15 +39,6 @@ const schema = z.object({
   // Testing: every mail goes to this one address instead (the intended recipient is named in the
   // subject). Leave empty in production.
   MAIL_REDIRECT_TO: z.union([z.literal(''), z.string().email()]).optional().transform((v) => v || undefined),
-  // Claude (AI features). Without a key the AI features say they are not set up; everything
-  // else, including the non-AI quality insights, works as before.
-  ANTHROPIC_BASE_URL: z.union([z.literal(''), z.string().url()]).optional().transform((v) => v || undefined),
-  ANTHROPIC_API_KEY: z.string().optional().transform((v) => v || undefined),
-  ANTHROPIC_MODEL: z.string().optional().transform((v) => v || undefined),
-  // Trial only (demo data): Claude through Puter with a Puter account token from `npm run puter-login`.
-  AI_PROVIDER: z.union([z.literal(''), z.enum(['anthropic', 'puter'])]).optional().transform((v) => v || undefined),
-  PUTER_AUTH_TOKEN: z.string().optional().transform((v) => v || undefined),
-  PUTER_MODEL: z.string().optional().transform((v) => v || undefined),
   // Links in mails point here (the web app's public address).
   APP_BASE_URL: z.string().url().default('http://localhost:5173'),
 });

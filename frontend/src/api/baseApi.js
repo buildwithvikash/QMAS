@@ -15,6 +15,12 @@ let refreshing = null;
 async function baseQueryWithReauth(args, api, extraOptions) {
   let result = await rawBaseQuery(args, api, extraOptions);
   const url = typeof args === 'string' ? args : args.url;
+  // Outside the company network without approved access (or the approval ended): back to the
+  // sign-in page with the reason. The sign-in itself shows the same message.
+  if (result.error?.status === 403 && result.error.data?.code === 'EXTERNAL_ACCESS_DENIED' && !url.startsWith('/auth/login')) {
+    api.dispatch(sessionEnded(result.error.data.message));
+    return result;
+  }
   if (result.error?.status !== 401 || NO_REFRESH.some((p) => url.startsWith(p))) return result;
 
   refreshing ??= rawBaseQuery({ url: '/auth/refresh', method: 'POST' }, api, extraOptions).finally(() => {

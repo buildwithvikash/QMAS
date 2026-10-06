@@ -3,7 +3,7 @@ import { baseApi, envelope, pagedEnvelope } from './baseApi.js';
 const imirTag = (id) => ({ type: 'Imir', id });
 
 export const imirApi = baseApi
-  .enhanceEndpoints({ addTagTypes: ['Imir', 'Devices', 'SapSync'] })
+  .enhanceEndpoints({ addTagTypes: ['Imir', 'Devices', 'SapSync', 'Tasks'] })
   .injectEndpoints({
     endpoints: (b) => ({
       getImirs: b.query({ query: (params) => ({ url: '/imirs', params }), transformResponse: pagedEnvelope, providesTags: ['Imir'] }),
@@ -20,7 +20,7 @@ export const imirApi = baseApi
       submitImir: b.mutation({
         query: ({ id, ...body }) => ({ url: `/imirs/${id}/actions`, method: 'POST', body: { action: 'submit', ...body } }),
         transformResponse: envelope,
-        invalidatesTags: (_r, _e, { id }) => ['Imir', imirTag(id)],
+        invalidatesTags: (_r, _e, { id }) => ['Imir', imirTag(id), 'Tasks'],
       }),
       uploadAttachment: b.mutation({
         query: ({ id, formData }) => ({ url: `/imirs/${id}/attachments`, method: 'POST', body: formData }),

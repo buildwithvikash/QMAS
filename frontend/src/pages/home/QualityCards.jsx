@@ -1,0 +1,102 @@
+import { CalendarClock, FileWarning, FileX2, PieChart, Truck, UsersRound } from 'lucide-react';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useGetDashboardQuery } from '../../api/dnApi.js';
+import { HomeCard, ViewAll } from './homeUi.jsx';
+
+const link = (rules) => `/imirs?filter=${encodeURIComponent(JSON.stringify({ mode: 'all', rules }))}`;
+
+/** Vendors with the highest share of Not OK lots in 90 days; click one for its Not OK lots. */
+export function VendorNokRate() {
+  const { data: s } = useGetDashboardQuery({}, { pollingInterval: 120_000 });
+  const vendors = s?.worstVendors ?? [];
+  return (
+    <HomeCard icon={UsersRound} title="Vendor Not OK Rate" note="(90 days)" action={<ViewAll to="/reports" />}>
+      {!vendors.length && <p className="py-6 text-sm text-slate-500">No vendor has a Not OK lot in 90 days.</p>}
+      <ul className="space-y-3">
+        {vendors.map((v) => (
+          <li key={v.vendorCode}>
+            <Link to={link([{ field: 'vendorCode', op: 'equals', value: v.vendorCode }, { field: 'result', op: 'in', value: ['NOK'] }])} className="group block">
+              <div className="flex items-baseline gap-2 text-sm">
+                <span className="min-w-0 flex-1 truncate font-medium text-slate-800 group-hover:text-blue-700">{v.name}</span>
+                <span className="font-bold tabular text-slate-900">{v.nokPct.toFixed(1)}%</span>
+              </div>
+              <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className={`h-full rounded-full ${v.nokPct >= 50 ? 'bg-rose-500' : v.nokPct >= 20 ? 'bg-rose-400' : 'bg-amber-400'}`} style={{ width: `${Math.max(3, v.nokPct)}%` }} />
+              </div>
+              <span className="mt-0.5 block text-[11px] text-slate-500">{v.nok} of {v.inspected} lots not OK</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </HomeCard>
+  );
+}
+
+/** Donut of the period's lots (OK, Not OK, not yet inspected) and four open-work figures. */
+export function PlantGlance() {
+  const [days, setDays] = useState(30);
+  const { data: s } = useGetDashboardQuery({ glanceDays: days }, { pollingInterval: 120_000 });
+  const l = s?.lots30Days;
+  const parts = l ? [
+    ['OK', l.ok, '#22c55e'],
+    ['Not OK', l.nok, '#e11d48'],
+    ['Not yet inspected', Math.max(0, l.received - l.ok - l.nok), 'var(--color-slate-300)'],
+  ] : [];
+  const total = l?.received ?? 0;
+  const R = 15.9155; // circumference 100
+  // Each segment starts where the one before ended (from 12 o'clock, clockwise).
+  const starts = parts.map((_, i) => 25 - parts.slice(0, i).reduce((a, p) => a + (total ? (p[1] / total) * 100 : 0), 0));
+  const tiles = s ? [
+    { icon: Truck, label: 'Lots Received', value: total, note: `Last ${days} days`, tone: 'bg-blue-50 text-blue-700', to: '/imirs' },
+    { icon: FileWarning, label: 'Open Deviations', value: s.openDeviations, note: s.openDeviations ? 'Requiring action' : 'None open', tone: 'bg-amber-50 text-amber-700', to: '/deviations' },
+    { icon: FileX2, label: 'Open DNs', value: s.dn.open + s.dn.capaSubmitted, note: s.dn.capaOverdue ? 'CAPA overdue' : `${s.dn.capaSubmitted} CAPA to review`, tone: 'bg-rose-50 text-rose-700', to: '/dns' },
+    { icon: CalendarClock, label: 'CAPA Due', value: s.dn.capaDueSoon ?? 0, note: s.dn.capaOverdue ? `${s.dn.capaOverdue} overdue` : 'Within 7 days', tone: 'bg-rose-50 text-rose-700', to: '/dns' },
+  ] : [];
+  return (
+    <HomeCard icon={PieChart} title="Plant at glance"
+      action={(
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Period"
+          className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 outline-none focus:border-blue-500">
+          <option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option>
+        </select>
+      )}>
+      {s && (
+        <>
+          <div className="flex items-center gap-4">
+            <svg viewBox="0 0 42 42" className="h-32 w-32 shrink-0" role="img" aria-label={`${total} lots: ${parts.map(([n, v]) => `${v} ${n}`).join(', ')}`}>
+              <circle cx="21" cy="21" r={R} fill="none" strokeWidth="6" style={{ stroke: 'var(--color-slate-100)' }} />
+              {total > 0 && parts.map(([name, v, c], i) => {
+                const pct = (v / total) * 100;
+                return <circle key={name} cx="21" cy="21" r={R} fill="none" strokeWidth="6" strokeDasharray={`${pct} ${100 - pct}`} strokeDashoffset={starts[i]} style={{ stroke: c }} />;
+              })}
+              <text x="21" y="21" textAnchor="middle" className="fill-slate-900 text-[8px] font-bold">{total}</text>
+              <text x="21" y="27" textAnchor="middle" className="fill-slate-500 text-[3.5px]">Lots</text>
+            </svg>
+            <ul className="min-w-0 flex-1 space-y-2.5 text-sm">
+              {parts.map(([name, v, c]) => (
+                <li key={name} className="flex items-center gap-2">
+                  <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: c }} />
+                  <span className="min-w-0 flex-1 truncate text-slate-700">{name}</span>
+                  <span className="font-semibold tabular text-slate-900">{v}</span>
+                  <span className="w-10 text-right text-xs tabular text-slate-500">({total ? Math.round((100 * v) / total) : 0}%)</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {tiles.map((t) => (
+              <Link key={t.label} to={t.to} className={`rounded-xl px-2 py-2.5 text-center transition-opacity hover:opacity-80 ${t.tone}`}>
+                <t.icon className="mx-auto h-4 w-4" />
+                <span className="mt-1 block text-[11px] font-medium text-slate-600">{t.label}</span>
+                <span className="block text-lg font-bold tabular text-slate-900">{t.value}</span>
+                <span className="block truncate text-[10px]">{t.note}</span>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+      {!s && <div className="space-y-2">{[1, 2, 3].map((i) => <div key={i} className="skeleton h-10" />)}</div>}
+    </HomeCard>
+  );
+}

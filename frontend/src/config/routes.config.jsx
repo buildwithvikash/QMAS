@@ -29,11 +29,11 @@ const DevicesPage = lazy(() => import('../pages/admin/DevicesPage.jsx'));
 const SapSyncPage = lazy(() => import('../pages/admin/SapSyncPage.jsx'));
 const SystemHealthPage = lazy(() => import('../pages/admin/SystemHealthPage.jsx'));
 const ReversalsPage = lazy(() => import('../pages/admin/ReversalsPage.jsx'));
+const NetworkAccessPage = lazy(() => import('../pages/admin/NetworkAccessPage.jsx'));
 const ErrorLogPage = lazy(() => import('../pages/admin/ErrorLogPage.jsx'));
-const InsightsPage = lazy(() => import('../pages/ai/InsightsPage.jsx'));
-const AskPage = lazy(() => import('../pages/ai/AskPage.jsx'));
 const HelpCenterPage = lazy(() => import('../pages/help/HelpCenterPage.jsx'));
 const TicketsPage = lazy(() => import('../pages/help/TicketsPage.jsx'));
+const ReversalHelpPage = lazy(() => import('../pages/help/ReversalHelpPage.jsx'));
 const TicketPage = lazy(() => import('../pages/help/TicketPage.jsx'));
 
 /**
@@ -80,12 +80,10 @@ export const ROUTE_SECTIONS = [
   },
   {
     key: 'reports',
-    label: 'Reports & Insights',
+    label: 'Reports',
     icon: BarChart3,
     items: [
       { path: '/reports', label: 'Registers & KPIs', permission: P.REPORTS_VIEW, element: <ReportsPage /> },
-      { path: '/insights', label: 'Quality Insights', permission: P.AI_INSIGHTS, element: <InsightsPage /> },
-      { path: '/ask', label: 'Ask QMAS', permission: P.AI_ASK, element: <AskPage /> },
     ],
   },
   {
@@ -130,6 +128,7 @@ export const ROUTE_SECTIONS = [
       { path: '/admin/sap-sync', label: 'SAP Sync', permission: P.INTEGRATION_MONITOR, element: <SapSyncPage /> },
       { path: '/admin/audit', label: 'Audit Trail', permission: P.AUDIT_VIEW, element: <AuditTrailPage /> },
       { path: '/admin/reversals', label: 'Reversal Requests', permission: P.WORKFLOW_REVERSE, element: <ReversalsPage /> },
+      { path: '/admin/network', label: 'Network Access', permission: P.NETWORK_MANAGE, element: <NetworkAccessPage /> },
       { path: '/admin/system-health', label: 'System Health', permission: P.SYSTEM_MONITOR, element: <SystemHealthPage /> },
       { path: '/admin/error-log', label: 'Error Log', permission: P.SYSTEM_MONITOR, element: <ErrorLogPage /> },
     ],
@@ -144,6 +143,7 @@ export const ROUTE_SECTIONS = [
       { path: '/help', label: 'Help Center', element: <HelpCenterPage /> },
       { path: '/help/tickets', label: 'My Tickets', element: <TicketsPage /> },
       { path: '/help/tickets/:id', hidden: true, element: <TicketPage /> },
+      { path: '/help/reversal', label: 'Reversal', element: <ReversalHelpPage /> },
     ],
   },
 ];

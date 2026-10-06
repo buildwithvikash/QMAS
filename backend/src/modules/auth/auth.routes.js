@@ -11,6 +11,7 @@ import { clientIp } from './clientInfo.js';
 import { markActive } from './sessions.js';
 import * as auth from './auth.service.js';
 import * as reset from './passwordReset.service.js';
+import { assertAllowed } from '../network/network.service.js';
 import { clearAuthCookies, REFRESH_COOKIE, setAuthCookies } from './tokens.js';
 
 const meta = (req) => ({ ip: clientIp(req), userAgent: req.get('user-agent'), requestId: req.id, client: req.get('x-client') === 'tablet' ? 'tablet' : 'web' });
@@ -41,7 +42,9 @@ router.post('/login', loginLimiter, validate({ body: loginSchema }), async (req,
 router.post('/refresh', async (req, res) => {
   const token = req.cookies?.[REFRESH_COOKIE] ?? req.body?.refreshToken;
   try {
-    sendSession(res, await auth.refresh(token, meta(req)));
+    const session = await auth.refresh(token, meta(req));
+    await assertAllowed(session.access.id, clientIp(req));
+    sendSession(res, session);
   } catch (err) {
     if (err.code !== 'REFRESH_RACE') clearAuthCookies(res);
     throw err;

@@ -193,7 +193,7 @@ export async function notifyForAction(db, entry) {
   switch (action) {
     case 'SUBMIT':
       return send(usersWith(db, { permission: P.IMIR_REVIEW, plantId }), 'REVIEW', `IMIR ${imir.imir_no} submitted (${imir.result}) — review needed`, lot, imirLink, {
-        tone: 'action', todo: `Review the inspection by ${by}: approve it, reject it, send it back, or escalate it to the IQC Head.`, button: 'Review the IMIR',
+        tone: 'action', todo: `Review the inspection by ${by}: approve it, send it back, or escalate it to the IQC Head.`, button: 'Review the IMIR',
         reason: 'You get this as IQC Incharge of this plant.',
       });
     case 'REVERT':
@@ -308,9 +308,9 @@ export async function notifyForAction(db, entry) {
         reason: 'You get this because you worked on this lot.',
       });
     case 'ENTER_QTY':
-      return send(iqcHead(), 'QTY', `Deviation ${dev.deviation_no}: quantities to verify`, `OK ${payload?.okQty} · Not OK ${payload?.notOkQty}\n\n${lot}`, devLink, {
+      return send(usersWith(db, { permission: P.IMIR_REVIEW, plantId }), 'QTY', `Deviation ${dev.deviation_no}: quantities to verify`, `OK ${payload?.okQty} · Not OK ${payload?.notOkQty}\n\n${lot}`, devLink, {
         tone: 'action', todo: `Verify the quantities entered by ${by}: OK ${num(payload?.okQty)} · Not OK ${num(payload?.notOkQty)}. Accept them or return them for correction.`,
-        button: 'Verify quantities', reason: 'You get this as Plant IQC Head.',
+        button: 'Verify quantities', reason: 'You get this as IQC In-Charge of this plant.',
       });
     case 'FINAL_REJECT':
       return send(stakeholders(), 'CLOSED', `Deviation ${dev.deviation_no} rejected — lot rejected`, `${remark ?? ''}\n\n${lot}`, devLink, {

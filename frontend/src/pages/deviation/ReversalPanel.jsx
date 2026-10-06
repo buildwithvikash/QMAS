@@ -15,9 +15,9 @@ import { HISTORY_LABELS } from './historyFormat.js';
 const NAMES = { IMIR: 'IMIR', DEVIATION: 'deviation', DN: 'DN' };
 
 /**
- * Reversal on a record page (IMIR, deviation, DN): the person responsible for the current step
- * (or who took the last one) asks an admin to set the record back to an earlier step, with a
- * reason. Shows a waiting request to everyone, and nothing when there is nothing to show.
+ * Reversal on a record page (IMIR, deviation, DN): a user asks an admin to reverse their own
+ * decision, with a reason (only while nobody else has acted since). Shows a waiting request to
+ * everyone, and nothing when there is nothing to show.
  */
 export default function ReversalPanel({ entityType, entityId, recordNo }) {
   const { user } = useAccess();
@@ -53,7 +53,7 @@ export default function ReversalPanel({ entityType, entityId, recordNo }) {
     <>
       <section className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm" aria-label="Reversal">
         <Undo2 className="h-4 w-4 shrink-0 text-slate-400" />
-        <p className="min-w-0 flex-1 text-slate-600">A step on this {NAMES[entityType]} was wrong? Ask an admin to set it back to an earlier step.</p>
+        <p className="min-w-0 flex-1 text-slate-600">Your decision on this {NAMES[entityType]} was wrong? Ask an admin to reverse it.</p>
         <Button size="sm" variant="secondary" icon={Undo2} onClick={() => setOpen(true)}>Request reversal</Button>
       </section>
       {open && <RequestDialog data={data} entityType={entityType} entityId={entityId} recordNo={recordNo} onClose={() => setOpen(false)} />}
@@ -61,7 +61,8 @@ export default function ReversalPanel({ entityType, entityId, recordNo }) {
   );
 }
 
-function RequestDialog({ data, entityType, entityId, recordNo, onClose }) {
+/** Choose one of your own steps to undo and give the reason; also used on Help & Support → Reversal. */
+export function RequestDialog({ data, entityType, entityId, recordNo, onClose }) {
   const [stepId, setStepId] = useState(data.steps[0]?.id ?? null);
   const [reason, setReason] = useState('');
   const [error, setError] = useState(null);
@@ -81,9 +82,9 @@ function RequestDialog({ data, entityType, entityId, recordNo, onClose }) {
     <Modal title="Request reversal" subtitle={`${recordNo} · now at "${data.statusLabel}"`} onClose={onClose}
       footer={<ModalFooter onCancel={onClose} onSave={save} saving={isLoading} saveLabel="Send to admin" />}>
       <FormError message={error} />
-      <p className="mb-4 text-sm text-slate-600">Choose the step that should be undone. The record goes back to where it was just before that step; later steps are undone too. An admin reviews the request and decides.</p>
+      <p className="mb-4 text-sm text-slate-600">You can reverse only your own decisions, and only while nobody else has acted on the record since. The record goes back to where it was just before the chosen step. An admin reviews the request and decides.</p>
       <fieldset className="mb-4 space-y-2">
-        <legend className="mb-1 block text-[11px] font-medium text-slate-500">Undo this step</legend>
+        <legend className="mb-1 block text-[11px] font-medium text-slate-500">Undo your decision</legend>
         {data.steps.map((s) => (
           <label key={s.id} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 text-sm ${stepId === s.id ? 'border-blue-400 bg-blue-50' : 'border-slate-200'}`}>
             <input type="radio" name="step" className="mt-1" checked={stepId === s.id} onChange={() => setStepId(s.id)} />

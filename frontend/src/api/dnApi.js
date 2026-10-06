@@ -34,7 +34,7 @@ export const dnApi = baseApi
 
       getReports: b.query({ query: () => '/reports', transformResponse: envelope }),
       getReport: b.query({ query: ({ key, ...params }) => ({ url: `/reports/${key}`, params }), transformResponse: envelope }),
-      getDashboard: b.query({ query: () => '/dashboard/summary', transformResponse: envelope, providesTags: ['Dashboard'] }),
+      getDashboard: b.query({ query: (params) => ({ url: '/dashboard/summary', params }), transformResponse: envelope, providesTags: ['Dashboard'] }),
     }),
   });
 

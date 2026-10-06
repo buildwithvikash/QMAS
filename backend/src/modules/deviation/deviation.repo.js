@@ -9,7 +9,8 @@ const SELECT = `SELECT d.id, d.deviation_no, d.imir_id, d.plant_id, p.sap_code A
        d.initiator_id, iu.full_name AS initiator_name, d.severity, d.action, d.deviation_qty, d.specification, d.iqc_observation,
        d.correction, d.corrective_action, d.form_submitted_at, d.senior_effective, d.final_decision, d.final_decision_at,
        d.qty_due_at, d.ok_qty, d.not_ok_qty, d.qty_entered_at, d.qty_entered_by, d.qty_verified_at, d.qty_verified_by,
-       d.outcome, d.closed_at, d.accepted_at, d.created_at, d.updated_at, d.row_version,
+       d.outcome, d.closed_at, d.accepted_at, d.incharge_remark, d.incharge_remark_at, ru.full_name AS incharge_remark_by_name,
+       d.created_at, d.updated_at, d.row_version,
        m.imir_no, m.status AS imir_status, m.result AS imir_result, m.model, m.inward_qty, m.uom, m.grn_no, m.grn_date,
        i.item_code, i.description AS item_description, v.vendor_code, v.name AS vendor_name
   FROM qms.deviation d
@@ -17,7 +18,8 @@ const SELECT = `SELECT d.id, d.deviation_no, d.imir_id, d.plant_id, p.sap_code A
   JOIN core.plant p ON p.id = d.plant_id
   JOIN mst.item i ON i.id = m.item_id
   JOIN mst.vendor v ON v.id = m.vendor_id
-  LEFT JOIN core.app_user iu ON iu.id = d.initiator_id`;
+  LEFT JOIN core.app_user iu ON iu.id = d.initiator_id
+  LEFT JOIN core.app_user ru ON ru.id = d.incharge_remark_by`;
 
 const fix = (r) => r && { ...r, deviationQty: num(r.deviationQty), okQty: num(r.okQty), notOkQty: num(r.notOkQty), inwardQty: num(r.inwardQty) };
 

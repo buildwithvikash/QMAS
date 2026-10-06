@@ -10,6 +10,7 @@ export const reversalApi = baseApi
         transformResponse: envelope,
         providesTags: (_r, _e, { entityId }) => [{ type: 'Reversal', id: entityId }, 'Reversal'],
       }),
+      getMyReversals: b.query({ query: () => '/reversals/mine', transformResponse: envelope, providesTags: ['Reversal'] }),
       requestReversal: b.mutation({
         query: (body) => ({ url: '/reversals', method: 'POST', body }),
         transformResponse: envelope,
@@ -37,6 +38,7 @@ export const reversalApi = baseApi
 
 export const {
   useGetRecordReversalQuery,
+  useGetMyReversalsQuery,
   useRequestReversalMutation,
   useWithdrawReversalMutation,
   useGetReversalsQuery,

@@ -34,18 +34,10 @@ export const PERMISSIONS = Object.freeze({
   DEVICES_MANAGE: 'devices.manage',
   INTEGRATION_MONITOR: 'integration.monitor',
   REPORTS_VIEW: 'reports.view',
-  // AI and insights: one permission per feature, so each can be given to the roles that need it.
-  AI_INSIGHTS: 'ai.insights',
-  AI_FAILURE_CHANCE: 'ai.failure_chance',
-  AI_IMIR_SUMMARY: 'ai.imir_summary',
-  AI_CAPA_REVIEW: 'ai.capa_review',
-  AI_ROOT_CAUSE: 'ai.root_cause',
-  AI_SEARCH: 'ai.search',
-  AI_ASK: 'ai.ask',
-  AI_VOICE_TIDY: 'ai.voice_tidy',
   SUPPORT_MANAGE: 'support.manage',
   SYSTEM_MONITOR: 'system.monitor',
   WORKFLOW_REVERSE: 'workflow.reverse',
+  NETWORK_MANAGE: 'network.manage',
 });
 
 export const PERMISSION_DEFINITIONS = Object.freeze([
@@ -64,7 +56,7 @@ export const PERMISSION_DEFINITIONS = Object.freeze([
   { key: PERMISSIONS.FORMATS_IMPORT, module: 'Inspection Formats', description: 'Import formats in bulk from Excel (template, check, import)' },
   { key: PERMISSIONS.IMIR_VIEW, module: 'Incoming Inspection', description: 'View incoming lots and IMIRs' },
   { key: PERMISSIONS.IMIR_INSPECT, module: 'Incoming Inspection', description: 'Record observations and submit IMIRs, also on a tablet' },
-  { key: PERMISSIONS.IMIR_REVIEW, module: 'Incoming Inspection', description: 'Incharge review: approve, reject, send back or escalate to the IQC Head' },
+  { key: PERMISSIONS.IMIR_REVIEW, module: 'Incoming Inspection', description: 'Incharge review: approve, send back or escalate to the IQC Head; verify OK / Not-OK quantities of a deviation' },
   { key: PERMISSIONS.IMIR_HEAD_DECIDE, module: 'Incoming Inspection', description: 'IQC Head decision: approve or hold' },
   { key: PERMISSIONS.DEVIATION_VIEW, module: 'Deviation', description: 'View deviations' },
   { key: PERMISSIONS.DEVIATION_INITIATE, module: 'Deviation', description: 'Accept a deviation for SCM/VD and fill the Deviation Form as initiator' },
@@ -78,31 +70,22 @@ export const PERMISSION_DEFINITIONS = Object.freeze([
   { key: PERMISSIONS.DEVICES_MANAGE, module: 'Administration', description: 'Register tablets and release lot locks' },
   { key: PERMISSIONS.INTEGRATION_MONITOR, module: 'Administration', description: 'View the SAP (QA32) lot sync and pull lots now' },
   { key: PERMISSIONS.REPORTS_VIEW, module: 'Reports', description: 'View and export reports' },
-  { key: PERMISSIONS.AI_INSIGHTS, module: 'AI Assistant', description: 'Quality Insights page: supplier risk ranking, open lots most likely to fail, drifting characteristics (from history; works without an AI service)' },
-  { key: PERMISSIONS.AI_FAILURE_CHANCE, module: 'AI Assistant', description: 'See "Chance this lot fails" in Supplier risk on the IMIR page (from history; works without an AI service)' },
-  { key: PERMISSIONS.AI_IMIR_SUMMARY, module: 'AI Assistant', description: 'AI summary of an inspection on the IMIR page (results, failures, anything critical)' },
-  { key: PERMISSIONS.AI_CAPA_REVIEW, module: 'AI Assistant', description: "AI assessment of the vendor's CAPA on a defect notification" },
-  { key: PERMISSIONS.AI_ROOT_CAUSE, module: 'AI Assistant', description: 'AI root-cause suggestions on a defect notification' },
-  { key: PERMISSIONS.AI_SEARCH, module: 'AI Assistant', description: 'Search in plain words: AI turns a question typed in the search box (Ctrl K) into list filters' },
-  { key: PERMISSIONS.AI_ASK, module: 'AI Assistant', description: 'Ask QMAS: chat questions about lots, vendors, deviations and DNs, answered from QMAS data' },
-  { key: PERMISSIONS.AI_VOICE_TIDY, module: 'AI Assistant', description: '"Tidy & add" for dictated observations and remarks: AI cleans the wording (numbers, units). Dictation itself needs no permission' },
   { key: PERMISSIONS.SUPPORT_MANAGE, module: 'Help & Support', description: 'Work on help-desk tickets from all users: reply, assign, change status and priority' },
   { key: PERMISSIONS.SYSTEM_MONITOR, module: 'Administration', description: 'System health, the error log (server, worker and browser crashes) and monitoring alerts' },
   { key: PERMISSIONS.WORKFLOW_REVERSE, module: 'Administration', description: 'Review reversal requests and set an IMIR, deviation or DN / CAPA back to an earlier step (every reversal is kept in the audit trail)' },
+  { key: PERMISSIONS.NETWORK_MANAGE, module: 'Administration', description: 'Set the company network ranges, and grant or revoke access from outside the company network (every grant is kept in the audit trail)' },
 ]);
 
 const P = PERMISSIONS;
 const VIEW_ALL = [P.DASHBOARD_VIEW, P.MASTERS_VIEW, P.FORMATS_VIEW, P.IMIR_VIEW, P.DEVIATION_VIEW, P.DN_VIEW, P.REPORTS_VIEW];
-// Every AI feature (Incharge and above had all of them as "ai.assist" before it was split).
-const AI_ALL = [P.AI_INSIGHTS, P.AI_FAILURE_CHANCE, P.AI_IMIR_SUMMARY, P.AI_CAPA_REVIEW, P.AI_ROOT_CAUSE, P.AI_SEARCH, P.AI_ASK, P.AI_VOICE_TIDY];
-const SENIOR = [...VIEW_ALL, P.ESCALATION_DECIDE, ...AI_ALL];
+const SENIOR = [...VIEW_ALL, P.ESCALATION_DECIDE];
 
 /** Default grants seeded into core.role_permission. Admins can change them later. */
 export const DEFAULT_ROLE_PERMISSIONS = Object.freeze({
   [ROLES.SYSTEM_ADMIN]: Object.values(P),
-  [ROLES.IQC_INSPECTOR]: [P.DASHBOARD_VIEW, P.MASTERS_VIEW, P.FORMATS_VIEW, P.IMIR_VIEW, P.IMIR_INSPECT, P.AI_VOICE_TIDY],
-  [ROLES.IQC_INCHARGE]: [...VIEW_ALL, P.FORMATS_CREATE, P.IMIR_REVIEW, P.DN_MANAGE, P.DEVICES_MANAGE, ...AI_ALL],
-  [ROLES.IQC_HEAD]: [...VIEW_ALL, P.FORMATS_CREATE, P.FORMATS_APPROVE, P.FORMATS_IMPORT, P.IMIR_HEAD_DECIDE, P.DEVIATION_FINAL_DECIDE, P.DN_APPROVE_CAPA, P.SAMPLING_MANAGE, ...AI_ALL],
+  [ROLES.IQC_INSPECTOR]: [P.DASHBOARD_VIEW, P.MASTERS_VIEW, P.FORMATS_VIEW, P.IMIR_VIEW, P.IMIR_INSPECT],
+  [ROLES.IQC_INCHARGE]: [...VIEW_ALL, P.FORMATS_CREATE, P.IMIR_REVIEW, P.DN_MANAGE, P.DEVICES_MANAGE],
+  [ROLES.IQC_HEAD]: [...VIEW_ALL, P.FORMATS_CREATE, P.FORMATS_APPROVE, P.FORMATS_IMPORT, P.IMIR_HEAD_DECIDE, P.DEVIATION_FINAL_DECIDE, P.DN_APPROVE_CAPA, P.SAMPLING_MANAGE],
   [ROLES.SCM_REQUESTOR]: [P.DASHBOARD_VIEW, P.IMIR_VIEW, P.DEVIATION_VIEW, P.DEVIATION_INITIATE],
   [ROLES.SCM_SUB_HEAD]: [...VIEW_ALL, P.DEVIATION_APPROVE],
   [ROLES.SCM_HEAD]: [...VIEW_ALL, P.DEVIATION_APPROVE],
@@ -114,6 +97,6 @@ export const DEFAULT_ROLE_PERMISSIONS = Object.freeze({
   [ROLES.PDC_HEAD]: SENIOR,
   [ROLES.CQA_HEAD]: [...SENIOR, P.ESCALATION_OVERRIDE],
   [ROLES.CENTRAL_OPS_HEAD]: [...SENIOR, P.ESCALATION_OVERRIDE],
-  [ROLES.PLANT_OPS_HEAD]: [...VIEW_ALL, ...AI_ALL],
+  [ROLES.PLANT_OPS_HEAD]: [...VIEW_ALL],
   [ROLES.AUDITOR]: [...VIEW_ALL, P.USERS_VIEW, P.AUDIT_VIEW],
 });

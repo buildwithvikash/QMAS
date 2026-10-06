@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { deptApprovalChainSchema, deviationActionSchema, deviationListQuery, PERMISSIONS, uuidParam } from '@qmas/shared';
+import { deptApprovalChainSchema, deviationActionSchema, deviationInchargeRemarkSchema, deviationListQuery, PERMISSIONS, uuidParam } from '@qmas/shared';
 import { z } from 'zod';
 import { txContext } from '../../db/tx.js';
 import { requirePermission } from '../../middlewares/auth.js';
@@ -30,6 +30,11 @@ router.get('/:id/:kind', canView, validate({ params: uuidParam.extend({ kind: z.
 // Each action is authorized by role, department and plant in the service.
 router.post('/:id/actions', canView, validate({ params: uuidParam, body: deviationActionSchema }), async (req, res) => {
   ok(res, await deviation.act(txContext(req), req.user, params(req).id, body(req)));
+});
+
+// The IQC In-Charge's remark on the Deviation Form (checked by plant in the service).
+router.put('/:id/incharge-remark', canView, validate({ params: uuidParam, body: deviationInchargeRemarkSchema }), async (req, res) => {
+  ok(res, await deviation.setInchargeRemark(txContext(req), req.user, params(req).id, body(req)));
 });
 
 export default router;

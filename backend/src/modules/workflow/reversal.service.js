@@ -5,16 +5,14 @@ import { AppError } from '../../shared/AppError.js';
 import { camelRow, camelRows, offsetOf, pageMeta } from '../../shared/sql.js';
 import { plantScope } from '../auth/access.service.js';
 import * as devRepo from '../deviation/deviation.repo.js';
-import { dnActions } from '../dn/dn.service.js';
 import * as dnRepo from '../dn/dn.repo.js';
 import * as imirRepo from '../imir/imir.repo.js';
 import { logAction } from './history.js';
-import { actingRole, deviationActions, imirReviewActions } from './rules.js';
 
 /**
  * Reversal of a workflow step (IMIR review, deviation, DN / CAPA).
- *   1. The person responsible for the current step (or who took the last one) asks for it, with a
- *      reason, and may suggest the step to undo.
+ *   1. A user asks to reverse their own decision, with a reason (Help & Support → Reversal, or the
+ *      record page). Only their own steps, and only while nobody else has acted on the record since.
  *   2. An admin (workflow.reverse) reverses: the record is set back to its state just before the
  *      chosen step (every step keeps that state, see history.js) — or rejects the request.
  * Every request, with who asked, who decided, when, the status before and after and the reasons,
@@ -107,17 +105,19 @@ function stepOptions(rec, steps) {
     .reverse();
 }
 
-/** Whether the user is responsible for the record's current step, or took its last step. */
-async function isResponsible(db, user, rec, steps) {
-  if (rec.type === 'IMIR') {
-    if (imirReviewActions(user, rec.raw).length) return true;
-    if (['OPEN', 'IN_INSPECTION'].includes(rec.status) && actingRole(user, { permission: P.IMIR_INSPECT, plantId: rec.plantId })) return true;
-  } else if (rec.type === 'DEVIATION') {
-    const round = (await devRepo.rounds(db, rec.id)).at(-1) ?? null;
-    if (deviationActions(user, rec.raw, round).some((a) => a !== 'override')) return true;
-  } else if (dnActions(user, rec.raw).length) return true;
-  const last = [...steps].reverse().find((s) => s.actor_id);
-  return last?.actor_id === user.id;
+/**
+ * The steps `userId` may ask to reverse: only their own decisions, and only while nobody else has
+ * acted on the record since (reversing to before a step also undoes every later step).
+ */
+function ownOptions(rec, steps, userId) {
+  const mine = new Set();
+  for (let k = steps.length - 1; k >= 0; k -= 1) {
+    const s = steps[k];
+    if (!s.actor_id) continue; // reminders and timers
+    if (s.actor_id !== userId) break;
+    mine.add(s.id);
+  }
+  return stepOptions(rec, steps).filter((o) => mine.has(o.id));
 }
 
 const REQUEST_SELECT = `SELECT q.id, q.entity_type, q.entity_id, q.imir_id, q.plant_id, p.name AS plant_name, q.record_no, q.status_at_request, q.requested_step,
@@ -152,19 +152,18 @@ export async function forRecord(user, type, id) {
   const rec = await loadRecord(db, type, id);
   if (!rec) throw AppError.notFound('Record');
   assertCanView(user, rec);
-  const steps = await effectiveSteps(db, rec);
-  const canRequest = await isResponsible(db, user, rec, steps);
+  const own = ownOptions(rec, await effectiveSteps(db, rec), user.id);
   const canReview = user.assignments.some((a) => a.permissions.includes(P.WORKFLOW_REVERSE));
   const { rows } = await db.query(`${REQUEST_SELECT} WHERE q.entity_type = $1 AND q.entity_id = $2 ORDER BY q.requested_at DESC`, [type, id]);
   const requests = camelRows(rows).map(shape);
   return {
     status: rec.status,
     statusLabel: statusLabel(type, rec.status),
-    canRequest,
+    canRequest: own.length > 0,
     canReview,
     pending: requests.find((r) => r.state === 'PENDING') ?? null,
     requests,
-    steps: canRequest || canReview ? stepOptions(rec, steps) : [],
+    steps: own,
   };
 }
 
@@ -173,13 +172,12 @@ export async function request(ctx, user, { entityType, entityId, stepId, reason 
     const rec = await loadRecord(db, entityType, entityId, { forUpdate: true });
     if (!rec) throw AppError.notFound('Record');
     assertCanView(user, rec);
-    const steps = await effectiveSteps(db, rec);
-    if (!(await isResponsible(db, user, rec, steps))) {
-      throw AppError.forbidden('Only the person responsible for the current step (or who took the last step) can ask for a reversal.');
+    const options = ownOptions(rec, await effectiveSteps(db, rec), user.id);
+    if (!options.length) {
+      throw AppError.forbidden('You can only ask to reverse your own decision, and only while nobody else has acted on the record since.', { code: 'NOT_OWN_DECISION' });
     }
-    const options = stepOptions(rec, steps);
-    if (!options.length) throw AppError.conflict('There is no step on this record that can be reversed.');
-    if (stepId && !options.some((o) => o.id === stepId)) throw AppError.unprocessable('That step cannot be reversed.', [{ path: 'stepId', message: 'Choose one of the listed steps.' }]);
+    if (stepId && !options.some((o) => o.id === stepId)) throw AppError.unprocessable('You can only reverse your own decision.', [{ path: 'stepId', message: 'Choose one of the listed steps.' }]);
+    stepId ??= options[0].id; // the latest one
     const role = user.assignments.find((a) => a.permissions.includes(VIEW[entityType]))?.roleCode ?? null;
     let row;
     try {
@@ -199,6 +197,40 @@ export async function request(ctx, user, { entityType, entityId, stepId, reason 
     });
     return Number(row.id);
   });
+}
+
+/**
+ * Help & Support → Reversal: the user's own requests (newest first) and their recent decisions on
+ * records where they may still ask for a reversal (nobody else has acted since).
+ */
+export async function mine(user) {
+  const db = getPool();
+  const { rows } = await db.query(`${REQUEST_SELECT} WHERE q.requested_by = $1 ORDER BY q.requested_at DESC LIMIT 100`, [user.id]);
+  const requests = camelRows(rows).map(shape);
+  const pendingFor = new Set(requests.filter((r) => r.state === 'PENDING').map((r) => `${r.entityType}:${r.entityId}`));
+  // The records of the user's last steps (with a saved state), one entry per record.
+  const { rows: recent } = await db.query(
+    `SELECT DISTINCT ON (kind, entity_id) kind, entity_id, at FROM (
+       SELECT CASE WHEN a.dn_id IS NOT NULL THEN 'DN' WHEN a.deviation_id IS NOT NULL AND a.action <> 'HOLD' THEN 'DEVIATION' ELSE 'IMIR' END AS kind,
+              COALESCE(a.dn_id, CASE WHEN a.action <> 'HOLD' THEN a.deviation_id END, a.imir_id) AS entity_id, a.at
+         FROM qms.imir_action a
+        WHERE a.actor_id = $1 AND a.snapshot IS NOT NULL AND a.at > now() - interval '90 days'
+        ORDER BY a.at DESC LIMIT 60) x
+      ORDER BY kind, entity_id, at DESC`,
+    [user.id],
+  );
+  const candidates = [];
+  for (const r of recent.sort((a, b) => new Date(b.at) - new Date(a.at))) {
+    const rec = await loadRecord(db, r.kind, r.entity_id);
+    if (!rec) continue;
+    const steps = ownOptions(rec, await effectiveSteps(db, rec), user.id);
+    if (!steps.length) continue;
+    candidates.push({
+      entityType: rec.type, entityId: rec.id, recordNo: rec.recordNo, status: rec.status, statusLabel: statusLabel(rec.type, rec.status),
+      itemCode: rec.raw.itemCode, itemDescription: rec.raw.itemDescription, plantName: rec.raw.plantName, pending: pendingFor.has(`${rec.type}:${rec.id}`), steps,
+    });
+  }
+  return { requests, candidates };
 }
 
 /** The requester takes the request back while it is pending. */
@@ -244,7 +276,8 @@ export async function get(id) {
   const q = shape(camelRow(rows[0]));
   if (!q) throw AppError.notFound('Reversal request');
   const rec = await loadRecord(db, q.entityType, q.entityId);
-  const steps = rec ? stepOptions(rec, await effectiveSteps(db, rec)) : [];
+  // Only the requester's own decisions can be reversed on their request.
+  const steps = rec ? ownOptions(rec, await effectiveSteps(db, rec), q.requestedBy) : [];
   return { ...q, currentStatus: rec?.status ?? null, currentStatusLabel: rec ? statusLabel(q.entityType, rec.status) : 'Removed', steps };
 }
 
@@ -278,7 +311,9 @@ export async function approve(ctx, user, id, { stepId, remark }) {
     }
     const steps = await effectiveSteps(db, rec);
     const step = steps.find((s) => s.id === stepId);
-    if (!step?.snapshot || !stepOptions(rec, steps).some((o) => o.id === stepId)) throw AppError.unprocessable('That step cannot be reversed.', [{ path: 'stepId', message: 'Choose one of the listed steps.' }]);
+    if (!step?.snapshot || !ownOptions(rec, steps, q.requestedBy).some((o) => o.id === stepId)) {
+      throw AppError.unprocessable("Only the requester's own decision can be reversed.", [{ path: 'stepId', message: 'Choose one of the listed steps.' }]);
+    }
     const kept = steps.filter((s) => s.id < stepId);
 
     const deviationId = rec.type === 'DEVIATION' ? rec.id : null;

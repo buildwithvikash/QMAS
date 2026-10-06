@@ -26,7 +26,6 @@ export function actingRole(user, { permission, roles = null, plantId }) {
 
 export const IMIR_REVIEW_ACTIONS = Object.freeze({
   approve: { from: 'SUBMITTED', permission: P.IMIR_REVIEW, to: 'CLOSED_ACCEPTED' },
-  reject: { from: 'SUBMITTED', permission: P.IMIR_REVIEW, to: 'CLOSED_REJECTED' },
   revert: { from: 'SUBMITTED', permission: P.IMIR_REVIEW, to: 'IN_INSPECTION' },
   escalate: { from: 'SUBMITTED', permission: P.IMIR_REVIEW, to: 'WITH_IQC_HEAD' },
   head_approve: { from: 'WITH_IQC_HEAD', permission: P.IMIR_HEAD_DECIDE, to: 'CLOSED_ACCEPTED' },
@@ -95,9 +94,11 @@ export function deviationRole(user, dev, action, round) {
     case 'final_approve':
     case 'final_reject':
     case 'escalate':
+      return actingRole(user, { permission: P.DEVIATION_FINAL_DECIDE, plantId });
+    // The IQC In-Charge checks the OK / Not-OK quantities.
     case 'verify_qty':
     case 'return_qty':
-      return actingRole(user, { permission: P.DEVIATION_FINAL_DECIDE, plantId });
+      return actingRole(user, { permission: P.IMIR_REVIEW, plantId });
     case 'senior_decide':
       return seniorRoles(user, dev, round)[0] ?? null;
     case 'override':
@@ -119,7 +120,10 @@ export function deviationBlock(dev, action) {
       if (senior !== 'APPROVE' && dev.deptOutcome !== 'APPROVED') return 'The department did not approve this deviation. Reject it, or escalate it to senior authorities.';
       return null;
     case 'final_reject':
-      return senior === 'APPROVE' ? 'Senior authorities approved this deviation; it can only be approved.' : null;
+      if (senior === 'APPROVE') return 'Senior authorities approved this deviation; it can only be approved.';
+      // Once the department has taken the lot through the deviation, the lot is no longer rejected here.
+      if (senior !== 'REJECT' && dev.deptOutcome === 'APPROVED') return 'The department approved this deviation, so the lot cannot be rejected now. Approve it, or escalate it to the senior authorities.';
+      return null;
     case 'escalate':
       if (SENIOR_FINAL.includes(senior)) return 'Senior authorities have already decided this deviation.';
       if (!dev.formSubmittedAt) return 'Escalate only after the department has filled the Deviation Form.';
