@@ -11,7 +11,7 @@ import { authenticate, requirePasswordCurrent } from './middlewares/auth.js';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
 import auditRoutes from './modules/audit/audit.routes.js';
 import authRoutes from './modules/auth/auth.routes.js';
-import deviationRoutes, { chainRouter } from './modules/deviation/deviation.routes.js';
+import deviationRoutes from './modules/deviation/deviation.routes.js';
 import reversalRoutes from './modules/workflow/reversal.routes.js';
 import networkRoutes from './modules/network/network.routes.js';
 import dnRoutes from './modules/dn/dn.routes.js';
@@ -23,6 +23,7 @@ import mastersRoutes from './modules/masters/masters.routes.js';
 import notificationsRoutes from './modules/notifications/notifications.routes.js';
 import numberingRoutes from './modules/numbering/numbering.routes.js';
 import reportsRoutes from './modules/reports/reports.routes.js';
+import { forgetDashboard } from './modules/reports/reports.service.js';
 import rolesRoutes from './modules/roles/roles.routes.js';
 import samplingRoutes from './modules/sampling/sampling.routes.js';
 import searchRoutes from './modules/search/search.routes.js';
@@ -69,11 +70,16 @@ export function createApp({ logger = defaultLogger } = {}) {
 
   // Everything below requires a signed-in user whose temporary password has been changed.
   api.use(authenticate, requirePasswordCurrent);
+  // A change that succeeded empties the cached dashboard, so Home shows it at once (other API
+  // processes catch up within the cache's 30 s; the SAP worker's new lots likewise).
+  api.use((req, res, next) => {
+    if (req.method !== 'GET') res.on('finish', () => { if (res.statusCode < 400) forgetDashboard(); });
+    next();
+  });
   api.use('/users', usersRoutes);
   api.use(rolesRoutes);
   api.use('/masters/sampling-plans', samplingRoutes);
   api.use('/masters/number-series', numberingRoutes);
-  api.use('/masters/dept-approval-chains', chainRouter);
   api.use('/masters', mastersRoutes);
   api.use('/formats', formatsRoutes);
   api.use('/imirs', imirRoutes);

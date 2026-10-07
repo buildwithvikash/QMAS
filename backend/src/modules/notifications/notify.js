@@ -239,21 +239,21 @@ export async function notifyForAction(db, entry) {
     case 'DEPT_APPROVE':
     case 'RECOMMEND_REJECT':
       if (dev.stage === 'HEAD' && dev.dept_outcome === 'REJECT_RECOMMENDED') {
-        return send(usersWith(db, { permission: P.DEVIATION_APPROVE, roles: [`${dev.department}_HEAD`], plantId }), 'APPROVE', `Deviation ${dev.deviation_no}: rejection of the lot recommended — your approval needed`, `${remark ?? ''}\n\n${lot}`, devLink, {
+        return send(usersWith(db, { permission: P.DEVIATION_APPROVE, roles: [`${dev.department}_SUB_HEAD`, `${dev.department}_HEAD`], plantId }), 'APPROVE', `Deviation ${dev.deviation_no}: rejection of the lot recommended — your approval needed`, `${remark ?? ''}\n\n${lot}`, devLink, {
           tone: 'action', pill: 'Reject recommended', todo: `${by} recommends rejecting the lot. Approve the recommendation (the IQC Head then rejects the lot), or send it back for clarification.`,
-          button: 'Review the recommendation', reason: `You get this as ${dev.department} Head.`,
+          button: 'Review the recommendation', reason: `You get this as ${dev.department} Sub-Head / Head (either of you can decide).`,
         });
       }
       if (dev.stage === 'FINAL' && dev.dept_outcome === 'REJECT_RECOMMENDED') {
-        return send(iqcHead(), 'DECIDE', `Deviation ${dev.deviation_no}: ${dev.department} Head approved rejecting the lot`, `${remark ?? ''}\n\n${lot}`, devLink, {
-          tone: 'action', pill: 'Reject recommended', todo: `${dev.department} recommends rejecting the lot and its Head approved. Reject the lot.`, button: 'Take the final decision',
+        return send(iqcHead(), 'DECIDE', `Deviation ${dev.deviation_no}: ${dev.department} approved rejecting the lot`, `${remark ?? ''}\n\n${lot}`, devLink, {
+          tone: 'action', pill: 'Reject recommended', todo: `${dev.department} recommends rejecting the lot and its approver agreed. Reject the lot.`, button: 'Take the final decision',
           reason: 'You get this as Plant IQC Head.',
         });
       }
       if (dev.stage === 'SUB_HEAD' || dev.stage === 'HEAD') {
-        return send(usersWith(db, { permission: P.DEVIATION_APPROVE, roles: [`${dev.department}_${dev.stage}`], plantId }), 'APPROVE', `Deviation ${dev.deviation_no} waiting for your approval`, lot, devLink, {
+        return send(usersWith(db, { permission: P.DEVIATION_APPROVE, roles: [`${dev.department}_SUB_HEAD`, `${dev.department}_HEAD`], plantId }), 'APPROVE', `Deviation ${dev.deviation_no} waiting for your approval`, lot, devLink, {
           tone: 'action', todo: 'Check the Deviation Form and approve it, send it back to the initiator, or reject it.', button: 'Review the form',
-          reason: `You get this as ${dev.department} ${dev.stage === 'HEAD' ? 'Head' : 'Sub-Head'}.`,
+          reason: `You get this as ${dev.department} Sub-Head / Head (either of you can decide).`,
         });
       }
       return send(iqcHead(), 'DECIDE', `Deviation ${dev.deviation_no} approved by ${dev.department} — final decision needed`, lot, devLink, {

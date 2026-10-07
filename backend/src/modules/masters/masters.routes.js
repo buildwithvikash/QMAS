@@ -48,7 +48,6 @@ router.use(
   }),
 );
 router.use('/uoms', lookup('Unit of measure', 'mst.uom'));
-router.use('/instruments', lookup('Instrument', 'mst.instrument'));
 router.use('/item-categories', lookup('Item category', 'mst.item_category'));
 
 router.use(

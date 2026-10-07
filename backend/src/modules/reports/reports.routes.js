@@ -21,7 +21,7 @@ router.get('/reports/:key', canReport, validate({ params: z.object({ key: z.stri
   res.end(await toXlsx(report));
 });
 const period = z.enum(['7', '30', '90']).transform(Number).optional();
-router.get('/dashboard/summary', requirePermission(PERMISSIONS.DASHBOARD_VIEW), validate({ query: z.object({ trendDays: period, glanceDays: period }) }), async (req, res) => {
+router.get('/dashboard/summary', requirePermission(PERMISSIONS.DASHBOARD_VIEW), validate({ query: z.object({ trendDays: period, glanceDays: period, vendorDays: z.enum(['30', '90', '180', '365']).transform(Number).optional() }) }), async (req, res) => {
   ok(res, await dashboardSummary(req.user, query(req)));
 });
 

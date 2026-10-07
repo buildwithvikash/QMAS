@@ -73,7 +73,7 @@ export default function Sidebar({ expanded, onToggle, isMobile }) {
       )}
 
       <aside
-        data-tour="sidebar"
+       
         ref={ref}
         aria-label="Main navigation"
         className={`fixed top-16 left-0 h-[calc(100vh-64px)] z-40 flex flex-col bg-white border-r border-slate-100 shadow-sm transition-all duration-300 select-none ${

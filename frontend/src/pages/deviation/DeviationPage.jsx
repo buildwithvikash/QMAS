@@ -28,13 +28,13 @@ import { DeviationStage } from './workflowUi.jsx';
 
 /** Buttons for the simple decisions: a remark and (for escalation) the authorities. */
 const DECISIONS = {
-  dept_approve: { label: 'Approve', icon: CheckCircle2, variant: 'success', help: 'Forward to the next approver, or to the IQC Head for the final decision.', remark: 'optional' },
+  dept_approve: { label: 'Approve', icon: CheckCircle2, variant: 'success', help: 'It goes to the IQC Head for the final decision.', remark: 'optional' },
   send_back: { label: 'Send back', icon: CornerUpLeft, variant: 'secondary', help: 'The initiator corrects the Deviation Form and submits it again.' },
   dept_reject: { label: 'Reject', icon: XCircle, variant: 'danger', help: 'The IQC Head then rejects the lot or escalates to senior authorities.' },
   final_approve: { label: 'Approve deviation', icon: CheckCircle2, variant: 'success', help: 'Use As Is closes the lot now. Segregation and Rework wait for the department to enter OK / Not-OK quantities (14 days).' },
   final_reject: { label: 'Reject lot', icon: XCircle, variant: 'danger', help: 'The lot is rejected and the IMIR closes.' },
   escalate: { label: 'Escalate to seniors', icon: ShieldAlert, variant: 'secondary', help: 'Selected authorities decide in parallel. The highest-ranked decision is final; the Central Operations Head has 24 hours, after which CQA decides.' },
-  recommend_reject: { label: 'Recommend rejection', icon: ThumbsDown, variant: 'secondary', help: "No Deviation Form: your department's Head approves the recommendation (or sends it back), then the IQC Head rejects the lot." },
+  recommend_reject: { label: 'Recommend rejection', icon: ThumbsDown, variant: 'secondary', help: "No Deviation Form: your department's Sub-Head or Head approves the recommendation (or sends it back), then the IQC Head rejects the lot." },
   verify_qty: { label: 'Verify quantities', icon: CheckCircle2, variant: 'success', help: 'The lot closes as accepted under deviation.', remark: 'optional' },
   return_qty: { label: 'Return quantities', icon: CornerUpLeft, variant: 'secondary', help: 'The department corrects the quantities.' },
   override: { label: 'Override', icon: Gavel, variant: 'danger', help: 'Your decision replaces the senior outcome (Rule 4). It is recorded with your reason.' },
@@ -94,10 +94,7 @@ export default function DeviationPage() {
             ]} />
             <StageHistory rows={stageRows({ history: d.history, current: currentStage(journeySteps({ status: d.imirStatus, history: d.history, deviation: d })) })} />
             <KeyFacts rows={[
-              { label: 'Department', value: d.department ?? 'Not accepted yet' },
-              { label: 'Approval chain', value: d.approvalLevels?.map((l) => (l === 'SUB_HEAD' ? 'Sub-Head' : 'Head')).join(', then ') },
               { label: 'Initiator', value: d.initiatorName },
-              d.stage === 'UNDER_DEVIATION' ? { label: 'Quantities due', at: d.qtyDueAt, tone: 'warn' } : null,
             ]} />
           </ActivityLayout>
         </div>
@@ -116,7 +113,6 @@ function Facts({ d }) {
     <section className="card p-4 space-y-3">
       <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
         {fact('IMIR', <Link to={`/imirs/${d.imirId}`} className="font-mono text-blue-700 hover:underline">{d.imirNo}</Link>)}
-        {fact('IMIR status', <ImirStatus status={d.imirStatus} />)}
         {fact('Vendor', `${d.vendorName} (${d.vendorCode})`)}
         {fact('GRN', `${d.grnNo} · ${formatDate(d.grnDate)}`)}
         {fact('Inward qty', formatQty(d.inwardQty, d.uom))}
@@ -126,7 +122,7 @@ function Facts({ d }) {
         {d.qtyDueAt && d.stage !== 'CLOSED' && fact('Quantities due', formatDateTime(d.qtyDueAt))}
         {d.okQty !== null && fact('OK / Not OK', `${formatQty(d.okQty, d.uom)} / ${formatQty(d.notOkQty, d.uom)}`)}
         {d.seniorEffective && fact('Senior decision', DECISION_NAMES[d.seniorEffective])}
-        {d.deptOutcome && fact('Department', { APPROVED: 'Approved', REJECTED: 'Rejected', REJECT_RECOMMENDED: 'Rejection recommended' }[d.deptOutcome])}
+        {d.deptOutcome && fact('Department decision', { APPROVED: 'Approved', REJECTED: 'Rejected', REJECT_RECOMMENDED: 'Rejection recommended' }[d.deptOutcome])}
       </dl>
       <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900"><span className="font-semibold">IQC Head hold remark: </span>{d.holdRemark}</div>
     </section>
@@ -135,9 +131,9 @@ function Facts({ d }) {
 
 function StageHint({ d }) {
   const hints = {
-    SUB_HEAD: 'Review the Deviation Form below.',
-    HEAD: d.deptOutcome === 'REJECT_RECOMMENDED' ? `The ${d.department} initiator recommends rejecting the lot. Approve the recommendation, or send it back for clarification.` : 'Review the Deviation Form below.',
-    FINAL: d.deptOutcome === 'REJECT_RECOMMENDED' ? `${d.department} recommends rejecting the lot${d.history.some((h) => h.action === 'DEPT_APPROVE' && h.payload?.outcome === 'REJECT_RECOMMENDED') ? ' and its Head approved' : ''}: reject the lot.`
+    SUB_HEAD: 'Review the Deviation Form below. The Sub-Head or the Head can decide.',
+    HEAD: d.deptOutcome === 'REJECT_RECOMMENDED' ? `The ${d.department} initiator recommends rejecting the lot. Approve the recommendation, or send it back for clarification.` : 'Review the Deviation Form below. The Sub-Head or the Head can decide.',
+    FINAL: d.deptOutcome === 'REJECT_RECOMMENDED' ? `${d.department} recommends rejecting the lot${d.history.some((h) => h.action === 'DEPT_APPROVE' && h.payload?.outcome === 'REJECT_RECOMMENDED') ? ' and its approver agreed' : ''}: reject the lot.`
       : d.seniorEffective === 'APPROVE' ? 'Senior authorities approved: the deviation can only be approved.'
       : d.seniorEffective === 'REJECT' ? 'Senior authorities rejected: the lot can only be rejected.'
       : d.deptOutcome === 'APPROVED' ? 'The department approved the deviation.' : 'The department did not approve the deviation.',

@@ -29,7 +29,7 @@ export const STATUS_LABEL = {
   IQC_HEAD_FINAL: 'IQC Head final decision', SENIOR_ESCALATION: 'Senior escalation', CLOSED_ACCEPTED: 'Closed: accepted', CLOSED_REJECTED: 'Closed: rejected',
   CLOSED_UNDER_DEVIATION: 'Closed: accepted under deviation', AUTO_CLOSED: 'Closed: auto-closed',
   // Deviation
-  UNASSIGNED: 'Waiting for SCM / VD to accept', INITIATOR: 'Department initiator', SUB_HEAD: 'Department Sub-Head', HEAD: 'Department Head',
+  UNASSIGNED: 'Waiting for SCM / VD to accept', INITIATOR: 'Department initiator', SUB_HEAD: 'Department approval', HEAD: 'Department approval',
   FINAL: 'IQC Head final decision', SENIOR: 'Senior escalation', UNDER_DEVIATION: 'Awaiting quantities', QTY_VERIFICATION: 'Quantity verification', CLOSED: 'Closed',
   // DN
   CAPA_SUBMITTED: 'CAPA review',

@@ -79,6 +79,7 @@ export const REPORTS = Object.freeze([
   { key: 'dn-register', name: 'DN / CAPA ageing', description: 'Defect notifications with CAPA status, due date and days open.' },
   { key: 'format-coverage', name: 'Format coverage', description: 'Items received in the period: approved inspection format or not, drafts in progress, lots waiting.' },
   { key: 'tat', name: 'Turnaround by stage', description: 'Hours each lot spent in each stage (lots received in the period), and what is still waiting.' },
+  { key: 'measurement-drift', name: 'Measurement drift', description: 'Dimensional check points whose latest lot (inspected in the period) is close to a limit, shifted from the usual values, or trending toward a limit, per item and vendor. Rule based, from the earlier lots.' },
 ]);
 
 export const reportQuery = z.object({

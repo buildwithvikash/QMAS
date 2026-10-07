@@ -87,7 +87,7 @@ export default function NumberSeriesPage() {
     {
       key: 'pattern', header: 'Pattern', hint: 'How each number is built. Tokens in braces are filled in when a number is issued.', text: (x) => x.pattern,
       render: (x) => (
-        <span className="inline-flex max-w-full items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 py-1 pl-2.5 pr-1">
+        <span className="inline-flex max-w-64 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 py-1 pl-2.5 pr-1" title={x.pattern}>
           <code className="truncate text-xs text-slate-700">{x.pattern}</code>
           <CopyButton text={x.pattern} label="Copy pattern" />
         </span>

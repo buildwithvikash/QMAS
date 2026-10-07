@@ -249,7 +249,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
 
       {/* The report's actions stay at hand while scrolling. */}
       {ev && opened && !readOnly && (
-        <div data-tour="imir-actions" className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-5 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-5 py-2.5 flex flex-wrap items-center gap-x-4 gap-y-2">
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500">Progress</span>
             <span className="w-24 h-1.5 rounded-full bg-slate-200 overflow-hidden"><span className={`block h-full rounded-full ${progress.pct === 100 ? 'bg-emerald-500' : 'bg-blue-600'}`} style={{ width: `${progress.pct}%` }} /></span>
@@ -306,7 +306,7 @@ const CardHead = ({ icon: Icon, tone = 'bg-blue-100 text-blue-700', title, child
 /** Report header: the lot from SAP, with the format it is inspected against. */
 function GeneralInfo({ sheet }) {
   return (
-    <section data-tour="imir-info" className="card h-full">
+    <section className="card h-full">
       <CardHead icon={ClipboardCheck} title="General information" />
       <dl className="grid grid-cols-2 gap-x-3 gap-y-3 px-4 pb-4 md:grid-cols-4">
         <Field label="Inspection date" icon={Calendar}>{formatDate(sheet.inspectionStartedAt ?? sheet.openedAt)}</Field>
@@ -350,7 +350,7 @@ function InspectionStatus({ sheet, stage, since, progress }) {
     sheet.formatVersionId && { icon: FileText, label: 'Inspection format', value: `${sheet.formatNo ?? 'Format'} (v${sheet.formatVersionNo})`, to: `/formats/versions/${sheet.formatVersionId}` },
   ].filter(Boolean);
   return (
-    <section data-tour="imir-status" className="card h-full">
+    <section className="card h-full">
       <CardHead icon={Info} title="Inspection status" />
       <div className="flex items-center gap-4 px-4 pb-4">
         {progress !== null && <Ring pct={progress} />}
@@ -378,7 +378,7 @@ function ModelDetails({ sheet, readOnly, onPatch, opened }) {
   useEffect(() => setModel(sheet.model ?? ''), [sheet.model]);
   const missing = opened && !readOnly && !model.trim();
   return (
-    <section data-tour="imir-model" className="card">
+    <section className="card">
       <CardHead icon={Package} tone="bg-sky-100 text-sky-700" title="Model details">
         {sheet.drawingNo && <span className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700"><Ruler className="h-3.5 w-3.5 text-slate-400" />Drawing {sheet.drawingNo}{sheet.drawingRev ? ` rev ${sheet.drawingRev}` : ''}</span>}
       </CardHead>
@@ -479,9 +479,7 @@ function SignOff({ sheet, readOnly, onPatch }) {
         {outcome
           ? <span className={`rounded-md px-3 py-1 text-sm font-semibold ${outcome[1]}`}>{outcome[0]}</span>
           : <span className="text-sm text-slate-600">Open: <ImirStatus status={sheet.status} /></span>}
-        {sheet.deviation && <Link to={`/deviations/${sheet.deviation.id}`} className="text-sm text-blue-700 hover:underline">Deviation {sheet.deviation.deviationNo}</Link>}
       </div>
-      {sheet.allowedActions.some((a) => ['approve', 'revert', 'escalate', 'head_approve', 'hold', 'raise_dn'].includes(a)) && <ReviewPanel imir={sheet} />}
     </section>
   );
 }

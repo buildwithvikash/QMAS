@@ -29,6 +29,12 @@ export const IMIR_SELECT = `SELECT m.id, m.imir_no, m.status, m.awaiting_reason,
 
 const fix = (r) => r && { ...r, inwardQty: num(r.inwardQty) };
 
+// The joins of IMIR_SELECT, for counting and paging when a filter or the sort needs them; otherwise
+// only qms.imir is read (the joins multiply the work over hundreds of thousands of lots).
+const IMIR_FROM = IMIR_SELECT.slice(IMIR_SELECT.indexOf('\n  FROM qms.imir m'));
+const JOINED_ALIAS = /\b(p|i|c|v|l|fv|iu|su|co|d|cu)\./;
+const fromFor = (...sql) => (sql.some((x) => JOINED_ALIAS.test(x)) ? IMIR_FROM : 'FROM qms.imir m');
+
 export async function get(db, id, { forUpdate = false } = {}) {
   if (forUpdate) await db.query('SELECT 1 FROM qms.imir WHERE id = $1 FOR UPDATE', [id]);
   const { rows } = await db.query(`${IMIR_SELECT} WHERE m.id = $1`, [id]);
@@ -45,22 +51,22 @@ export async function counts(db, f, scope) {
   const where = listWhere(f, scope, arg, { withStatus: false });
   const { rows } = await db.query(
     `SELECT count(*)::int AS total,
-            count(*) FILTER (WHERE x.status = 'AWAITING_FORMAT')::int AS awaiting_format,
-            count(*) FILTER (WHERE x.status = 'OPEN')::int AS to_inspect,
-            count(*) FILTER (WHERE x.status = 'IN_INSPECTION')::int AS inspecting,
-            count(*) FILTER (WHERE x.status IN ('SUBMITTED', 'WITH_IQC_HEAD', 'DEPT_REVIEW', 'IQC_HEAD_FINAL', 'SENIOR_ESCALATION', 'UNDER_DEVIATION', 'QTY_VERIFICATION'))::int AS in_review,
-            count(*) FILTER (WHERE x.status IN ('CLOSED_ACCEPTED', 'CLOSED_REJECTED', 'CLOSED_UNDER_DEVIATION', 'AUTO_CLOSED'))::int AS closed,
-            count(*) FILTER (WHERE x.result = 'NOK')::int AS nok
-       FROM (${IMIR_SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}) x`,
+            count(*) FILTER (WHERE m.status = 'AWAITING_FORMAT')::int AS awaiting_format,
+            count(*) FILTER (WHERE m.status = 'OPEN')::int AS to_inspect,
+            count(*) FILTER (WHERE m.status = 'IN_INSPECTION')::int AS inspecting,
+            count(*) FILTER (WHERE m.status IN ('SUBMITTED', 'WITH_IQC_HEAD', 'DEPT_REVIEW', 'IQC_HEAD_FINAL', 'SENIOR_ESCALATION', 'UNDER_DEVIATION', 'QTY_VERIFICATION'))::int AS in_review,
+            count(*) FILTER (WHERE m.status IN ('CLOSED_ACCEPTED', 'CLOSED_REJECTED', 'CLOSED_UNDER_DEVIATION', 'AUTO_CLOSED'))::int AS closed,
+            count(*) FILTER (WHERE m.result = 'NOK')::int AS nok
+       ${fromFor(...where)} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`,
     args,
   );
   const targs = [];
   const targ = (v) => { targs.push(v); return `$${targs.length}`; };
   const twhere = listWhere(f, scope, targ, { withStatus: false, withDates: false });
   const { rows: trend } = await db.query(
-    `SELECT count(*) FILTER (WHERE x.created_at >= date_trunc('month', now()))::int AS this_month,
-            count(*) FILTER (WHERE x.created_at >= date_trunc('month', now()) - interval '1 month' AND x.created_at < date_trunc('month', now()))::int AS last_month
-       FROM (${IMIR_SELECT} ${twhere.length ? `WHERE ${twhere.join(' AND ')}` : ''}) x`,
+    `SELECT count(*) FILTER (WHERE m.created_at >= date_trunc('month', now()))::int AS this_month,
+            count(*)::int - count(*) FILTER (WHERE m.created_at >= date_trunc('month', now()))::int AS last_month
+       ${fromFor(...twhere)} WHERE m.created_at >= date_trunc('month', now()) - interval '1 month' ${twhere.length ? `AND ${twhere.join(' AND ')}` : ''}`,
     targs,
   );
   return { ...camelRow(rows[0]), ...camelRow(trend[0]) };
@@ -105,8 +111,15 @@ export async function list(db, f, scope) {
   const args = [];
   const arg = (v) => { args.push(v); return `$${args.length}`; };
   const where = listWhere(f, scope, arg);
+  // The page's ids first (cheap columns only), then the full rows and per-row look-ups for those
+  // ids alone: with the count in the same statement every look-up ran for every matching lot.
+  const order = `${orderBy(SORTABLE, f.sort, f.order, 'createdAt')}, m.id`;
   const { rows } = await db.query(
-    `${IMIR_SELECT.replace('SELECT m.id,', `SELECT count(*) OVER () AS total,
+    `WITH page AS (
+       SELECT m.id, count(*) OVER () AS total ${fromFor(order, ...where)}
+       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+       ${order} LIMIT ${arg(f.pageSize)} OFFSET ${arg(offsetOf(f))})
+     ${IMIR_SELECT.replace('\n  FROM qms.imir m\n', '\n  FROM page JOIN qms.imir m ON m.id = page.id\n').replace('SELECT m.id,', `SELECT page.total,
         (SELECT dx.id FROM qms.deviation dx WHERE dx.imir_id = m.id ORDER BY dx.id DESC LIMIT 1) AS deviation_id,
         (SELECT nx.id FROM qms.defect_notification nx WHERE nx.imir_id = m.id ORDER BY nx.id DESC LIMIT 1) AS dn_id,
         (SELECT dx.deviation_no FROM qms.deviation dx WHERE dx.imir_id = m.id ORDER BY dx.id DESC LIMIT 1) AS deviation_no,
@@ -118,9 +131,7 @@ export async function list(db, f, scope) {
           WHERE a.imir_id = m.id AND a.action IN ('HEAD_APPROVE', 'HOLD') ORDER BY a.id DESC LIMIT 1) AS head_name,
         (SELECT concat_ws(' · ', ru.full_name, dx.department) FROM qms.deviation dx JOIN core.app_user ru ON ru.id = dx.initiator_id
           WHERE dx.imir_id = m.id ORDER BY dx.id DESC LIMIT 1) AS requester_name, m.id,`)}
-      ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-      ${orderBy(SORTABLE, f.sort, f.order, 'createdAt')}
-      LIMIT ${arg(f.pageSize)} OFFSET ${arg(offsetOf(f))}`,
+     ${order}`,
     args,
   );
   return { rows: camelRows(rows).map(({ total, ...r }) => fix(r)), total: rows[0]?.total ?? 0 };

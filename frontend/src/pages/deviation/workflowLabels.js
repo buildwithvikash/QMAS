@@ -1,8 +1,8 @@
 /** Display names for the review / deviation workflow. */
 export const STAGES = {
   INITIATOR: ['With initiator', 'info'],
-  SUB_HEAD: ['With Sub-Head', 'neutral'],
-  HEAD: ['With Head', 'neutral'],
+  SUB_HEAD: ['Department approval', 'neutral'],
+  HEAD: ['Department approval', 'neutral'],
   FINAL: ['IQC Head decision', 'primary'],
   SENIOR: ['Senior escalation', 'danger'],
   UNDER_DEVIATION: ['Awaiting quantities', 'warning'],

@@ -79,7 +79,10 @@ export async function counts(db, f, scope) {
             count(*) FILTER (WHERE x.stage = 'FINAL')::int AS final_decision,
             count(*) FILTER (WHERE x.stage = 'SENIOR')::int AS escalated,
             count(*) FILTER (WHERE x.stage IN ('UNDER_DEVIATION', 'QTY_VERIFICATION'))::int AS quantities,
-            count(*) FILTER (WHERE x.stage = 'CLOSED')::int AS closed
+            count(*) FILTER (WHERE x.stage = 'CLOSED')::int AS closed,
+            count(*) FILTER (WHERE x.created_at >= date_trunc('month', now() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata')::int AS this_month,
+            count(*) FILTER (WHERE x.created_at >= (date_trunc('month', now() AT TIME ZONE 'Asia/Kolkata') - interval '1 month') AT TIME ZONE 'Asia/Kolkata'
+                               AND x.created_at < date_trunc('month', now() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata')::int AS last_month
        FROM (${SELECT} ${where.length ? `WHERE ${where.join(' AND ')}` : ''}) x`,
     args,
   );
@@ -142,9 +145,4 @@ export async function rounds(db, deviationIds) {
     steps: s.filter((x) => Number(x.roundId) === Number(r.id)).map(({ roundId, ...x }) => x),
     decisions: d.filter((x) => Number(x.roundId) === Number(r.id)).map(({ roundId, ...x }) => ({ ...x, id: Number(x.id) })),
   }));
-}
-
-export async function approvalChain(db, department) {
-  const { rows } = await db.query('SELECT levels FROM mst.dept_approval_chain WHERE department = $1', [department]);
-  return rows[0]?.levels ?? ['SUB_HEAD'];
 }

@@ -24,7 +24,6 @@ const DeviationPage = lazy(() => import('../pages/deviation/DeviationPage.jsx'))
 const DnListPage = lazy(() => import('../pages/dn/DnListPage.jsx'));
 const DnPage = lazy(() => import('../pages/dn/DnPage.jsx'));
 const ReportsPage = lazy(() => import('../pages/reports/ReportsPage.jsx'));
-const ApprovalChainPage = lazy(() => import('../pages/masters/ApprovalChainPage.jsx'));
 const DevicesPage = lazy(() => import('../pages/admin/DevicesPage.jsx'));
 const SapSyncPage = lazy(() => import('../pages/admin/SapSyncPage.jsx'));
 const SystemHealthPage = lazy(() => import('../pages/admin/SystemHealthPage.jsx'));
@@ -112,9 +111,7 @@ export const ROUTE_SECTIONS = [
     items: [
       { path: '/masters/plants', label: 'Plants', group: 'org', permission: P.MASTERS_VIEW, element: <MasterListPage key="plants" resource="plants" /> },
       { path: '/masters/number-series', label: 'Number Series', group: 'org', permission: P.MASTERS_VIEW, element: <NumberSeriesPage /> },
-      { path: '/masters/instruments', label: 'Instruments', group: 'inspection', permission: P.MASTERS_VIEW, element: <MasterListPage key="instruments" resource="instruments" /> },
       { path: '/masters/sampling', label: 'Sampling Table', group: 'inspection', permission: P.MASTERS_VIEW, element: <SamplingTablePage /> },
-      { path: '/masters/approval-chain', label: 'Deviation Approval', group: 'inspection', permission: P.MASTERS_VIEW, element: <ApprovalChainPage /> },
     ],
   },
   {

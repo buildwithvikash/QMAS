@@ -1,6 +1,6 @@
 /** The lot's route (stations and who holds the current one), shared by the route rail and History. */
 const CLOSED = { CLOSED_ACCEPTED: 'Accepted', CLOSED_REJECTED: 'Rejected', CLOSED_UNDER_DEVIATION: 'Accepted under deviation', AUTO_CLOSED: 'Auto-closed' };
-const DEPT_ROLE = { INITIATOR: 'initiator', SUB_HEAD: 'Sub-Head', HEAD: 'Head' };
+const DEPT_ROLE = { INITIATOR: 'initiator', SUB_HEAD: 'Sub-Head / Head', HEAD: 'Sub-Head / Head' };
 
 /** The lot's path, in order. Optional steps appear only when this lot reached them. */
 const STEPS = [

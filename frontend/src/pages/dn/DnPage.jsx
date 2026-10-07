@@ -65,7 +65,7 @@ export default function DnPage() {
             ]} />
             <StageHistory rows={stageRows({ history: dn.history.filter((h) => h.dnId), current: currentStage(dnSteps(dn)) })} />
             <KeyFacts rows={[
-              dn.capaApplicable ? { label: 'CAPA due', at: dn.capaDueAt, tone: dn.capaOverdue ? 'bad' : undefined } : { label: 'CAPA', value: 'Not applicable' },
+              !dn.capaApplicable && { label: 'CAPA', value: 'Not applicable' },
               { label: 'CAPA rounds', value: dn.capas.length ? `${dn.capas.length} (${dn.capas.filter((c) => c.reviewDecision === 'RESUBMIT').length} sent back)` : null },
               { label: 'Last reminder', at: dn.lastReminderAt },
             ]} />

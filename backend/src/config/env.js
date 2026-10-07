@@ -6,7 +6,7 @@ const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(4000),
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
-  DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
+  DB_POOL_MAX: z.coerce.number().int().min(1).max(100).default(30),
   DB_SSL: bool.default(false),
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   ACCESS_TOKEN_TTL_MIN: z.coerce.number().int().min(1).max(120).default(15),

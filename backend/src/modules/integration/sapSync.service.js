@@ -82,9 +82,16 @@ export async function runSapSync({ userId = null, log } = {}) {
       let retryFrom = null;
       let failed = false;
       let previousPosition = cursor;
+      // Lots already pulled (asking SAP again from the last date returns them): one look-up for the
+      // batch and one update of last_seen_at, instead of a transaction per lot.
+      const { rows: known } = await pool.query('SELECT sap_lot_no FROM intg.sap_inspection_lot WHERE sap_lot_no = ANY($1)', [batch.lots.map((l) => l.sapLotNo).filter(Boolean)]);
+      const seen = new Set(known.map((r) => r.sap_lot_no));
+      if (seen.size) await pool.query('UPDATE intg.sap_inspection_lot SET last_seen_at = now() WHERE sap_lot_no = ANY($1)', [[...seen]]);
       for (const lot of batch.lots) {
         const before = previousPosition;
         previousPosition = lot.position ?? previousPosition;
+        if (seen.has(lot.sapLotNo)) continue;
+        seen.add(lot.sapLotNo); // the same lot twice in one answer counts once
         try {
           const outcome = await withTransaction({ userId }, async (db) => {
             if (lot.error) throw AppError.unprocessable(lot.error);

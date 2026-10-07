@@ -2,7 +2,7 @@ import { baseApi, envelope, pagedEnvelope } from './baseApi.js';
 
 /** Review, deviation, escalation and My Tasks (Sprint D). */
 export const workflowApi = baseApi
-  .enhanceEndpoints({ addTagTypes: ['Imir', 'Deviation', 'Tasks', 'DeptChain'] })
+  .enhanceEndpoints({ addTagTypes: ['Imir', 'Deviation', 'Tasks'] })
   .injectEndpoints({
     endpoints: (b) => ({
       imirAction: b.mutation({
@@ -25,12 +25,6 @@ export const workflowApi = baseApi
       }),
       getMyTasks: b.query({ query: () => '/tasks/me', transformResponse: envelope, providesTags: ['Tasks'] }),
       getMyRecent: b.query({ query: () => '/tasks/recent', transformResponse: envelope, providesTags: ['Tasks'] }),
-      getDeptChains: b.query({ query: () => '/masters/dept-approval-chains', transformResponse: envelope, providesTags: ['DeptChain'] }),
-      updateDeptChain: b.mutation({
-        query: ({ department, ...body }) => ({ url: `/masters/dept-approval-chains/${department}`, method: 'PUT', body }),
-        transformResponse: envelope,
-        invalidatesTags: ['DeptChain'],
-      }),
     }),
   });
 
@@ -41,8 +35,6 @@ export const {
   useDeviationActionMutation,
   useSetDeviationInchargeRemarkMutation,
   useGetMyTasksQuery,
-  useGetDeptChainsQuery,
-  useUpdateDeptChainMutation,
   useGetMyRecentQuery,
   useGetDeviationCountsQuery,
 } = workflowApi;

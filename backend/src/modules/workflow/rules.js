@@ -58,11 +58,14 @@ export const STAGE_ACTIONS = Object.freeze({
 
 const SENIOR_FINAL = ['APPROVE', 'REJECT'];
 
-/** Senior roles the user may decide as in the open round, highest first. */
+/**
+ * Senior roles the user may still decide as in the open round, highest first. A decision is final:
+ * once an authority has decided, its step is no longer offered (an override is a separate right).
+ */
 export function seniorRoles(user, dev, round) {
   if (!round || round.status !== 'OPEN') return [];
   return round.steps
-    .filter((s) => (s.status === 'PENDING' || s.status === 'DECIDED') && actingRole(user, { permission: P.ESCALATION_DECIDE, roles: [s.roleCode], plantId: dev.plantId }))
+    .filter((s) => s.status === 'PENDING' && actingRole(user, { permission: P.ESCALATION_DECIDE, roles: [s.roleCode], plantId: dev.plantId }))
     .map((s) => s.roleCode)
     .sort((a, b) => rankOf(b) - rankOf(a));
 }
@@ -87,10 +90,11 @@ export function deviationRole(user, dev, action, round) {
       if (role && role !== ROLES.SYSTEM_ADMIN && dev.acceptedAt && dev.initiatorId && dev.initiatorId !== user.id) return null;
       return role;
     }
+    // Department approval is one step: the department's Sub-Head or Head, whoever acts first.
     case 'dept_approve':
     case 'send_back':
     case 'dept_reject':
-      return dept ? actingRole(user, { permission: P.DEVIATION_APPROVE, roles: [`${dept}_${dev.stage}`], plantId }) : null;
+      return dept ? actingRole(user, { permission: P.DEVIATION_APPROVE, roles: [`${dept}_SUB_HEAD`, `${dept}_HEAD`], plantId }) : null;
     case 'final_approve':
     case 'final_reject':
     case 'escalate':

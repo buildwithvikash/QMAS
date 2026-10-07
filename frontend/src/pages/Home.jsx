@@ -13,6 +13,8 @@ import QualityTrend from './home/QualityTrend.jsx';
 import { ActiveTasks, RecentlyDone } from './home/TaskCards.jsx';
 
 const P = PERMISSIONS;
+// Incoming Lots filtered to exactly the statuses a tile counts, so the click shows the same number.
+const lotsWithStatus = (...statuses) => `/imirs?filter=${encodeURIComponent(JSON.stringify({ mode: 'all', rules: [{ field: 'status', op: 'in', value: statuses }] }))}`;
 
 /**
  * Home: a welcome with today's date, the plant's open work as five figures (and where the user is
@@ -29,20 +31,20 @@ export default function Home() {
   const date = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'long', year: 'numeric' }).format(now);
 
   return (
-    <div className="p-4 sm:p-5 space-y-4">
-      <section className="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 via-sky-50 to-blue-100/70 px-5 py-5 sm:px-6" aria-label="Welcome">
-        <PlantIllustration className="pointer-events-none absolute bottom-0 right-72 hidden h-28 opacity-90 lg:block" />
-        <div className="relative flex flex-wrap items-center gap-4">
-          <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-lg shadow-blue-600/20">
-            <Building2 className="h-8 w-8" />
+    <div className="p-3 sm:p-4 space-y-3">
+      <section className="relative overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50 via-sky-50 to-blue-100/70 px-4 py-3 sm:px-5" aria-label="Welcome">
+        <PlantIllustration className="pointer-events-none absolute bottom-0 right-64 hidden h-20 opacity-90 lg:block" />
+        <div className="relative flex flex-wrap items-center gap-3">
+          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-lg shadow-blue-600/20">
+            <Building2 className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-bold text-slate-900">Good {partOfDay()}, {user.fullName.split(' ')[0]} <span aria-hidden="true">👋</span></h1>
-            <p className="mt-0.5 text-sm text-slate-600">Here&apos;s what&apos;s happening with incoming quality today.</p>
+            <h1 className="text-lg font-bold text-slate-900">Good {partOfDay()}, {user.fullName.split(' ')[0]} <span aria-hidden="true">👋</span></h1>
+            <p className="text-xs text-slate-600">Here&apos;s what&apos;s happening with incoming quality today.</p>
           </div>
-          <Link to="/reports" className="group flex items-center gap-3 rounded-xl border border-white/80 bg-white/90 px-4 py-3 shadow-sm backdrop-blur hover:border-blue-200">
-            <span className="grid h-10 w-10 place-items-center rounded-lg bg-blue-50 text-blue-700"><CalendarDays className="h-5 w-5" /></span>
-            <span><span className="block text-xs text-slate-500">{weekday}</span><span className="block text-base font-bold text-slate-900">{date}</span></span>
+          <Link to="/reports" className="group flex items-center gap-2.5 rounded-xl border border-white/80 bg-white/90 px-3 py-1.5 shadow-sm backdrop-blur hover:border-blue-200">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-blue-50 text-blue-700"><CalendarDays className="h-4 w-4" /></span>
+            <span><span className="block text-[11px] text-slate-500">{weekday}</span><span className="block text-sm font-bold text-slate-900">{date}</span></span>
             <ChevronRight className="ml-2 h-4 w-4 text-slate-400 group-hover:text-blue-700" />
           </Link>
         </div>
@@ -51,13 +53,13 @@ export default function Home() {
       {can(P.MASTERS_VIEW) && <SetupWarning />}
       <Figures />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
         <QualityTrend />
         <VendorNokRate />
         <PlantGlance />
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start">
         <ActiveTasks tasks={tasks} isLoading={tasksQuery.isLoading} error={tasksQuery.error} />
         <RecentlyDone />
       </div>
@@ -77,10 +79,10 @@ function Figures() {
   const external = net?.network === 'EXTERNAL';
   const until = net?.externalAccess && new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(net.externalAccess.endsAt));
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
-      <StatTile to="/imirs" icon={Package} tone="blue" label="To Inspect" value={s ? n('OPEN', 'IN_INSPECTION') : '–'}
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <StatTile to={lotsWithStatus('OPEN', 'IN_INSPECTION')} icon={Package} tone="blue" label="To Inspect" value={s ? n('OPEN', 'IN_INSPECTION') : '–'}
         note={st.AWAITING_FORMAT ? `${st.AWAITING_FORMAT} waiting for format` : 'Lots open or in inspection'} noteTone={st.AWAITING_FORMAT ? 'text-amber-700 font-medium' : undefined} />
-      <StatTile to="/imirs" icon={ClipboardCheck} tone="violet" label="In Review" value={s ? n('SUBMITTED', 'WITH_IQC_HEAD') : '–'}
+      <StatTile to={lotsWithStatus('SUBMITTED', 'WITH_IQC_HEAD')} icon={ClipboardCheck} tone="violet" label="In Review" value={s ? n('SUBMITTED', 'WITH_IQC_HEAD') : '–'}
         note={`${st.SUBMITTED ?? 0} incharge / ${st.WITH_IQC_HEAD ?? 0} IQC Head`} />
       <StatTile to="/deviations" icon={FileWarning} tone="orange" label="Open Deviations" value={s ? s.openDeviations : '–'}
         note={s?.deviationsByStage.SENIOR ? `${s.deviationsByStage.SENIOR} with senior authorities` : 'Deviations in progress'} noteTone={s?.deviationsByStage.SENIOR ? 'text-orange-700 font-medium' : undefined} />

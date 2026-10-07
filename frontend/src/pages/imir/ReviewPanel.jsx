@@ -1,7 +1,7 @@
-import { CheckCircle2, CornerUpLeft, FileWarning, FileX2, PauseCircle, ShieldAlert } from 'lucide-react';
+import { CheckCircle2, CornerUpLeft, FileX2, PauseCircle, ShieldAlert } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useCreateDnMutation } from '../../api/dnApi.js';
 import { useImirActionMutation } from '../../api/workflowApi.js';
 import Button from '../../components/ui/Button.jsx';
@@ -10,7 +10,6 @@ import Modal, { ModalFooter } from '../../components/ui/Modal.jsx';
 import { apiError } from '../../utils/apiError.js';
 import { done } from '../../utils/notify.jsx';
 import { ACTION_NAMES } from '../deviation/workflowLabels.js';
-import { DeviationStage, DnStatus } from '../deviation/workflowUi.jsx';
 
 const ACTIONS = {
   approve: { label: 'Approve', icon: CheckCircle2, variant: 'success', title: 'Approve IMIR', help: 'The lot is accepted and the IMIR closes.', remarkLabel: 'Final approval remark', remarkRequired: false },
@@ -28,7 +27,8 @@ export default function ReviewPanel({ imir }) {
   const actions = imir.allowedActions.filter((a) => ACTIONS[a]);
   const canRaiseDn = imir.allowedActions.includes('raise_dn');
   // The lot's DN is shown on the route bar; here only the deviation link and the decisions.
-  if (!actions.length && !imir.deviation && !canRaiseDn) return null;
+  // The lot's deviation and DN are under Linked records; here only what the user can do now.
+  if (!actions.length && !canRaiseDn) return null;
 
   const raiseDn = async () => {
     try {
@@ -39,28 +39,17 @@ export default function ReviewPanel({ imir }) {
       toast.error(apiError(err).message);
     }
   };
-  const yourTurn = actions.length > 0 || canRaiseDn;
   const ask = imir.status === 'SUBMITTED' ? 'review this inspection' : imir.status === 'WITH_IQC_HEAD' ? 'decide on this escalated lot' : 'raise a DN to the vendor if the defect needs one';
   return (
-    <section className={`card p-4 space-y-3 ${yourTurn ? 'border-blue-300 border-l-4 border-l-blue-600' : ''}`}>
-      <h2 className="text-sm font-semibold text-slate-900">{yourTurn ? <>Your turn: <span className="font-normal text-slate-700">{ask}</span></> : 'Linked records'}</h2>
-      {imir.deviation && (
-        <Link to={`/deviations/${imir.deviation.id}`} className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm hover:bg-amber-100">
-          <FileWarning className="w-4 h-4 text-amber-600" />
-          <span className="font-mono font-semibold">{imir.deviation.deviationNo}</span>
-          <span className="text-slate-500">· {imir.deviation.department ?? 'SCM / VD (not accepted yet)'}</span>
-          <span className="ml-auto"><DeviationStage stage={imir.deviation.stage} outcome={imir.deviation.outcome} /></span>
-        </Link>
-      )}
-      {(actions.length > 0 || canRaiseDn) && (
-        <div className="flex flex-wrap gap-2">
-          {actions.map((a) => {
-            const c = ACTIONS[a];
-            return <Button key={a} variant={c.variant} icon={c.icon} onClick={() => setOpen(a)}>{c.label}</Button>;
-          })}
-          {canRaiseDn && <Button variant="secondary" icon={FileX2} loading={raising} onClick={raiseDn}>Raise DN to vendor</Button>}
-        </div>
-      )}
+    <section className="card p-4 space-y-3 border-blue-300 border-l-4 border-l-blue-600">
+      <h2 className="text-sm font-semibold text-slate-900">Your turn: <span className="font-normal text-slate-700">{ask}</span></h2>
+      <div className="flex flex-wrap gap-2">
+        {actions.map((a) => {
+          const c = ACTIONS[a];
+          return <Button key={a} variant={c.variant} icon={c.icon} onClick={() => setOpen(a)}>{c.label}</Button>;
+        })}
+        {canRaiseDn && <Button variant="secondary" icon={FileX2} loading={raising} onClick={raiseDn}>Raise DN to vendor</Button>}
+      </div>
       {imir.status === 'SUBMITTED' && imir.result === 'NOK' && actions.includes('approve') && <p className="text-xs text-slate-500">This lot failed inspection: approving it needs a final approval remark. You can also send it back or escalate it to the IQC Head.</p>}
       {open && <ActionDialog imir={imir} action={open} onClose={() => setOpen(null)} />}
     </section>

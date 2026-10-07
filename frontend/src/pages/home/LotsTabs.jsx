@@ -107,8 +107,8 @@ export default function LotsTabs() {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-xs text-slate-500">
             <tr>
-              {tab.cols.map(([h]) => <th key={h} scope="col" className="whitespace-nowrap px-3 py-2.5 text-left font-medium">{h}</th>)}
-              <th scope="col" className="px-3 py-2.5 text-left font-medium">Action</th>
+              {tab.cols.map(([h]) => <th key={h} scope="col" className="whitespace-nowrap px-3 py-2 text-left font-medium">{h}</th>)}
+              <th scope="col" className="px-3 py-2 text-left font-medium">Action</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -116,7 +116,7 @@ export default function LotsTabs() {
             {!r.isFetching && !rows.length && <tr><td colSpan={tab.cols.length + 1} className="px-3 py-6 text-center text-slate-500">{search ? 'Nothing matches.' : tab.empty}</td></tr>}
             {rows.map((row) => (
               <tr key={row.id} onClick={() => navigate(tab.link(row))} className="cursor-pointer hover:bg-slate-50/70">
-                {tab.cols.map(([h, cell]) => <td key={h} className="whitespace-nowrap px-3 py-2.5 text-slate-700">{cell(row)}</td>)}
+                {tab.cols.map(([h, cell]) => <td key={h} className="whitespace-nowrap px-3 py-2 text-slate-700">{cell(row)}</td>)}
                 <td className="px-3 py-2">
                   <Link to={tab.link(row)} onClick={(e) => e.stopPropagation()} aria-label="Open"
                     className="grid h-7 w-7 place-items-center rounded-md border border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-700">
@@ -128,7 +128,7 @@ export default function LotsTabs() {
           </tbody>
         </table>
       </div>
-      <div className="border-t border-slate-100 px-4 py-2.5 text-right">
+      <div className="border-t border-slate-100 px-4 py-2 text-right">
         <Link to={tab.more} className="text-xs font-semibold text-blue-700 hover:underline">Open the full list</Link>
       </div>
     </section>

@@ -9,7 +9,6 @@ import { filterParam } from './listFilter.js';
 export const DEPARTMENTS = Object.freeze(['SCM', 'VD']);
 export const DEVIATION_ACTION_CODES = Object.freeze(['UAI', 'SEGREGATION', 'REWORK']);
 export const DEVIATION_STAGES = Object.freeze(['INITIATOR', 'SUB_HEAD', 'HEAD', 'FINAL', 'SENIOR', 'UNDER_DEVIATION', 'QTY_VERIFICATION', 'CLOSED']);
-export const APPROVAL_LEVELS = Object.freeze(['SUB_HEAD', 'HEAD']);
 /** Days the department has to enter OK / Not-OK quantities before the deviation closes itself. */
 export const QTY_DUE_DAYS = 14;
 
@@ -94,14 +93,6 @@ export const deviationListQuery = listQuery.extend({
   filter: filterParam.optional(),
 });
 
-export const deptApprovalChainSchema = z.object({
-  levels: z
-    .array(z.enum(APPROVAL_LEVELS))
-    .min(1, 'Keep at least one approval level.')
-    .refine((l) => new Set(l).size === l.length, 'A level can appear only once.')
-    .refine((l) => l.length < 2 || l[0] === 'SUB_HEAD', 'Sub-Head approves before Head.'),
-  rowVersion,
-});
 
 /** Reversal of a workflow step: requested by the person responsible now, decided by an admin. */
 export const REVERSAL_ENTITIES = Object.freeze(['IMIR', 'DEVIATION', 'DN']);

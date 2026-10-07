@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { deptApprovalChainSchema, deviationActionSchema, deviationInchargeRemarkSchema, deviationListQuery, PERMISSIONS, uuidParam } from '@qmas/shared';
+import { deviationActionSchema, deviationInchargeRemarkSchema, deviationListQuery, PERMISSIONS, uuidParam } from '@qmas/shared';
 import { z } from 'zod';
 import { txContext } from '../../db/tx.js';
 import { requirePermission } from '../../middlewares/auth.js';
@@ -38,10 +38,3 @@ router.put('/:id/incharge-remark', canView, validate({ params: uuidParam, body: 
 });
 
 export default router;
-
-/** Master Config → Department approval chain (SCM / VD). */
-export const chainRouter = Router();
-chainRouter.get('/', requirePermission(PERMISSIONS.MASTERS_VIEW), async (_req, res) => ok(res, await deviation.listChains()));
-chainRouter.put('/:department', requirePermission(PERMISSIONS.MASTERS_MANAGE), validate({ params: z.object({ department: z.enum(['SCM', 'VD']) }), body: deptApprovalChainSchema }), async (req, res) => {
-  ok(res, await deviation.updateChain(txContext(req), params(req).department, body(req)));
-});

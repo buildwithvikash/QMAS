@@ -108,7 +108,7 @@ export const LIST_FIELDS = Object.freeze({
     { key: 'vendorCode', label: 'Vendor code', type: 'text' },
     { key: 'plant', label: 'Plant', type: 'text' },
     { key: 'department', label: 'Department', type: 'enum', options: opts([['SCM', 'SCM'], ['VD', 'VD']]) },
-    { key: 'stage', label: 'Stage', type: 'enum', options: opts([['INITIATOR', 'With initiator'], ['SUB_HEAD', 'With Sub-Head'], ['HEAD', 'With Head'], ['FINAL', 'IQC Head decision'], ['SENIOR', 'Senior escalation'], ['UNDER_DEVIATION', 'Awaiting quantities'], ['QTY_VERIFICATION', 'Quantity check'], ['CLOSED', 'Closed']]) },
+    { key: 'stage', label: 'Stage', type: 'enum', options: opts([['INITIATOR', 'With initiator'], ['HEAD', 'Department approval'], ['FINAL', 'IQC Head decision'], ['SENIOR', 'Senior escalation'], ['UNDER_DEVIATION', 'Awaiting quantities'], ['QTY_VERIFICATION', 'Quantity check'], ['CLOSED', 'Closed']]) },
     { key: 'severity', label: 'Severity', type: 'enum', options: opts([['MINOR', 'Minor'], ['MAJOR', 'Major'], ['CRITICAL', 'Critical']]) },
     { key: 'action', label: 'Action', type: 'enum', options: opts([['UAI', 'Use As Is'], ['SEGREGATION', 'Segregation'], ['REWORK', 'Rework']]) },
     { key: 'seniorEffective', label: 'Senior decision', type: 'enum', options: opts([['APPROVE', 'Approve'], ['REJECT', 'Reject'], ['CHANGE_TYPE', 'Change type']]) },

@@ -13,6 +13,21 @@ const IMIR_TASK = { SUBMITTED: 'Review inspection', WITH_IQC_HEAD: 'Decide on es
 const holds = (user, permission) => user.assignments.some((a) => a.permissions.includes(permission));
 
 /**
+ * Plants where the user may act with any of these permissions (same test as actingRole): null for
+ * every plant, otherwise the plant ids. Filtering in SQL keeps other plants' lots from filling the
+ * row limit, so a large backlog elsewhere never hides the user's own work.
+ */
+function actPlants(user, permissions) {
+  const ids = new Set();
+  for (const a of user.assignments) {
+    if (!permissions.some((p) => a.permissions.includes(p))) continue;
+    if (a.actionScope === 'ALL' || a.plantId === null) return null;
+    ids.add(a.plantId);
+  }
+  return [...ids];
+}
+
+/**
  * My Tasks: everything the user can act on now, built from the same rules that authorize the
  * actions, so the inbox never shows a task the user cannot complete. Each task has a `kind`
  * (inspect, review, deviation, capa, format) for grouping on the dashboard, a `link`, the time it
@@ -26,12 +41,13 @@ export async function myTasks(user) {
   if (holds(user, P.IMIR_INSPECT)) {
     const { rows } = await db.query(
       `SELECT m.id, m.imir_no, m.status, m.plant_id, p.sap_code AS plant_sap_code, p.name AS plant_name, i.item_code, i.description AS item_description,
-              v.name AS vendor_name, m.inward_qty, m.uom, m.created_at, m.updated_at, d.device_code AS tablet,
-              (SELECT a.action FROM qms.imir_action a WHERE a.imir_id = m.id ORDER BY a.at DESC, a.id DESC LIMIT 1) AS last_action,
-              (SELECT a.remark FROM qms.imir_action a WHERE a.imir_id = m.id ORDER BY a.at DESC, a.id DESC LIMIT 1) AS last_remark
+              v.name AS vendor_name, m.inward_qty, m.uom, m.created_at, m.updated_at, d.device_code AS tablet, la.action AS last_action, la.remark AS last_remark
          FROM qms.imir m JOIN core.plant p ON p.id = m.plant_id JOIN mst.item i ON i.id = m.item_id JOIN mst.vendor v ON v.id = m.vendor_id
          LEFT JOIN qms.imir_checkout c ON c.imir_id = m.id LEFT JOIN core.device d ON d.id = c.device_id
-        WHERE m.status IN ('OPEN', 'IN_INSPECTION') ORDER BY m.created_at LIMIT 1000`,
+         LEFT JOIN LATERAL (SELECT a.action, a.remark FROM qms.imir_action a WHERE a.imir_id = m.id ORDER BY a.at DESC, a.id DESC LIMIT 1) la ON true
+        WHERE m.status IN ('OPEN', 'IN_INSPECTION') AND ($1::smallint[] IS NULL OR m.plant_id = ANY($1))
+        ORDER BY m.created_at LIMIT 1000`,
+      [actPlants(user, [P.IMIR_INSPECT])],
     );
     for (const m of camelRows(rows)) {
       if (!actingRole(user, { permission: P.IMIR_INSPECT, plantId: m.plantId })) continue;
@@ -47,12 +63,14 @@ export async function myTasks(user) {
   }
 
   // Inspections to review (Incharge) and escalated lots to decide (IQC Head).
-  const { rows: reviews } = await db.query(
+  const reviewPlants = actPlants(user, [P.IMIR_REVIEW, P.IMIR_HEAD_DECIDE]);
+  const { rows: reviews } = reviewPlants?.length === 0 ? { rows: [] } : await db.query(
     `SELECT m.id, m.imir_no, m.status, m.result, m.plant_id, p.sap_code AS plant_sap_code, p.name AS plant_name, i.item_code, i.description AS item_description,
             v.name AS vendor_name, m.submitted_at, m.updated_at
        FROM qms.imir m JOIN core.plant p ON p.id = m.plant_id JOIN mst.item i ON i.id = m.item_id JOIN mst.vendor v ON v.id = m.vendor_id
-      WHERE m.status = ANY($1) ORDER BY m.updated_at LIMIT 1000`,
-    [REVIEW_STATUSES],
+      WHERE m.status = ANY($1) AND ($2::smallint[] IS NULL OR m.plant_id = ANY($2))
+      ORDER BY m.updated_at LIMIT 1000`,
+    [REVIEW_STATUSES, reviewPlants],
   );
   for (const m of camelRows(reviews)) {
     const actions = imirReviewActions(user, m);
@@ -83,7 +101,9 @@ export async function myTasks(user) {
       `SELECT n.id, n.imir_id, n.dn_no, n.status, n.plant_id, n.capa_applicable, n.capa_due_at, n.created_at, n.updated_at, p.sap_code AS plant_sap_code, p.name AS plant_name,
               i.item_code, i.description AS item_description, v.name AS vendor_name
          FROM qms.defect_notification n JOIN core.plant p ON p.id = n.plant_id JOIN mst.item i ON i.id = n.item_id JOIN mst.vendor v ON v.id = n.vendor_id
-        WHERE n.status IN ('OPEN', 'CAPA_SUBMITTED') ORDER BY n.created_at LIMIT 1000`,
+        WHERE n.status IN ('OPEN', 'CAPA_SUBMITTED') AND ($1::smallint[] IS NULL OR n.plant_id = ANY($1))
+        ORDER BY n.created_at LIMIT 1000`,
+      [actPlants(user, [P.DN_MANAGE, P.DN_APPROVE_CAPA])],
     );
     for (const n of camelRows(rows)) {
       const actions = dnActions(user, n);

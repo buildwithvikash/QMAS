@@ -11,8 +11,8 @@ import * as repo from './deviation.repo.js';
 /**
  * Deviation track after the IQC Head holds a lot (slides 9–12):
  *   offered to SCM and VD → accepted by one (it owns the deviation from then on)
- *   INITIATOR → SUB_HEAD [→ HEAD] → FINAL (IQC Head) [→ SENIOR → FINAL] → CLOSED
- *   INITIATOR recommends rejection → own department's HEAD (approve / send back) → FINAL (IQC Head rejects)
+ *   INITIATOR → HEAD (department approval: Sub-Head or Head) → FINAL (IQC Head) [→ SENIOR → FINAL] → CLOSED
+ *   INITIATOR recommends rejection → department approval (Sub-Head or Head: approve / send back) → FINAL (IQC Head rejects)
  *                                              └ approve Segregation / Rework → UNDER_DEVIATION → QTY_VERIFICATION → CLOSED
  * The IMIR status follows the stage, so the incoming list shows where each lot is.
  */
@@ -101,6 +101,10 @@ export async function act(ctx, user, id, body) {
     }
     if (body.action === 'accept' && dev.department) throw AppError.conflict(`Deviation ${dev.deviationNo} has already been accepted by ${dev.department}.`, { code: 'ALREADY_ACCEPTED' });
     const role = deviationRole(user, dev, body.action, round);
+    if (!role && body.action === 'senior_decide' && round?.steps.some((s) => s.status === 'DECIDED'
+      && actingRole(user, { permission: PERMISSIONS.ESCALATION_DECIDE, roles: [s.roleCode], plantId: dev.plantId }))) {
+      throw AppError.conflict('You have already recorded your decision on this escalation. It cannot be changed.', { code: 'ALREADY_DECIDED' });
+    }
     if (!role) throw AppError.forbidden(`You cannot act on this deviation at stage ${STAGE_LABEL[dev.stage]}.`);
     const blocked = deviationBlock(dev, body.action);
     if (blocked) throw AppError.conflict(blocked, { code: 'NOT_ALLOWED_NOW' });
@@ -113,8 +117,8 @@ export async function act(ctx, user, id, body) {
 export const STAGE_LABEL = {
   UNASSIGNED: 'Waiting for SCM / VD to accept',
   INITIATOR: 'Department initiator',
-  SUB_HEAD: 'Department Sub-Head',
-  HEAD: 'Department Head',
+  SUB_HEAD: 'Department approval',
+  HEAD: 'Department approval',
   FINAL: 'IQC Head final decision',
   SENIOR: 'Senior escalation',
   UNDER_DEVIATION: 'Under deviation',
@@ -158,21 +162,20 @@ const HANDLERS = {
   async submit_form(db, { user, role, dev, body }) {
     const f = body.form;
     if (f.deviationQty > dev.inwardQty) throw AppError.unprocessable('Deviation quantity cannot exceed the inward quantity.', [{ path: 'form.deviationQty', message: `At most ${dev.inwardQty}.` }]);
-    const levels = await repo.approvalChain(db, dev.department);
     const { rows } = await db.query('SELECT coalesce(max(revision_no), 0) + 1 AS n FROM qms.deviation_form_revision WHERE deviation_id = $1', [dev.id]);
     await db.query('INSERT INTO qms.deviation_form_revision (deviation_id, revision_no, data, submitted_by) VALUES ($1, $2, $3, $4)', [dev.id, rows[0].n, JSON.stringify(f), user.id]);
     await move(db, dev, {
-      stage: levels[0],
+      stage: 'HEAD',
       set: {
         initiator_id: user.id, severity: f.severity, action: f.action, deviation_qty: f.deviationQty, specification: f.specification ?? null,
         iqc_observation: f.iqcObservation ?? null, correction: f.correction, corrective_action: f.correctiveAction, form_submitted_at: new Date(),
-        approval_levels: levels, current_level: 0, dept_outcome: null, senior_effective: null,
+        approval_levels: ['HEAD'], current_level: 0, dept_outcome: null, senior_effective: null,
       },
       action: 'SUBMIT_FORM', actorId: user.id, role, remark: body.remark ?? null, payload: { revision: rows[0].n, action: f.action, severity: f.severity, deviationQty: f.deviationQty },
     });
   },
 
-  /** A recommendation to reject goes to the department's Head first, then to the IQC Head. */
+  /** A recommendation to reject goes to department approval (Sub-Head or Head) first, then to the IQC Head. */
   async recommend_reject(db, { user, role, dev, body }) {
     await move(db, dev, {
       stage: 'HEAD', set: { initiator_id: dev.initiatorId ?? user.id, dept_outcome: 'REJECT_RECOMMENDED', approval_levels: ['HEAD'], current_level: 0, senior_effective: null },
@@ -180,15 +183,11 @@ const HANDLERS = {
     });
   },
 
+  /** The department's Sub-Head or Head approves: on to the IQC Head's final decision. */
   async dept_approve(db, { user, role, dev, body }) {
-    const next = dev.currentLevel + 1;
-    const nextLevel = dev.approvalLevels[next];
-    if (nextLevel) await move(db, dev, { stage: nextLevel, set: { current_level: next }, action: 'DEPT_APPROVE', actorId: user.id, role, remark: body.remark ?? null });
-    else {
-      // Approving a recommendation to reject keeps it one: the IQC Head then rejects the lot.
-      const outcome = dev.deptOutcome === 'REJECT_RECOMMENDED' ? 'REJECT_RECOMMENDED' : 'APPROVED';
-      await move(db, dev, { stage: 'FINAL', set: { dept_outcome: outcome, current_level: null }, action: 'DEPT_APPROVE', actorId: user.id, role, remark: body.remark ?? null, payload: { outcome } });
-    }
+    // Approving a recommendation to reject keeps it one: the IQC Head then rejects the lot.
+    const outcome = dev.deptOutcome === 'REJECT_RECOMMENDED' ? 'REJECT_RECOMMENDED' : 'APPROVED';
+    await move(db, dev, { stage: 'FINAL', set: { dept_outcome: outcome, current_level: null }, action: 'DEPT_APPROVE', actorId: user.id, role, remark: body.remark ?? null, payload: { outcome } });
   },
 
   async send_back(db, { user, role, dev, body }) {
@@ -346,23 +345,4 @@ export async function runAutoClose({ now = new Date() } = {}) {
     });
   }
   return { closed };
-}
-
-// ── Department approval chain setting ─────────────────────────────────────────
-
-export async function listChains() {
-  const { rows } = await getPool().query('SELECT department, levels, updated_at, row_version FROM mst.dept_approval_chain ORDER BY department');
-  return rows.map((r) => ({ department: r.department, levels: r.levels, updatedAt: r.updated_at, rowVersion: r.row_version }));
-}
-
-/** Changes apply to deviation forms submitted from now on; forms in approval keep their chain. */
-export async function updateChain(ctx, department, { levels, rowVersion }) {
-  await withTransaction(ctx, async (db) => {
-    const { rowCount } = await db.query('UPDATE mst.dept_approval_chain SET levels = $2 WHERE department = $1 AND row_version = $3', [department, levels, rowVersion]);
-    if (!rowCount) {
-      const { rows } = await db.query('SELECT 1 FROM mst.dept_approval_chain WHERE department = $1', [department]);
-      throw rows[0] ? AppError.staleVersion('This approval chain') : AppError.notFound('Approval chain');
-    }
-  });
-  return (await listChains()).find((c) => c.department === department);
 }
