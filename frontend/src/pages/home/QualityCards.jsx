@@ -1,7 +1,6 @@
 import { CalendarClock, CalendarDays, ChevronDown, ChevronRight, CircleAlert, FileWarning, FileX2, PieChart, Truck, UsersRound } from 'lucide-react';
-import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useGetDashboardQuery } from '../../api/dnApi.js';
+import { useHomeSummary } from './useHomeSummary.js';
 import { HomeCard, ViewAll } from './homeUi.jsx';
 
 const link = (rules) => `/imirs?filter=${encodeURIComponent(JSON.stringify({ mode: 'all', rules }))}`;
@@ -19,8 +18,9 @@ const toneOf = (pct) => (pct >= 50
 
 /** Vendors with the highest share of Not OK lots in the chosen period; click one for its Not OK lots. */
 export function VendorNokRate() {
-  const [days, setDays] = useState(90);
-  const { data: s } = useGetDashboardQuery({ vendorDays: days }, { pollingInterval: 120_000 });
+  const { s, periods, setPeriod } = useHomeSummary();
+  const days = periods.vendorDays;
+  const setDays = (d) => setPeriod('vendorDays', d);
   const vendors = s?.worstVendors ?? [];
   const label = PERIODS.find(([d]) => d === days)[1].toLowerCase();
   return (
@@ -30,7 +30,7 @@ export function VendorNokRate() {
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-rose-100 text-rose-600"><UsersRound className="h-4 w-4" /></span>
           <div className="min-w-0">
             <h2 className="text-[15px] font-bold text-slate-900">Vendor Not OK Rate</h2>
-            <p className="text-xs text-slate-500">Lots not OK by vendor in the {label}</p>
+            <p className="text-xs text-slate-500">Lots not OK by vendor, received in the {label}</p>
           </div>
         </div>
         <div className="ml-auto flex items-center gap-2">
@@ -81,8 +81,9 @@ export function VendorNokRate() {
 
 /** Donut of the period's lots (OK, Not OK, not yet inspected) and four open-work figures. */
 export function PlantGlance() {
-  const [days, setDays] = useState(30);
-  const { data: s } = useGetDashboardQuery({ glanceDays: days }, { pollingInterval: 120_000 });
+  const { s, periods, setPeriod } = useHomeSummary();
+  const days = periods.glanceDays;
+  const setDays = (d) => setPeriod('glanceDays', d);
   const l = s?.lots30Days;
   const parts = l ? [
     ['OK', l.ok, '#22c55e'],

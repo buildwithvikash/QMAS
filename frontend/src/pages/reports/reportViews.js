@@ -12,6 +12,8 @@ import { PALETTE as C } from '../../utils/palette.js';
 const n = (v) => Number(v ?? 0);
 const sum = (rows, k) => rows.reduce((a, r) => a + n(r[k]), 0);
 const pct = (part, whole) => (whole ? `${Math.round((part / whole) * 100)}%` : '0%');
+// Not OK rate with one decimal, as in the report tables and on Home.
+const pct1 = (part, whole) => (whole ? `${(Math.round((part / whole) * 1000) / 10).toFixed(1)}%` : '0.0%');
 const avg = (rows, k) => (rows.length ? Math.round((sum(rows, k) / rows.length) * 10) / 10 : 0);
 const distinct = (rows, k) => new Set(rows.map((r) => r[k]).filter(Boolean)).size;
 const words = (v) => (v ? String(v).replaceAll('_', ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase()) : 'None');
@@ -133,7 +135,7 @@ export const VIEWS = {
       return [
         { label: 'Vendors', value: rows.length, note: 'with lots in the period', icon: Users, tone: 'blue' },
         { label: 'Lots', value: sum(rows, 'lots'), note: `${inspected} inspected`, icon: Layers, tone: 'green' },
-        { label: 'Not OK Rate', value: pct(nok, inspected), note: `${nok} lots not OK`, icon: Percent, tone: 'rose' },
+        { label: 'Not OK Rate', value: pct1(nok, inspected), note: `${nok} lots not OK`, icon: Percent, tone: 'rose' },
         { label: 'Rejected PPM', value: ppm.toLocaleString('en-IN'), note: 'weighted by inward qty', icon: Gauge, tone: 'amber' },
         { label: 'DNs Raised', value: sum(rows, 'dns'), note: `${rows.filter((r) => r.dns > 0).length} vendors`, icon: FileX2, tone: 'violet' },
       ];
@@ -161,7 +163,7 @@ export const VIEWS = {
       return [
         { label: 'Items', value: rows.length, note: 'received in the period', icon: Boxes, tone: 'blue' },
         { label: 'Lots', value: sum(rows, 'lots'), note: `${inspected} inspected`, icon: Layers, tone: 'green' },
-        { label: 'Not OK Rate', value: pct(nok, inspected), note: `${nok} lots not OK`, icon: Percent, tone: 'rose' },
+        { label: 'Not OK Rate', value: pct1(nok, inspected), note: `${nok} lots not OK`, icon: Percent, tone: 'rose' },
         { label: 'Items with Deviations', value: rows.filter((r) => r.deviations > 0).length, note: `${sum(rows, 'deviations')} deviations · ${sum(rows, 'dns')} DNs`, icon: FileWarning, tone: 'amber' },
         { label: 'Without Format', value: rows.filter((r) => !r.formatVersion).length, note: 'no approved format', icon: FileText, tone: 'violet' },
       ];
