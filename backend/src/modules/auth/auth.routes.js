@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { rateLimit } from 'express-rate-limit';
+import { ipKeyGenerator, rateLimit } from 'express-rate-limit';
 import { changePasswordSchema, forgotPasswordSchema, loginSchema, resetWithTokenSchema } from '@qmas/shared';
 import { z } from 'zod';
 import { getEnv } from '../../config/env.js';
@@ -16,13 +16,25 @@ import { clearAuthCookies, REFRESH_COOKIE, setAuthCookies } from './tokens.js';
 
 const meta = (req) => ({ ip: clientIp(req), userAgent: req.get('user-agent'), requestId: req.id, client: req.get('x-client') === 'tablet' ? 'tablet' : 'web' });
 
-// Per-IP brake on password guessing; per-account lockout is handled in the service.
+// Brakes on password guessing (per-account lockout is handled in the service). Counted per address
+// AND employee code: a whole office often reaches the server from one address (NAT, proxy), and a
+// per-address count alone would lock everyone out after 30 sign-ins. A looser per-address limit
+// still stops one machine from trying many accounts.
+const tooMany = (message) => ({ success: false, code: 'TOO_MANY_REQUESTS', message });
 const loginLimiter = rateLimit({
   windowMs: 15 * 60_000,
   limit: 30,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
-  message: { success: false, code: 'TOO_MANY_REQUESTS', message: 'Too many sign-in attempts from this device. Wait 15 minutes and try again.' },
+  keyGenerator: (req) => `${ipKeyGenerator(req.ip ?? '')}|${String(req.body?.employeeCode ?? '').trim().toUpperCase().slice(0, 40)}`,
+  message: tooMany('Too many sign-in attempts for this account from this device. Wait 15 minutes and try again.'),
+});
+const addressLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  limit: 2000,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: tooMany('Too many sign-in attempts from this network address. Wait 15 minutes and try again.'),
 });
 
 function sendSession(res, session) {
@@ -35,7 +47,7 @@ function sendSession(res, session) {
 
 const router = Router();
 
-router.post('/login', loginLimiter, validate({ body: loginSchema }), async (req, res) => {
+router.post('/login', addressLimiter, loginLimiter, validate({ body: loginSchema }), async (req, res) => {
   sendSession(res, await auth.login(body(req), meta(req)));
 });
 

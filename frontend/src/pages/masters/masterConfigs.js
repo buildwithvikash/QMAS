@@ -1,21 +1,11 @@
-import {
-  lookupCreateSchema,
-  lookupUpdateSchema,
-  plantCreateSchema,
-  plantUpdateSchema,
-} from '@qmas/shared';
-import { Factory, Gauge } from 'lucide-react';
+import { plantCreateSchema, plantUpdateSchema } from '@qmas/shared';
+import { Factory } from 'lucide-react';
 
 /**
  * One entry per simple master. Fields drive both the table and the add/edit form:
  *   { name, label, type: 'text' | 'code' | 'select', required, list?, sortable?, lookup?, width?, hint?, readOnlyOnEdit? }
  * `lookup` names a list from /masters/lookups for select options.
  */
-const lookupFields = [
-  { name: 'code', label: 'Code', type: 'code', required: true, list: true, sortable: true, mono: true },
-  { name: 'name', label: 'Name', type: 'text', required: true, list: true, sortable: true },
-];
-
 export const MASTER_CONFIGS = {
   plants: {
     title: 'Plants',
@@ -31,16 +21,5 @@ export const MASTER_CONFIGS = {
       { name: 'shortCode', label: 'Short code', type: 'text', required: true, list: true, sortable: true, mono: true, inputMode: 'numeric', hint: '2 digits, used by numbering option 2' },
       { name: 'name', label: 'Plant name', type: 'text', required: true, list: true, sortable: true },
     ],
-  },
-  instruments: {
-    title: 'Instruments',
-    subtitle: 'Measuring instruments and methods used in inspection formats',
-    icon: Gauge,
-    singular: 'instrument',
-    searchPlaceholder: 'Search instrument code, name…',
-    defaultSort: 'code',
-    createSchema: lookupCreateSchema,
-    updateSchema: lookupUpdateSchema,
-    fields: lookupFields,
   },
 };

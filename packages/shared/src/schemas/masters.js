@@ -18,7 +18,7 @@ const plantShape = {
 export const plantCreateSchema = z.object(plantShape);
 export const plantUpdateSchema = withVersion(plantShape);
 
-// ── Simple code/name lookups (UOM, instrument, item category) ────────────────
+// ── Simple code/name lookups (UOM, item category) ────────────────────────────
 const lookupShape = { code: code('Code', 20), name: trimmed('Name', 100), isActive: z.boolean().optional() };
 export const lookupCreateSchema = z.object(lookupShape);
 export const lookupUpdateSchema = withVersion(lookupShape);

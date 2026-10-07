@@ -33,7 +33,8 @@ export async function getLookups() {
     q('SELECT id, sap_code, short_code, name, is_active FROM core.plant ORDER BY sap_code'),
     q('SELECT id, code, name FROM mst.uom WHERE is_active ORDER BY code'),
     q('SELECT id, code, name FROM mst.item_category WHERE is_active ORDER BY name'),
-    q('SELECT id, code, name FROM mst.instrument WHERE is_active ORDER BY name'),
+    // Instruments / methods already used in formats: suggestions while building a format.
+    q("SELECT DISTINCT instrument AS name FROM qms.format_checkpoint WHERE instrument IS NOT NULL AND btrim(instrument) <> '' ORDER BY 1 LIMIT 300"),
     q('SELECT code, name FROM mst.deviation_action ORDER BY sort_order'),
     q('SELECT code, name FROM mst.deviation_severity ORDER BY sort_order'),
     q('SELECT e.role_code, r.name, e.rank FROM mst.escalation_authority e JOIN core.role r ON r.code = e.role_code ORDER BY e.rank'),

@@ -462,7 +462,7 @@ function Builder({ v }) {
     <div className="pb-6">
       <PageHeader icon={Hammer} title={`Format builder · ${v.itemCode}`} subtitle={`${v.itemDescription} · ${v.baseVersionNo ? `changing v${v.baseVersionNo}` : v.currentVersionNo ? `started before v${v.currentVersionNo}` : 'first format'}${dirty ? ' · unsaved changes' : ''}`}>
         <Button size="sm" variant="ghost" icon={ArrowLeft} onClick={async () => (!dirty || await askConfirm({ title: 'Leave without saving?', message: 'Your changes to this draft are not saved yet.', confirmLabel: 'Leave without saving' })) && navigate(`/formats/versions/${v.id}`)}>Back</Button>
-        <div role="tablist" data-tour="builder-mode" className="flex p-0.5 rounded-lg bg-slate-100 text-xs">
+        <div role="tablist" className="flex p-0.5 rounded-lg bg-slate-100 text-xs">
           {[['build', 'Build', PencilLine], ['preview', 'Preview', Eye]].map(([k, l, Icon]) => (
             <button key={k} type="button" role="tab" aria-selected={mode === k} onClick={() => setMode(k)}
               className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md cursor-pointer ${mode === k ? 'bg-white text-blue-800 font-semibold ring-1 ring-slate-200' : 'text-slate-600 hover:text-slate-900'}`}>
@@ -471,7 +471,7 @@ function Builder({ v }) {
           ))}
         </div>
         <Button size="sm" variant="secondary" icon={Save} loading={saveState.isLoading} onClick={() => doSave().then((s) => s && toast.success('Draft saved'))}>Save draft</Button>
-        <span data-tour="builder-submit" className="inline-flex"><Button size="sm" icon={Send} loading={actState.isLoading} onClick={saveAndSubmit}>Save &amp; submit</Button></span>
+        <span className="inline-flex"><Button size="sm" icon={Send} loading={actState.isLoading} onClick={saveAndSubmit}>Save &amp; submit</Button></span>
       </PageHeader>
 
       <div className="p-4 sm:p-5 space-y-4">
@@ -527,7 +527,7 @@ function Builder({ v }) {
               )}
             </div>
 
-            <aside data-tour="builder-settings" className="xl:sticky xl:top-[calc(var(--page-header-h,0px)+1.25rem)] lg:col-span-2 xl:col-span-1">
+            <aside className="xl:sticky xl:top-[calc(var(--page-header-h,0px)+1.25rem)] lg:col-span-2 xl:col-span-1">
               {selField ? (
                 <FieldProperties key={selField.key} f={selField} section={selSection} sections={sections} errors={errorsByKey[selField.key] ?? {}} instruments={instruments} units={units}
                   onChange={(patch) => updateField(selField.key, patch)} onClose={() => setSelected(null)} onDelete={() => removeField(selField.key)} />
@@ -606,7 +606,7 @@ function Palette({ q, onQ, onAdd, onAddSection }) {
 /** Format no., common format no., reference standard and remarks, folded away when not needed. */
 function FormatInfo({ header, errors, open, onToggle, onChange }) {
   return (
-    <section data-tour="builder-info" className="card">
+    <section className="card">
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full items-center gap-2.5 px-4 py-3 text-left cursor-pointer">
         <span className="grid h-7 w-7 place-items-center rounded-lg bg-blue-600 text-white"><FileText className="h-3.5 w-3.5" /></span>
         <span className="text-sm font-bold text-slate-900">Format information</span>
@@ -655,7 +655,7 @@ function SectionCard({ n, s, fields, selected, errorsByKey, view, onView, collap
   const [over, setOver] = useState(false);
   const on = selected?.type === 'section' && selected.id === s.id;
   return (
-    <section data-tour="builder-section" className={`card overflow-hidden ${on ? 'ring-2 ring-blue-400' : ''}`}
+    <section className={`card overflow-hidden ${on ? 'ring-2 ring-blue-400' : ''}`}
       onDragOver={(e) => { if (e.dataTransfer.types.includes(`qmas/${s.kind.toLowerCase()}`)) { e.preventDefault(); setOver(true); } }}
       onDragLeave={() => setOver(false)}
       onDrop={(e) => { setOver(false); const key = e.dataTransfer.getData('text/plain'); if (key) onDrop(key, s.id); }}>

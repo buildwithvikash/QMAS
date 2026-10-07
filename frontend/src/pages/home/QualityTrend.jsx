@@ -35,7 +35,7 @@ export default function QualityTrend() {
   const bars = s?.trend ? buckets(s.trend, range === 90 ? 7 : 1) : [];
   const max = Math.max(3, ...bars.map((b) => b.received));
   const top = Math.ceil(max / 3) * 3; // three even steps
-  const H = 150;
+  const H = 110;
   const n = bars.length || 1;
   const every = Math.ceil(n / 8);
   const shown = hover ?? bars.at(-1);

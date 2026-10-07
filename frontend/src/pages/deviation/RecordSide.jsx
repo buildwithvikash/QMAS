@@ -95,20 +95,20 @@ export function StageHistory({ rows, title = 'Stage history' }) {
         <table className="w-full text-xs">
           <thead className="bg-slate-50 text-[11px] text-slate-500">
             <tr>
-              {['Stage', 'User', 'Role', 'Date & time', 'Status'].map((h) => <th key={h} scope="col" className="px-3 py-2 text-left font-medium whitespace-nowrap">{h}</th>)}
+              {['Stage', 'User', 'Role', 'Date & time', 'Status'].map((h) => <th key={h} scope="col" className="px-2.5 py-2 text-left font-medium whitespace-nowrap">{h}</th>)}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((r) => (
               <tr key={r.key} className={r.pending ? 'bg-blue-50/50' : 'hover:bg-slate-50'} title={r.remark ?? undefined}>
-                <td className="px-3 py-2 font-medium text-slate-900">{r.stage}</td>
-                <td className="px-3 py-2 text-slate-800">{r.user ?? <span className="text-slate-400">—</span>}</td>
-                <td className="px-3 py-2 text-slate-600">{r.role ?? '—'}</td>
-                <td className="px-3 py-2 text-slate-700 whitespace-nowrap">
+                <td className="px-2.5 py-2 font-medium text-slate-900">{r.stage}</td>
+                <td className="px-2.5 py-2 text-slate-800">{r.user ?? <span className="text-slate-400">—</span>}</td>
+                <td className="px-2.5 py-2 text-slate-600">{r.role ?? '—'}</td>
+                <td className="px-2.5 py-2 text-slate-700 whitespace-nowrap">
                   {formatDateTime(r.at)}
                   {r.pending && r.at && <span className="block text-[11px] text-slate-400">for {formatRelative(r.at).replace(' ago', '')}</span>}
                 </td>
-                <td className="px-3 py-2">
+                <td className="px-2.5 py-2">
                   <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${STATUS_TONE[r.tone] ?? STATUS_TONE.info}`}>{r.status}</span>
                 </td>
               </tr>

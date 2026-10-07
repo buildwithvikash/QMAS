@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { BUSINESS_TIME_ZONE, PERMISSIONS, REPORTS } from '@qmas/shared';
+import { BUSINESS_TIME_ZONE, driftCheck, PERMISSIONS, REPORTS } from '@qmas/shared';
 import { getPool } from '../../db/pool.js';
 import { AppError } from '../../shared/AppError.js';
 import { camelRows } from '../../shared/sql.js';
@@ -174,6 +174,52 @@ const DEFS = {
   },
 };
 
+const DRIFT_STATUS = { NEAR_LIMIT: 'Close to limit', SHIFT: 'Shift', TREND: 'Trend' };
+const num = (v) => (v === null || v === undefined ? null : Number(v));
+
+/**
+ * Measurement drift: per item, vendor and dimensional check point, the latest lot inspected in the
+ * period is checked against up to 20 earlier lots (lot averages) with the drift rules; only check
+ * points flagged close to a limit, shifted or trending are listed.
+ */
+DEFS['measurement-drift'] = {
+  dated: 'Inspected',
+  columns: [
+    ['finding', 'Finding'], ['itemCode', 'Item'], ['itemDescription', 'Description'], ['vendorName', 'Vendor'], ['plant', 'Plant'], ['checkpoint', 'Check point'],
+    ['specification', 'Specification'], ['lsl', 'LSL', 'number'], ['usl', 'USL', 'number'], ['uom', 'UOM'], ['lotMean', 'Latest lot average', 'number'],
+    ['usualMean', 'Usual average', 'number'], ['earlierLots', 'Earlier lots', 'number'], ['direction', 'Direction'], ['detail', 'What the rules found'],
+    ['imirNo', 'Latest IMIR'], ['inspectedAt', 'Inspected', 'datetime'],
+  ],
+  sql: (w) => `SELECT m.item_id, i.item_code, i.description AS item_description, m.vendor_id, v.name AS vendor_name, p.name AS plant, o.checkpoint_uid,
+                      fc.checkpoint, fc.specification, fc.nominal, fc.lsl, fc.usl, fc.uom,
+                      json_agg(json_build_object('id', m.id, 'imirNo', m.imir_no, 'at', m.submitted_at, 'mean', o.mean, 'values', o.vals) ORDER BY m.submitted_at) AS lots
+                 FROM qms.imir m
+                 JOIN LATERAL (SELECT checkpoint_uid, avg(value_num) AS mean, array_agg(value_num) AS vals FROM qms.imir_observation
+                                WHERE imir_id = m.id AND value_num IS NOT NULL GROUP BY checkpoint_uid) o ON true
+                 JOIN qms.format_checkpoint fc ON fc.version_id = m.format_version_id AND fc.checkpoint_uid = o.checkpoint_uid AND fc.section = 'DIMENSIONAL'
+                 JOIN mst.item i ON i.id = m.item_id JOIN mst.vendor v ON v.id = m.vendor_id JOIN core.plant p ON p.id = m.plant_id
+                WHERE m.result IS NOT NULL AND ${LOCAL('m.submitted_at')} <= $2 AND m.submitted_at > $1::date - interval '365 days' ${w('m.plant_id')}
+                GROUP BY m.item_id, i.item_code, i.description, m.vendor_id, v.name, p.name, o.checkpoint_uid, fc.checkpoint, fc.specification, fc.nominal, fc.lsl, fc.usl, fc.uom
+               HAVING max(${LOCAL('m.submitted_at')}) >= $1`,
+  post: (rows) => rows.flatMap((s) => {
+    const lots = s.lots.slice(-21);
+    const latest = lots.at(-1);
+    const d = driftCheck({
+      history: lots.slice(0, -1).map((l) => ({ at: l.at, mean: l.mean })),
+      current: (latest.values ?? []).map(Number),
+      spec: { nominal: num(s.nominal), lsl: num(s.lsl), usl: num(s.usl) },
+      unit: s.uom ?? '',
+    });
+    if (!DRIFT_STATUS[d.status]) return [];
+    return [{
+      imirId: latest.id, itemId: s.itemId, finding: DRIFT_STATUS[d.status], itemCode: s.itemCode, itemDescription: s.itemDescription, vendorName: s.vendorName,
+      plant: s.plant, checkpoint: s.checkpoint, specification: s.specification, lsl: num(s.lsl), usl: num(s.usl), uom: s.uom,
+      lotMean: d.stats.lotMean, usualMean: d.stats.histMean, earlierLots: d.stats.lots, direction: d.direction === 'UP' ? 'Up' : d.direction === 'DOWN' ? 'Down' : null,
+      detail: d.message, imirNo: latest.imirNo, inspectedAt: latest.at,
+    }];
+  }).sort((a, b) => new Date(b.inspectedAt) - new Date(a.inspectedAt)),
+};
+
 const STAGE_NAMES = {
   AWAITING_FORMAT: 'Waiting for format', OPEN: 'Waiting for inspection', IN_INSPECTION: 'Inspection', SUBMITTED: 'Incharge review',
   WITH_IQC_HEAD: 'IQC Head decision', DEPT_REVIEW: 'SCM / VD review', IQC_HEAD_FINAL: 'IQC Head final decision', SENIOR_ESCALATION: 'Senior escalation',
@@ -201,15 +247,18 @@ export async function runReport(user, key, { from, to, plantId }) {
     if (plantId) { args.push(plantId); parts.push(`AND ${col} = $${args.length}`); }
     return parts.join(' ');
   };
-  const sql = `${def.sql(where)} LIMIT ${MAX_ROWS + 1}`;
-  const { rows } = await getPool().query(sql, args);
+  const base = def.sql(where);
+  const { rows } = await getPool().query(`${base} LIMIT ${MAX_ROWS + 1}`, args);
+  // Cut off: say how many rows there really are, so the page does not present partial totals as the whole.
+  const totalRows = rows.length > MAX_ROWS ? (await getPool().query(`SELECT count(*)::int AS n FROM (${base}) x`, args)).rows[0].n : null;
   const columns = def.columns.map(([k, header, type = 'text']) => ({ key: k, header, type }));
-  const data = camelRows(rows.slice(0, MAX_ROWS)).map((r) => {
+  const fetched = camelRows(rows.slice(0, MAX_ROWS));
+  const data = (def.post ? def.post(fetched) : fetched).map((r) => {
     const out = def.map ? def.map(r) : r;
     for (const c of columns) if (NUMERIC.has(c.type) && out[c.key] !== null && out[c.key] !== undefined) out[c.key] = Number(out[c.key]);
     return out;
   });
-  return { key, name: meta.name, description: meta.description, dated: def.dated, from: def.dated ? range.from : null, to: def.dated ? range.to : null, columns, rows: data, truncated: rows.length > MAX_ROWS };
+  return { key, name: meta.name, description: meta.description, dated: def.dated, from: def.dated ? range.from : null, to: def.dated ? range.to : null, columns, rows: data, truncated: rows.length > MAX_ROWS, totalRows };
 }
 
 /** Same report as an .xlsx workbook: header row, filters, frozen header, typed cells. */
@@ -244,18 +293,46 @@ export async function toXlsx(report) {
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
 /** KPI tiles for Home, restricted to the plants the user may see. */
-/** Home dashboard. trendDays: the quality trend (7, 30 or 90 days); glanceDays: the lots summary. */
-export async function dashboardSummary(user, { trendDays = 30, glanceDays = 30 } = {}) {
+/**
+ * Home dashboard. trendDays: the quality trend (7, 30 or 90 days); glanceDays: the lots summary;
+ * vendorDays: the vendor Not OK rate (30, 90, 180 or 365 days).
+ */
+// Lots no longer in the workflow; the same list as the partial index imir_active_status_idx, so
+// open-lot queries read that small index instead of the whole table.
+const NOT_ACTIVE = "m.status NOT IN ('CLOSED_ACCEPTED', 'CLOSED_REJECTED', 'CLOSED_UNDER_DEVIATION', 'AUTO_CLOSED')";
+// Start of the IST day `days - 1` days ago, as a timestamp the created_at indexes can use.
+const sinceLocalDay = (days) => `(((now() AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date - ${Number(days) - 1})::timestamp AT TIME ZONE '${BUSINESS_TIME_ZONE}')`;
+
+// The summary is the same for everyone who sees the same plants, and Home asks for it several times
+// every two minutes per user: one computation serves them all for 30 s (in-flight calls share it).
+const SUMMARY_TTL_MS = 30_000;
+const summaryCache = new Map(); // key -> { at, promise }
+export const forgetDashboard = () => summaryCache.clear();
+
+export function dashboardSummary(user, { trendDays = 30, glanceDays = 30, vendorDays = 90 } = {}) {
   const scope = plantScope(user, PERMISSIONS.DASHBOARD_VIEW, 'view');
+  const params = { trendDays: Number(trendDays), glanceDays: Number(glanceDays), vendorDays: Number(vendorDays) };
+  const key = JSON.stringify([scope.all ? 'all' : [...scope.plantIds].sort((a, b) => a - b), params]);
+  const now = Date.now();
+  const hit = summaryCache.get(key);
+  if (hit && now - hit.at < SUMMARY_TTL_MS) return hit.promise;
+  if (summaryCache.size > 500) summaryCache.clear();
+  const promise = computeSummary(scope, params);
+  summaryCache.set(key, { at: now, promise });
+  promise.catch(() => summaryCache.delete(key));
+  return promise;
+}
+
+async function computeSummary(scope, { trendDays, glanceDays, vendorDays }) {
   const args = scope.all ? [] : [scope.plantIds];
   const plant = (col) => (scope.all ? 'true' : `${col} = ANY($1)`);
   const pool = getPool();
-  const { rows: s } = await pool.query(`SELECT status, count(*)::int AS n FROM qms.imir m WHERE ${plant('m.plant_id')} AND status NOT LIKE 'CLOSED%' AND status <> 'AUTO_CLOSED' GROUP BY status`, args);
+  const { rows: s } = await pool.query(`SELECT status, count(*)::int AS n FROM qms.imir m WHERE ${plant('m.plant_id')} AND ${NOT_ACTIVE} GROUP BY status`, args);
   const { rows: l } = await pool.query(
     `SELECT count(*)::int AS received, count(*) FILTER (WHERE result = 'OK')::int AS ok, count(*) FILTER (WHERE result = 'NOK')::int AS nok,
             count(*) FILTER (WHERE status = 'CLOSED_ACCEPTED')::int AS accepted, count(*) FILTER (WHERE status = 'CLOSED_REJECTED')::int AS rejected,
             count(*) FILTER (WHERE status = 'CLOSED_UNDER_DEVIATION')::int AS under_deviation
-       FROM qms.imir m WHERE ${plant('m.plant_id')} AND m.created_at >= now() - make_interval(days => ${Number(glanceDays)})`,
+       FROM qms.imir m WHERE ${plant('m.plant_id')} AND m.created_at >= ${sinceLocalDay(glanceDays)}`,
     args,
   );
   const { rows: dv } = await pool.query(`SELECT stage, count(*)::int AS n FROM qms.deviation d WHERE ${plant('d.plant_id')} AND stage <> 'CLOSED' GROUP BY stage`, args);
@@ -268,18 +345,23 @@ export async function dashboardSummary(user, { trendDays = 30, glanceDays = 30 }
   );
   // Charts: lots received per day (IST) with their result, the vendors with the highest Not-OK
   // rate, open lots by stage and days waiting, and CAPA falling due.
+  // Only the period's lots are read (by created_at), then grouped by IST day.
   const { rows: trend } = await pool.query(
-    `SELECT d::date AS day, count(m.id)::int AS received, count(m.id) FILTER (WHERE m.result = 'OK')::int AS ok,
-            count(m.id) FILTER (WHERE m.result = 'NOK')::int AS nok
-       FROM generate_series((now() AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date - ${Number(trendDays) - 1}, (now() AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date, interval '1 day') d
-       LEFT JOIN qms.imir m ON ${LOCAL('m.created_at')} = d::date AND ${plant('m.plant_id')}
-      GROUP BY d ORDER BY d`,
+    `WITH lots AS (
+       SELECT ${LOCAL('m.created_at')} AS day, count(*)::int AS received, count(*) FILTER (WHERE m.result = 'OK')::int AS ok,
+              count(*) FILTER (WHERE m.result = 'NOK')::int AS nok
+         FROM qms.imir m WHERE ${plant('m.plant_id')} AND m.created_at >= ${sinceLocalDay(trendDays)}
+        GROUP BY 1)
+     SELECT d::date AS day, coalesce(l.received, 0) AS received, coalesce(l.ok, 0) AS ok, coalesce(l.nok, 0) AS nok
+       FROM generate_series((now() AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date - ${trendDays - 1}, (now() AT TIME ZONE '${BUSINESS_TIME_ZONE}')::date, interval '1 day') d
+       LEFT JOIN lots l ON l.day = d::date
+      ORDER BY d`,
     args,
   );
   const { rows: vendors } = await pool.query(
     `SELECT v.vendor_code, v.name, count(*) FILTER (WHERE m.result IS NOT NULL)::int AS inspected, count(*) FILTER (WHERE m.result = 'NOK')::int AS nok
        FROM qms.imir m JOIN mst.vendor v ON v.id = m.vendor_id
-      WHERE ${plant('m.plant_id')} AND m.created_at >= now() - interval '90 days'
+      WHERE ${plant('m.plant_id')} AND m.created_at >= ${sinceLocalDay(vendorDays)}
       GROUP BY v.id HAVING count(*) FILTER (WHERE m.result = 'NOK') > 0
       ORDER BY count(*) FILTER (WHERE m.result = 'NOK')::numeric / nullif(count(*) FILTER (WHERE m.result IS NOT NULL), 0) DESC, nok DESC LIMIT 5`,
     args,
@@ -288,7 +370,7 @@ export async function dashboardSummary(user, { trendDays = 30, glanceDays = 30 }
     `SELECT m.status, count(*) FILTER (WHERE age < 1)::int AS d0, count(*) FILTER (WHERE age >= 1 AND age < 3)::int AS d1,
             count(*) FILTER (WHERE age >= 3 AND age < 7)::int AS d3, count(*) FILTER (WHERE age >= 7)::int AS d7
        FROM (SELECT m.status, extract(epoch FROM now() - coalesce((SELECT max(at) FROM qms.imir_action a WHERE a.imir_id = m.id), m.created_at)) / 86400 AS age
-               FROM qms.imir m WHERE ${plant('m.plant_id')} AND m.status NOT LIKE 'CLOSED%' AND m.status <> 'AUTO_CLOSED') m
+               FROM qms.imir m WHERE ${plant('m.plant_id')} AND ${NOT_ACTIVE}) m
       GROUP BY m.status`,
     args,
   );
@@ -303,12 +385,13 @@ export async function dashboardSummary(user, { trendDays = 30, glanceDays = 30 }
   return {
     imirByStatus,
     lots30Days: camelRows(l)[0], // over glanceDays (30 by default)
-    trendDays: Number(trendDays),
-    glanceDays: Number(glanceDays),
+    trendDays,
+    glanceDays,
+    vendorDays,
     deviationsByStage: devByStage,
     openDeviations: dv.reduce((a, r) => a + r.n, 0),
     dn: camelRows(dn)[0],
-    trend: trend.map((r) => ({ day: r.day.toISOString().slice(0, 10), received: r.received, ok: r.ok, nok: r.nok })),
+    trend: trend.map((r) => ({ day: r.day, received: r.received, ok: r.ok, nok: r.nok })),
     worstVendors: vendors.map((r) => ({ vendorCode: r.vendor_code, name: r.name, inspected: r.inspected, nok: r.nok, nokPct: Math.round((1000 * r.nok) / r.inspected) / 10 })),
     ageing: camelRows(ageing),
     capaDue: camelRows(capa),

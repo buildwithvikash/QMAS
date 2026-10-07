@@ -3,7 +3,7 @@
  * numbered the way senior escalation is (Round 1, Round 2, …).
  *
  * A round starts with a submission; it ends when it is sent back (a new round follows) or moved on.
- * Loops: inspection (submit ↔ Incharge sends back), Deviation Form (submit ↔ Sub-Head/Head sends
+ * Loops: inspection (submit ↔ Incharge sends back), Deviation Form (submit ↔ the Sub-Head or Head sends
  * back, or seniors ask for another type), quantities (enter ↔ IQC Head returns), CAPA (submit ↔
  * IQC Head asks to resubmit), senior escalation (escalate → result).
  */
@@ -48,7 +48,7 @@ export function roundsOf(history = [], loop) {
       cur.outcome = 'back';
       cur.end = h;
     } else {
-      // Several approvers may move it on (Sub-Head, then Head): the last one counts.
+      // The last approval step counts (older deviations may have had two).
       cur.outcome = 'ahead';
       cur.end = h;
     }

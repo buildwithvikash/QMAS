@@ -180,7 +180,7 @@ describe('deviation through the department', () => {
     expect(tooMuch.status).toBe(422);
 
     d = ok(await devAct(A.scm, devId, { action: 'submit_form', form: FORM }));
-    expect(d).toMatchObject({ stage: 'SUB_HEAD', imirStatus: 'DEPT_REVIEW', approvalLevels: ['SUB_HEAD'], severity: 'MAJOR', action: 'SEGREGATION', deviationQty: 40 });
+    expect(d).toMatchObject({ stage: 'HEAD', imirStatus: 'DEPT_REVIEW', approvalLevels: ['HEAD'], severity: 'MAJOR', action: 'SEGREGATION', deviationQty: 40 });
     expect((await devAct(A.scm, devId, { action: 'dept_approve' })).status).toBe(403); // Sub-Head's step
     expect((await devAct(A.scm, devId, { action: 'enter_qty', okQty: 1, notOkQty: 0 })).status).toBe(409); // wrong stage
 
@@ -241,7 +241,7 @@ describe('deviation through the department', () => {
     const { devId } = await heldLot('VD', ['REWORK']);
     let d = ok(await devAct(A.vd, devId, { action: 'recommend_reject', remark: 'Cannot be reworked' }));
     expect(d).toMatchObject({ stage: 'HEAD', deptOutcome: 'REJECT_RECOMMENDED', imirStatus: 'DEPT_REVIEW' });
-    expect((await devAct(A.vdSub, devId, { action: 'dept_approve' })).status).toBe(403); // the Head's step
+    expect(ok(await A.vdSub.get(`/api/v1/deviations/${devId}`)).allowedActions).toEqual(['dept_approve', 'send_back']); // Sub-Head too: same level
     expect(ok(await A.vdHead.get(`/api/v1/deviations/${devId}`)).allowedActions).toEqual(['dept_approve', 'send_back']);
     expect((await tasksOf(A.vdHead)).some((t) => t.id === devId)).toBe(true);
     d = ok(await devAct(A.vdHead, devId, { action: 'send_back', remark: 'Give the rework trial result' }));
@@ -261,25 +261,30 @@ describe('deviation through the department', () => {
     expect((await devAct(scm2, devId, { action: 'submit_form', form: FORM })).status).toBe(403);
   });
 
-  it('follows the configured approval chain for forms submitted after a change', async () => {
-    const chains = ok(await A.admin.get('/api/v1/masters/dept-approval-chains'));
-    const vd = chains.find((c) => c.department === 'VD');
-    const wrong = await A.admin.put('/api/v1/masters/dept-approval-chains/VD').send({ levels: ['HEAD', 'SUB_HEAD'], rowVersion: vd.rowVersion });
-    expect(wrong.status).toBe(422);
-    const set = ok(await A.admin.put('/api/v1/masters/dept-approval-chains/VD').send({ levels: ['SUB_HEAD', 'HEAD'], rowVersion: vd.rowVersion }));
-    try {
-      const { devId } = await heldLot('VD', ['REWORK']);
-      let d = ok(await devAct(A.vd, devId, { action: 'submit_form', form: { ...FORM, action: 'REWORK' } }));
-      expect(d).toMatchObject({ stage: 'SUB_HEAD', approvalLevels: ['SUB_HEAD', 'HEAD'] });
-      expect((await devAct(A.vdHead, devId, { action: 'dept_approve' })).status).toBe(403);
-      d = ok(await devAct(A.vdSub, devId, { action: 'dept_approve' }));
-      expect(d.stage).toBe('HEAD');
-      expect((await tasksOf(A.vdHead)).some((t) => t.id === devId)).toBe(true);
-      d = ok(await devAct(A.vdHead, devId, { action: 'dept_approve' }));
-      expect(d).toMatchObject({ stage: 'FINAL', deptOutcome: 'APPROVED' });
-    } finally {
-      await A.admin.put('/api/v1/masters/dept-approval-chains/VD').send({ levels: ['SUB_HEAD'], rowVersion: set.rowVersion });
+  it('the department Sub-Head or Head approves, sends back or rejects: one step, whoever acts first', async () => {
+    expect((await A.admin.get('/api/v1/masters/dept-approval-chains')).status).toBe(404); // the chain setting is gone
+    const { devId } = await heldLot('VD', ['REWORK']);
+    let d = ok(await devAct(A.vd, devId, { action: 'submit_form', form: { ...FORM, action: 'REWORK' } }));
+    expect(d).toMatchObject({ stage: 'HEAD', approvalLevels: ['HEAD'] });
+    // Both are offered the decision and see it in their tasks.
+    for (const who of [A.vdSub, A.vdHead]) {
+      expect(ok(await who.get(`/api/v1/deviations/${devId}`)).allowedActions).toEqual(['dept_approve', 'send_back', 'dept_reject']);
+      expect((await tasksOf(who)).some((t) => t.id === devId)).toBe(true);
     }
+    // The Head sends it back; after resubmission the Sub-Head approves, straight to the IQC Head.
+    d = ok(await devAct(A.vdHead, devId, { action: 'send_back', remark: 'Add the rework method' }));
+    expect(d.stage).toBe('INITIATOR');
+    ok(await devAct(A.vd, devId, { action: 'submit_form', form: { ...FORM, action: 'REWORK', correction: 'Rework by grinding' } }));
+    d = ok(await devAct(A.vdSub, devId, { action: 'dept_approve', remark: 'OK' }));
+    expect(d).toMatchObject({ stage: 'FINAL', deptOutcome: 'APPROVED' });
+    expect((await devAct(A.vdHead, devId, { action: 'dept_approve' })).status).toBe(409); // already decided
+    expect((await tasksOf(A.vdHead)).some((t) => t.id === devId)).toBe(false);
+
+    // Either may also reject.
+    const other = await heldLot('VD', ['REWORK']);
+    ok(await devAct(A.vd, other.devId, { action: 'submit_form', form: { ...FORM, action: 'REWORK' } }));
+    d = ok(await devAct(A.vdSub, other.devId, { action: 'dept_reject', remark: 'Vendor history poor' }));
+    expect(d).toMatchObject({ stage: 'FINAL', deptOutcome: 'REJECTED' });
   });
 });
 
@@ -309,6 +314,12 @@ describe('senior escalation', () => {
 
     d = ok(await A.plantHead.post(`/api/v1/deviations/${devId}/actions`).send({ action: 'senior_decide', decision: 'APPROVE', remark: 'Production needs it' }));
     expect(d.stage).toBe('SENIOR');
+    // A decision is final: the Plant Head cannot decide again while the round is open.
+    expect(d.allowedActions).not.toContain('senior_decide');
+    expect((await tasksOf(A.plantHead)).some((t) => t.id === devId)).toBe(false);
+    const again = await A.plantHead.post(`/api/v1/deviations/${devId}/actions`).send({ action: 'senior_decide', decision: 'REJECT', remark: 'Changed my mind' });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('ALREADY_DECIDED');
     expect(d.rounds[0].resolution).toMatchObject({ effective: 'APPROVE', complete: false });
     d = ok(await A.cqa.post(`/api/v1/deviations/${devId}/actions`).send({ action: 'senior_decide', decision: 'REJECT', remark: 'Safety-relevant dimension' }));
     expect(d.stage).toBe('SENIOR');

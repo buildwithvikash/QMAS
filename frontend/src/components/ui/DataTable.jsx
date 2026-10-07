@@ -3,6 +3,7 @@ import PopMenu from './PopMenu.jsx';
 import { useState } from 'react';
 import { loadPref, savePref } from '../../utils/prefs.js';
 import FilterBuilder from './FilterBuilder.jsx';
+import { downloadCsv, textOf } from '../../utils/csv.js';
 
 /** Columns the viewer has hidden for a table, remembered on this device. */
 function useHiddenColumns(tableId) {
@@ -65,26 +66,6 @@ function ColumnPicker({ columns, hidden, onToggle }) {
   );
 }
 
-/** A cell as plain text for export: the column's `text(row)`, else the raw field. */
-const textOf = (c, row) => {
-  const v = c.text ? c.text(row) : row[c.key];
-  return v === null || v === undefined ? '' : String(v);
-};
-
-/** The selected rows as a CSV file (opens in Excel), with the visible columns. */
-function downloadCsv(name, cols, rows) {
-  const esc = (v) => (/[",\n]/.test(v) ? `"${v.replaceAll('"', '""')}"` : v);
-  const usable = cols.filter((c) => c.header && c.export !== false);
-  const lines = [usable.map((c) => esc(c.header)).join(','), ...rows.map((r) => usable.map((c) => esc(textOf(c, r))).join(','))];
-  // The byte-order mark makes Excel read the file as UTF-8.
-  const blob = new Blob(['﻿', lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `${name}-${new Date().toISOString().slice(0, 10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(a.href);
-}
-
 /**
  * The common list table: one card with the filter bar, the table and the page controls.
  *   columns: [{ key, header, hint? (ⓘ tooltip on the header), render?(row), text?(row) (for export), sortable?, className?, align?, hideable?, export? }]
@@ -93,12 +74,13 @@ function downloadCsv(name, cols, rows) {
  *   Rows: `onRowClick`, `onPreview(row)` (eye button), `rowMenu(row)` → [{ label, icon, onClick, danger }]
  *   (⋮ menu), `activeKey` (the row shown in a preview), `selectable` + `exportName` (tick rows and
  *   export them as CSV), `pagination` = { meta, onPage, onPageSize } (numbered pages in the card).
+ * `tabs` = [{ key, label, count?, active, onClick }] shows a tab strip above the rows.
  * Tables with a `tableId` can also be shown as cards (List / Cards switch, list by default,
  * remembered per table). On narrow screens each row is always a card.
  */
 export default function DataTable({
   columns, rows = [], loading, error, sort, onSort, rowKey = 'id', empty = 'No records found.', emptyAction, onRowClick, tableId, toolbar, leading, filter,
-  onPreview, rowMenu, activeKey, selectable = false, exportName = 'export', pagination,
+  onPreview, rowMenu, activeKey, selectable = false, exportName = 'export', pagination, tabs,
 }) {
   const [hidden, toggle] = useHiddenColumns(tableId);
   const [view, setView] = useView(tableId);
@@ -116,9 +98,9 @@ export default function DataTable({
   const togglePage = () => setSelected((s) => { const n = new Set(s); pageKeys.forEach((k) => (allOnPage ? n.delete(k) : n.add(k))); return n; });
 
   return (
-    <div data-tour="table" className="card overflow-hidden">
+    <div className="card overflow-hidden">
       {showToolbar && (
-        <div data-tour="filters" className="px-3 py-3 border-b border-slate-100 space-y-2">
+        <div className="px-3 py-3 border-b border-slate-100 space-y-2">
           <div className="flex flex-wrap items-end gap-2">
             {leading}
             <div className="ml-auto flex items-center gap-2">
@@ -128,6 +110,17 @@ export default function DataTable({
             </div>
           </div>
           {toolbar}
+        </div>
+      )}
+
+      {tabs?.length > 0 && (
+        <div role="tablist" className="flex overflow-x-auto border-b border-slate-200 px-2">
+          {tabs.map((t) => (
+            <button key={t.key} type="button" role="tab" aria-selected={!!t.active} onClick={t.onClick}
+              className={`-mb-px whitespace-nowrap border-b-2 px-4 py-3 text-sm font-medium cursor-pointer transition-colors ${t.active ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-600 hover:text-slate-900'}`}>
+              {t.label}{t.count !== undefined && t.count !== null && <span className="ml-1 tabular">({t.count})</span>}
+            </button>
+          ))}
         </div>
       )}
 
@@ -161,7 +154,7 @@ export default function DataTable({
                     key={c.key}
                     scope="col"
                     aria-sort={active ? (sort.order === 'desc' ? 'descending' : 'ascending') : undefined}
-                    className={`px-3.5 py-3 text-xs font-semibold text-slate-700 border-b border-slate-200 whitespace-nowrap ${c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : 'text-left'} ${c.headerClassName ?? ''}`}
+                    className={`px-3 py-3 text-xs font-semibold text-slate-700 border-b border-slate-200 whitespace-nowrap ${c.align === 'right' ? 'text-right' : c.align === 'center' ? 'text-center' : 'text-left'} ${c.headerClassName ?? ''}`}
                   >
                     {c.sortable && onSort ? (
                       <button type="button" onClick={() => onSort(c.key)} className={`inline-flex items-center gap-1 hover:text-slate-900 cursor-pointer ${active ? 'text-blue-700' : ''}`}>
@@ -175,7 +168,7 @@ export default function DataTable({
                   </th>
                 );
               })}
-              {hasActions && <th scope="col" className="px-3.5 py-3 text-xs font-semibold text-slate-700 border-b border-slate-200 text-center w-28">Action</th>}
+              {hasActions && <th scope="col" className="px-3 py-3 text-xs font-semibold text-slate-700 border-b border-slate-200 text-center w-28">Action</th>}
               {!hasActions && onRowClick && <th aria-hidden="true" className="w-8 border-b border-slate-200" />}
             </tr>
           </thead>
@@ -183,7 +176,7 @@ export default function DataTable({
             {firstLoad && Array.from({ length: 6 }, (_, i) => (
               <tr key={`sk${i}`}>
                 {selectable && <td />}
-                {cols.map((c, j) => <td key={c.key} className="px-3.5 py-4"><div className="skeleton h-3.5" style={{ width: `${45 + ((i * 7 + j * 13) % 45)}%` }} /></td>)}
+                {cols.map((c, j) => <td key={c.key} className="px-3 py-4"><div className="skeleton h-3.5" style={{ width: `${45 + ((i * 7 + j * 13) % 45)}%` }} /></td>)}
                 {(hasActions || onRowClick) && <td />}
               </tr>
             ))}
@@ -206,7 +199,7 @@ export default function DataTable({
                     </td>
                   )}
                   {cols.map((c, i) => (
-                    <td key={c.key} className={`px-3.5 py-3 text-slate-800 align-middle ${i === 0 && !selectable ? 'relative' : ''} ${c.align === 'right' ? 'text-right tabular' : c.align === 'center' ? 'text-center' : ''} ${c.className ?? ''}`}>
+                    <td key={c.key} className={`px-3 py-3 text-slate-800 align-middle ${i === 0 && !selectable ? 'relative' : ''} ${c.align === 'right' ? 'text-right tabular' : c.align === 'center' ? 'text-center' : ''} ${c.className ?? ''}`}>
                       {i === 0 && !selectable && (on || onRowClick) && <span className={`absolute left-0 top-0 bottom-0 w-1 bg-blue-600 transition-opacity ${on ? 'opacity-100' : 'opacity-0 group-hover:opacity-60'}`} aria-hidden="true" />}
                       {c.render ? c.render(row) : (row[c.key] ?? '—')}
                     </td>

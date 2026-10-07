@@ -1,5 +1,5 @@
 import { REPORTS } from '@qmas/shared';
-import { ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, Box, CalendarDays, ChevronRight, Clock, Download, EyeOff, Home, LineChart, RotateCcw, Search, TrendingUp, Users, X } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, BarChart3, Box, CalendarDays, ChevronRight, Clock, Download, EyeOff, Home, LineChart, RotateCcw, Search, TrendingUp, Users, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useGetReportQuery } from '../../api/dnApi.js';
@@ -118,6 +118,7 @@ const TABS = [
   { key: 'items', label: 'Item Analysis', icon: Box, reports: ['item-quality', 'format-coverage'] },
   { key: 'deviations', label: 'Deviation Analysis', icon: TrendingUp, reports: ['deviation-register'] },
   { key: 'ageing', label: 'Ageing', icon: Clock, reports: ['pending-ageing', 'dn-register'] },
+  { key: 'drift', label: 'Measurement Drift', icon: Activity, reports: ['measurement-drift'] },
   { key: 'download', label: 'Download', icon: Download, reports: [] },
 ];
 const tabOf = (report) => TABS.find((t) => t.reports.includes(report))?.key ?? 'overview';
@@ -245,6 +246,16 @@ export default function ReportsPage() {
                   );
                 })}
               </div>
+            )}
+
+            {current?.truncated && (
+              <p role="alert" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  This period has <b>{current.totalRows?.toLocaleString('en-IN') ?? 'more than 20,000'}</b> rows; only the first {current.rows.length.toLocaleString('en-IN')} are loaded.
+                  The figures, charts and table below cover those rows only. Choose a shorter period or one plant for complete figures.
+                </span>
+              </p>
             )}
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">

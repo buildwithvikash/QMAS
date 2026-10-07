@@ -1,5 +1,5 @@
 import {
-  AlarmClock, AlertTriangle, Boxes, CheckCircle2, ClipboardList, Clock, ExternalLink, FileCheck2, FileText, FileWarning, FileX2, Gauge, Hourglass, Layers, PackageOpen,
+  Activity, AlarmClock, AlertTriangle, ArrowUpDown, Boxes, CheckCircle2, ClipboardList, Clock, ExternalLink, FileCheck2, FileText, FileWarning, FileX2, Gauge, Hourglass, Layers, PackageOpen,
   Percent, Scale, Timer, TrendingUp, Users,
 } from 'lucide-react';
 import { PALETTE as C } from '../../utils/palette.js';
@@ -247,6 +247,31 @@ export const VIEWS = {
       { title: 'Missing formats by category', kind: 'bars', span: 3, rows: bars(countBy(rows.filter((r) => r.coverage !== 'Approved'), 'category', (v) => v ?? 'No category'), 'amber', 10) },
     ],
     rowMenu: (r) => [r.itemId && { label: 'Item inspection format', icon: ExternalLink, to: `/formats/items/${r.itemId}` }],
+  },
+
+  'measurement-drift': {
+    icon: Activity, tone: 'bg-orange-100 text-orange-600',
+    kpis: (rows) => {
+      const of = (f) => rows.filter((r) => r.finding === f).length;
+      return [
+        { label: 'Flagged Check Points', value: rows.length, note: 'latest lot inspected in the period', icon: Activity, tone: 'blue' },
+        { label: 'Close to Limit', value: of('Close to limit'), note: 'a reading uses 80 %+ of the tolerance', icon: AlertTriangle, tone: 'rose' },
+        { label: 'Shift', value: of('Shift'), note: 'lot average far from the usual', icon: ArrowUpDown, tone: 'amber' },
+        { label: 'Trend', value: of('Trend'), note: 'averages moving toward a limit', icon: TrendingUp, tone: 'violet' },
+        { label: 'Items Affected', value: distinct(rows, 'itemCode'), note: `${distinct(rows, 'vendorName')} vendor(s)`, icon: Boxes, tone: 'green' },
+      ];
+    },
+    charts: (rows) => [
+      { title: 'Findings', sub: 'What the drift rules found', kind: 'donut',
+        segments: donut(countBy(rows, 'finding'), { 'Close to limit': C.red, Shift: C.amber, Trend: C.violet }) },
+      { title: 'Vendors with most findings', kind: 'bars', span: 2, rows: bars(countBy(rows, 'vendorName'), 'rose', 10) },
+      { title: 'Items with most findings', kind: 'bars', span: 3,
+        rows: bars(countBy(rows, 'itemCode', (v) => { const r = rows.find((x) => x.itemCode === v); return `${v} · ${r?.itemDescription ?? ''}`; }), 'amber', 10) },
+    ],
+    rowMenu: (r) => [
+      r.imirId && { label: 'Open latest IMIR', icon: ExternalLink, to: `/imirs/${r.imirId}` },
+      r.itemId && { label: 'Item inspection format', icon: FileCheck2, to: `/formats/items/${r.itemId}` },
+    ],
   },
 
   tat: {

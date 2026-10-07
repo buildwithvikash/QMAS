@@ -2,11 +2,11 @@ import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 /** A dashboard card: icon, title (with an optional note), an action on the right, then the body. */
-export function HomeCard({ icon: Icon, title, note, action, children, className = '', bodyClass = 'px-4 pb-4', label }) {
+export function HomeCard({ icon: Icon, title, note, action, children, className = '', bodyClass = 'px-4 pb-3', label }) {
   return (
     <section className={`card flex flex-col ${className}`} aria-label={label ?? title}>
-      <div className="flex flex-wrap items-center gap-2.5 px-4 pt-4 pb-3">
-        {Icon && <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700"><Icon className="h-4 w-4" /></span>}
+      <div className="flex flex-wrap items-center gap-2.5 px-4 pt-3 pb-2">
+        {Icon && <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-700"><Icon className="h-4 w-4" /></span>}
         <h2 className="text-[15px] font-semibold text-slate-900">{title}{note && <span className="ml-1 font-normal text-slate-500">{note}</span>}</h2>
         {action && <div className="ml-auto">{action}</div>}
       </div>
@@ -37,10 +37,10 @@ const TONES = {
 };
 
 /** One figure at the top of Home: icon, label, value, a note (coloured when it needs attention). */
-export function StatTile({ to, icon: Icon, tone, label, value, note, noteTone = 'text-slate-500', valueClass = 'text-2xl' }) {
+export function StatTile({ to, icon: Icon, tone, label, value, note, noteTone = 'text-slate-500', valueClass = 'text-xl' }) {
   return (
-    <Link to={to} className="card group flex items-center gap-3 px-4 py-4 transition-colors hover:border-blue-300">
-      <span className={`grid h-14 w-14 shrink-0 place-items-center rounded-xl ${TONES[tone]}`}><Icon className="h-7 w-7" /></span>
+    <Link to={to} className="card group flex items-center gap-3 px-3 py-2.5 transition-colors hover:border-blue-300">
+      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg ${TONES[tone]}`}><Icon className="h-5 w-5" /></span>
       <span className="min-w-0 flex-1">
         <span className="block text-xs font-medium text-slate-600">{label}</span>
         <span className={`block font-bold leading-tight tabular text-slate-900 ${valueClass}`}>{value}</span>

@@ -63,7 +63,7 @@ export default function PageHeader({ icon: Icon, title, subtitle, search, onSear
     return () => ro.disconnect();
   }, []);
   return (
-    <div ref={ref} data-tour="page-header" className="sticky top-0 z-20 bg-white/85 backdrop-blur-md border-b border-slate-200/80">
+    <div ref={ref} className="sticky top-0 z-20 bg-white/85 backdrop-blur-md border-b border-slate-200/80">
       <div className="px-5 pt-2.5 pb-3">
         {crumbs.length > 0 && (
           <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-[11px] text-slate-400 mb-1.5 min-w-0">
@@ -91,7 +91,7 @@ export default function PageHeader({ icon: Icon, title, subtitle, search, onSear
               {subtitle && <p className="text-xs text-slate-500 mt-0.5 truncate">{subtitle}</p>}
             </div>
           </div>
-          <div data-tour="page-actions" className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
             {onSearch && (
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />

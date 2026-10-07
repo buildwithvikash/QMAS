@@ -54,7 +54,9 @@ const apiSap = {
     const base = process.env.SAP_API_URL;
     if (!base) throw new Error('SAP_MODE=api needs SAP_API_URL in backend/.env');
     const url = new URL(base);
-    if (cursor) url.searchParams.set(process.env.SAP_API_FROM_PARAM || 'from', cursor);
+    // Ask again a few days back: a lot can reach SAP after later ones with an earlier Start of
+    // Inspection date (e.g. a back-dated goods receipt). Lots already pulled are skipped by lot number.
+    if (cursor) url.searchParams.set(process.env.SAP_API_FROM_PARAM || 'from', overlapFrom(cursor));
     const headers = { Accept: 'application/json' };
     if (process.env.SAP_API_USER) headers.Authorization = `Basic ${Buffer.from(`${process.env.SAP_API_USER}:${process.env.SAP_API_PASSWORD ?? ''}`).toString('base64')}`;
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(60_000) });
@@ -69,6 +71,12 @@ const apiSap = {
 };
 
 const CLIENTS = { mock: mockSap, api: apiSap };
+
+/** The date SAP_API_OVERLAP_DAYS (default 3) before the cursor date; other cursors pass unchanged. */
+export function overlapFrom(cursor, days = Number(process.env.SAP_API_OVERLAP_DAYS ?? 3)) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(cursor) || !(days > 0)) return cursor;
+  return new Date(Date.parse(`${cursor}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+}
 
 export const sapMode = () => process.env.SAP_MODE ?? 'mock';
 

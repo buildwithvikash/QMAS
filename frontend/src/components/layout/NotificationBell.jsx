@@ -21,7 +21,7 @@ export default function NotificationBell() {
 
   return (
     <div className="relative mr-2">
-      <button type="button" data-tour="bell" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}
         aria-label={unread ? `Notifications, ${unread} unread` : 'Notifications'} className="relative p-2.5 rounded-xl hover:bg-slate-50 cursor-pointer">
         <Bell className="w-5 h-5 text-slate-600" />
         {unread > 0 && <span className="absolute top-1 right-1 min-w-4 h-4 px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold flex items-center justify-center">{unread > 99 ? '99+' : unread}</span>}

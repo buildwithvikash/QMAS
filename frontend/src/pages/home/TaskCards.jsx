@@ -59,7 +59,7 @@ export function ActiveTasks({ tasks, isLoading, error }) {
         <div className="overflow-x-auto border-t border-slate-100">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500">
-              <tr>{['Priority', 'Task', 'Reference', 'Item / Vendor', 'Due Date', 'Status', 'Action'].map((h) => <th key={h} scope="col" className="whitespace-nowrap px-3 py-2.5 text-left font-medium">{h}</th>)}</tr>
+              <tr>{['Priority', 'Task', 'Item / Vendor', 'Due Date', 'Status', 'Action'].map((h) => <th key={h} scope="col" className="whitespace-nowrap px-3 py-2 text-left font-medium">{h}</th>)}</tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {shown.map((t) => {
@@ -68,23 +68,23 @@ export function ActiveTasks({ tasks, isLoading, error }) {
                 const late = t.dueAt && new Date(t.dueAt) < new Date();
                 return (
                   <tr key={`${t.entity}-${t.id}`} className="hover:bg-slate-50/70">
-                    <td className="px-3 py-2.5"><Pill className={pc} dot={dot}>{p}</Pill></td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-2"><Pill className={pc} dot={dot}>{p}</Pill></td>
+                    <td className="whitespace-nowrap px-3 py-2">
                       <span className="font-medium text-slate-900">{t.task}</span>
                       {t.sentBack && <span className="ml-1.5 inline-flex items-center gap-0.5 text-[11px] font-semibold text-amber-800"><CornerUpLeft className="h-3 w-3" />Sent back</span>}
+                      <span className="block font-mono text-[11px] text-slate-500">{t.docNo}</span>
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-xs text-slate-700">{t.docNo}</td>
-                    <td className="max-w-56 px-3 py-2.5">
+                    <td className="max-w-44 px-3 py-2">
                       <span className="block truncate text-slate-800">{t.itemCode}</span>
                       <span className="block truncate text-xs text-slate-500">{t.vendorName ?? t.itemDescription}</span>
                     </td>
-                    <td className={`whitespace-nowrap px-3 py-2.5 text-xs ${late ? 'font-semibold text-rose-700' : 'text-slate-600'}`}>
+                    <td className={`whitespace-nowrap px-3 py-2 text-xs ${late ? 'font-semibold text-rose-700' : 'text-slate-600'}`}>
                       {t.dueAt ? formatDate(t.dueAt) : <span title={`Waiting since ${formatDate(t.since)}`}>{formatRelative(t.since)}</span>}
                     </td>
-                    <td className="px-3 py-2.5"><Pill className="bg-blue-50 text-blue-700 ring-blue-200" dot="bg-blue-500">{statusOf(t)}</Pill></td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-2"><Pill className="bg-blue-50 text-blue-700 ring-blue-200" dot="bg-blue-500">{statusOf(t)}</Pill></td>
+                    <td className="px-3 py-2">
                       <Link to={t.link} title={`${KIND[t.kind].verb}: ${t.docNo}`} aria-label={`Open ${t.docNo}`}
-                        className="grid h-8 w-8 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-700">
+                        className="grid h-7 w-7 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-700">
                         <MoreHorizontal className="h-4 w-4" />
                       </Link>
                     </td>
@@ -132,8 +132,8 @@ export function RecentlyDone() {
           const [Icon, tone] = lookOf(r.action);
           return (
             <li key={r.id}>
-              <Link to={r.link} className="group flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50">
-                <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${tone}`}><Icon className="h-4 w-4" /></span>
+              <Link to={r.link} className="group flex items-center gap-3 px-4 py-2 hover:bg-slate-50">
+                <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${tone}`}><Icon className="h-4 w-4" /></span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-semibold text-slate-900">{HISTORY_LABELS[r.action] ?? r.action}</span>
                   <span className="block truncate text-xs text-slate-500"><span className="font-mono">{r.docNo}</span>{r.itemCode ? ` · ${r.itemCode}` : ''}</span>
