@@ -1,4 +1,4 @@
-import { PERMISSIONS, ROLES } from "@qmas/shared";
+import { ADMIN_REQUIRED_PERMISSIONS, PERMISSIONS, ROLES } from "@qmas/shared";
 import {
   CheckSquare,
   ChevronDown,
@@ -172,7 +172,7 @@ export default function RolesPage() {
           key={role.code}
           role={role}
           permissions={permissions}
-          editable={manage && role.code !== ROLES.SYSTEM_ADMIN}
+          editable={manage}
           onDirty={setDirty}
         />
       </div>
@@ -279,8 +279,7 @@ function RoleList({ roles, total, active, onPick, onAdd }) {
       <ul ref={listRef} className="px-3 pb-3 space-y-1.5 overflow-y-auto">
         {shown.map((r) => {
           const on = r.code === active;
-          const count =
-            r.code === ROLES.SYSTEM_ADMIN ? total : r.permissions.length;
+          const count = r.permissions.length;
           return (
             <li key={r.code}>
               <button
@@ -365,10 +364,9 @@ function Ring({ value }) {
 
 function RoleDetail({ role, permissions, editable, onDirty }) {
   const isAdmin = role.code === ROLES.SYSTEM_ADMIN;
-  const initial = useMemo(
-    () => new Set(isAdmin ? permissions.map((p) => p.key) : role.permissions),
-    [isAdmin, permissions, role.permissions],
-  );
+  const initial = useMemo(() => new Set(role.permissions), [role.permissions]);
+  // System Admin keeps what it needs to manage users and roles: those cannot be unticked.
+  const locked = useMemo(() => new Set(isAdmin ? ADMIN_REQUIRED_PERMISSIONS : []), [isAdmin]);
   const [granted, setGranted] = useState(initial);
   const [tab, setTab] = useState("permissions");
   const [q, setQ] = useState("");
@@ -405,7 +403,10 @@ function RoleDetail({ role, permissions, editable, onDirty }) {
   const set = (keys, on) =>
     setGranted((g) => {
       const next = new Set(g);
-      for (const k of keys) on ? next.add(k) : next.delete(k);
+      for (const k of keys) {
+        if (on) next.add(k);
+        else if (!locked.has(k)) next.delete(k);
+      }
       return next;
     });
   const submit = async () => {
@@ -562,8 +563,9 @@ function RoleDetail({ role, permissions, editable, onDirty }) {
         <>
           {isAdmin && (
             <p className="rounded-lg bg-blue-50 px-4 py-2.5 text-sm text-blue-900">
-              System Admin always holds every permission and can act for any
-              role.
+              System Admin can act for any role in the workflow, but only with the
+              permissions ticked here. Viewing and managing users and roles
+              always stay, so the system can always be put right.
             </p>
           )}
           {!role.isActive && (
@@ -584,6 +586,7 @@ function RoleDetail({ role, permissions, editable, onDirty }) {
                   module={module}
                   perms={perms}
                   granted={granted}
+                  locked={locked}
                   editable={editable}
                   onSet={set}
                   open={needle !== "" || !collapsed.has(module)}
@@ -643,6 +646,7 @@ function ModuleCard({
   module,
   perms,
   granted,
+  locked,
   editable,
   onSet,
   open,
@@ -705,6 +709,7 @@ function ModuleCard({
           {perms.map((p) => {
             const opens = PAGES_BY_PERMISSION.get(p.key) ?? [];
             const on = granted.has(p.key);
+            const fixed = locked.has(p.key);
             return (
               <li key={p.key}>
                 <label
@@ -714,7 +719,8 @@ function ModuleCard({
                     type="checkbox"
                     className="mt-0.5 w-4 h-4 shrink-0 accent-blue-600"
                     checked={on}
-                    disabled={!editable}
+                    disabled={!editable || fixed}
+                    title={fixed ? "System Admin always keeps this permission" : undefined}
                     onChange={(e) => onSet([p.key], e.target.checked)}
                   />
                   <span className="min-w-0">
@@ -722,6 +728,11 @@ function ModuleCard({
                       className={`block text-sm ${on ? "text-slate-900" : "text-slate-600"}`}
                     >
                       {p.description}
+                      {fixed && (
+                        <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-600">
+                          Always kept
+                        </span>
+                      )}
                     </span>
                     <span className="block text-[11px] text-slate-400">
                       <span className="font-mono">{p.key}</span>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useGetDashboardQuery } from '../../api/dnApi.js';
+import { useHomeSummary } from './useHomeSummary.js';
 import { HomeCard, Seg } from './homeUi.jsx';
 import { TrendingUp } from 'lucide-react';
 
@@ -28,8 +28,9 @@ function buckets(days, size) {
 
 /** Lots received per day (week, over 90 days) with OK, Not OK and not yet inspected; click a bar for its lots. */
 export default function QualityTrend() {
-  const [range, setRange] = useState(30);
-  const { data: s } = useGetDashboardQuery({ trendDays: range }, { pollingInterval: 120_000 });
+  const { s, periods, setPeriod } = useHomeSummary();
+  const range = periods.trendDays;
+  const setRange = (d) => setPeriod('trendDays', d);
   const navigate = useNavigate();
   const [hover, setHover] = useState(null);
   const bars = s?.trend ? buckets(s.trend, range === 90 ? 7 : 1) : [];

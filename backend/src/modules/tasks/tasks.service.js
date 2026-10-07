@@ -1,4 +1,4 @@
-import { PERMISSIONS } from '@qmas/shared';
+import { PERMISSIONS, ROLES } from '@qmas/shared';
 import { getPool } from '../../db/pool.js';
 import { camelRows } from '../../shared/sql.js';
 import * as devRepo from '../deviation/deviation.repo.js';
@@ -11,6 +11,12 @@ const REVIEW_STATUSES = [...new Set(Object.values(IMIR_REVIEW_ACTIONS).map((r) =
 const OPEN_STAGES = ['INITIATOR', 'SUB_HEAD', 'HEAD', 'FINAL', 'SENIOR', 'UNDER_DEVIATION', 'QTY_VERIFICATION'];
 const IMIR_TASK = { SUBMITTED: 'Review inspection', WITH_IQC_HEAD: 'Decide on escalated lot' };
 const holds = (user, permission) => user.assignments.some((a) => a.permissions.includes(permission));
+
+/** The user with their System Admin assignment left out (their other roles stay). */
+function withoutAdmin(user) {
+  const assignments = user.assignments.filter((a) => a.roleCode !== ROLES.SYSTEM_ADMIN);
+  return { ...user, assignments, permissions: new Set(assignments.flatMap((a) => a.permissions)) };
+}
 
 /**
  * Plants where the user may act with any of these permissions (same test as actingRole): null for
@@ -34,11 +40,14 @@ function actPlants(user, permissions) {
  * has waited (`since`) and, where the workflow sets one, a deadline (`dueAt`).
  */
 export async function myTasks(user) {
+  // Workflow work comes from the user's own roles: System Admin may stand in for any role, but that
+  // work belongs to the people who hold the role, not to the admin's inbox.
+  const me = withoutAdmin(user);
   const db = getPool();
   const tasks = [];
 
   // Lots to inspect (Inspector), including lots sent back and lots checked out to a tablet.
-  if (holds(user, P.IMIR_INSPECT)) {
+  if (holds(me, P.IMIR_INSPECT)) {
     const { rows } = await db.query(
       `SELECT m.id, m.imir_no, m.status, m.plant_id, p.sap_code AS plant_sap_code, p.name AS plant_name, i.item_code, i.description AS item_description,
               v.name AS vendor_name, m.inward_qty, m.uom, m.created_at, m.updated_at, d.device_code AS tablet, la.action AS last_action, la.remark AS last_remark
@@ -47,10 +56,10 @@ export async function myTasks(user) {
          LEFT JOIN LATERAL (SELECT a.action, a.remark FROM qms.imir_action a WHERE a.imir_id = m.id ORDER BY a.at DESC, a.id DESC LIMIT 1) la ON true
         WHERE m.status IN ('OPEN', 'IN_INSPECTION') AND ($1::smallint[] IS NULL OR m.plant_id = ANY($1))
         ORDER BY m.created_at LIMIT 1000`,
-      [actPlants(user, [P.IMIR_INSPECT])],
+      [actPlants(me, [P.IMIR_INSPECT])],
     );
     for (const m of camelRows(rows)) {
-      if (!actingRole(user, { permission: P.IMIR_INSPECT, plantId: m.plantId })) continue;
+      if (!actingRole(me, { permission: P.IMIR_INSPECT, plantId: m.plantId })) continue;
       const sentBack = m.lastAction === 'REVERT';
       tasks.push({
         kind: 'inspect', entity: 'IMIR', id: m.id, imirId: m.id, docNo: m.imirNo, link: `/imirs/${m.id}`,
@@ -63,7 +72,7 @@ export async function myTasks(user) {
   }
 
   // Inspections to review (Incharge) and escalated lots to decide (IQC Head).
-  const reviewPlants = actPlants(user, [P.IMIR_REVIEW, P.IMIR_HEAD_DECIDE]);
+  const reviewPlants = actPlants(me, [P.IMIR_REVIEW, P.IMIR_HEAD_DECIDE]);
   const { rows: reviews } = reviewPlants?.length === 0 ? { rows: [] } : await db.query(
     `SELECT m.id, m.imir_no, m.status, m.result, m.plant_id, p.sap_code AS plant_sap_code, p.name AS plant_name, i.item_code, i.description AS item_description,
             v.name AS vendor_name, m.submitted_at, m.updated_at
@@ -73,7 +82,7 @@ export async function myTasks(user) {
     [REVIEW_STATUSES, reviewPlants],
   );
   for (const m of camelRows(reviews)) {
-    const actions = imirReviewActions(user, m);
+    const actions = imirReviewActions(me, m);
     if (!actions.length) continue;
     tasks.push({
       kind: 'review', entity: 'IMIR', id: m.id, imirId: m.id, docNo: m.imirNo, link: `/imirs/${m.id}`, task: IMIR_TASK[m.status], status: m.status, result: m.result, actions,
@@ -86,7 +95,7 @@ export async function myTasks(user) {
   const rounds = devs.some((d) => d.stage === 'SENIOR') ? await devRepo.rounds(db, devs.filter((d) => d.stage === 'SENIOR').map((d) => d.id)) : [];
   for (const d of devs) {
     const round = rounds.filter((r) => r.deviationId === d.id).at(-1) ?? null;
-    const actions = deviationActions(user, d, round);
+    const actions = deviationActions(me, d, round);
     if (!actions.some((a) => a !== 'override')) continue; // overriding is a right, not a task
     tasks.push({
       kind: 'deviation', entity: 'DEVIATION', id: d.id, imirId: d.imirId, docNo: d.deviationNo, imirNo: d.imirNo, link: `/deviations/${d.id}`, task: d.department ? STAGE_LABEL[d.stage] : STAGE_LABEL.UNASSIGNED,
@@ -96,17 +105,17 @@ export async function myTasks(user) {
   }
 
   // Defect notifications: the vendor's CAPA to enter (Incharge) or to review (IQC Head).
-  if (holds(user, P.DN_MANAGE) || holds(user, P.DN_APPROVE_CAPA)) {
+  if (holds(me, P.DN_MANAGE) || holds(me, P.DN_APPROVE_CAPA)) {
     const { rows } = await db.query(
       `SELECT n.id, n.imir_id, n.dn_no, n.status, n.plant_id, n.capa_applicable, n.capa_due_at, n.created_at, n.updated_at, p.sap_code AS plant_sap_code, p.name AS plant_name,
               i.item_code, i.description AS item_description, v.name AS vendor_name
          FROM qms.defect_notification n JOIN core.plant p ON p.id = n.plant_id JOIN mst.item i ON i.id = n.item_id JOIN mst.vendor v ON v.id = n.vendor_id
         WHERE n.status IN ('OPEN', 'CAPA_SUBMITTED') AND ($1::smallint[] IS NULL OR n.plant_id = ANY($1))
         ORDER BY n.created_at LIMIT 1000`,
-      [actPlants(user, [P.DN_MANAGE, P.DN_APPROVE_CAPA])],
+      [actPlants(me, [P.DN_MANAGE, P.DN_APPROVE_CAPA])],
     );
     for (const n of camelRows(rows)) {
-      const actions = dnActions(user, n);
+      const actions = dnActions(me, n);
       const submit = actions.includes('submit_capa');
       if (!submit && !actions.includes('approve_capa')) continue;
       tasks.push({
@@ -119,7 +128,7 @@ export async function myTasks(user) {
   }
 
   // Formats: drafts waiting for approval (approvers), and items whose lots wait for a first format.
-  if (holds(user, P.FORMATS_APPROVE)) {
+  if (holds(me, P.FORMATS_APPROVE)) {
     const { rows } = await db.query(
       `SELECT v.id, v.status, v.submitted_at, i.item_code, i.description AS item_description, su.full_name AS submitted_by_name
          FROM qms.format_version v JOIN qms.format f ON f.id = v.format_id JOIN mst.item i ON i.id = f.item_id
@@ -135,7 +144,7 @@ export async function myTasks(user) {
       });
     }
   }
-  if (holds(user, P.FORMATS_CREATE)) {
+  if (holds(me, P.FORMATS_CREATE)) {
     const { rows } = await db.query(
       `SELECT i.id AS item_id, i.item_code, i.description AS item_description, min(m.created_at) AS since, count(*)::int AS lots,
               array_agg(DISTINCT m.plant_id) AS plant_ids
@@ -144,7 +153,7 @@ export async function myTasks(user) {
         GROUP BY i.id ORDER BY min(m.created_at)`,
     );
     for (const r of camelRows(rows)) {
-      if (!r.plantIds.some((plantId) => actingRole(user, { permission: P.FORMATS_CREATE, plantId }))) continue;
+      if (!r.plantIds.some((plantId) => actingRole(me, { permission: P.FORMATS_CREATE, plantId }))) continue;
       tasks.push({
         kind: 'format', entity: 'ITEM', id: r.itemId, docNo: r.itemCode, link: `/formats/items/${r.itemId}`, task: 'Create inspection format',
         itemCode: r.itemCode, itemDescription: r.itemDescription, vendorName: null, note: `${r.lots} lot${r.lots === 1 ? '' : 's'} waiting for it`, since: r.since,
@@ -152,6 +161,38 @@ export async function myTasks(user) {
     }
   }
 
+
+  // The admin's own work: reversal requests to decide and help-desk tickets to answer.
+  if (user.permissions.has(P.WORKFLOW_REVERSE)) {
+    const { rows } = await db.query(
+      `SELECT r.id, r.entity_type, r.entity_id, r.record_no, r.reason, r.requested_at, u.full_name AS requested_by_name, p.sap_code AS plant_sap_code, p.name AS plant_name
+         FROM qms.reversal_request r JOIN core.app_user u ON u.id = r.requested_by JOIN core.plant p ON p.id = r.plant_id
+        WHERE r.state = 'PENDING' ORDER BY r.requested_at LIMIT 500`,
+    );
+    for (const r of camelRows(rows)) {
+      tasks.push({
+        kind: 'admin', entity: 'REVERSAL', id: r.id, docNo: r.recordNo, link: '/admin/reversals', task: 'Decide reversal request', status: 'PENDING',
+        itemCode: `Asked by ${r.requestedByName}`, itemDescription: r.reason, vendorName: null, plantSapCode: r.plantSapCode, plantName: r.plantName, since: r.requestedAt,
+      });
+    }
+  }
+  if (user.permissions.has(P.SUPPORT_MANAGE)) {
+    // New tickets nobody has taken yet, and the user's own tickets still in progress.
+    const { rows } = await db.query(
+      `SELECT t.id, t.ticket_no, t.title, t.status, t.priority, t.kind, t.created_at, t.updated_at, t.assigned_to, u.full_name AS reported_by_name
+         FROM core.support_ticket t JOIN core.app_user u ON u.id = t.reported_by
+        WHERE (t.status = 'OPEN' AND t.assigned_to IS NULL) OR (t.assigned_to = $1 AND t.status IN ('OPEN', 'IN_PROGRESS'))
+        ORDER BY t.created_at LIMIT 500`,
+      [user.id],
+    );
+    for (const t of camelRows(rows)) {
+      tasks.push({
+        kind: 'support', entity: 'TICKET', id: t.id, docNo: t.ticketNo, link: `/help/tickets/${t.id}`, task: t.assignedTo ? 'Work on ticket' : 'Pick up new ticket',
+        status: t.status, priority: t.priority, itemCode: `From ${t.reportedByName}`, itemDescription: t.title, vendorName: null,
+        urgent: t.priority === 'CRITICAL' || t.priority === 'HIGH', since: t.assignedTo ? t.updatedAt : t.createdAt,
+      });
+    }
+  }
   return tasks.sort((a, b) => new Date(a.since) - new Date(b.since));
 }
 

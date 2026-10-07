@@ -105,6 +105,8 @@ function statusOf(t) {
   if (t.kind === 'inspect') return t.sentBack ? 'Sent back' : t.status === 'IN_INSPECTION' ? 'In progress' : 'To inspect';
   if (t.kind === 'review') return t.status === 'WITH_IQC_HEAD' ? 'IQC Head decision' : 'Incharge review';
   if (t.kind === 'capa') return t.status === 'CAPA_SUBMITTED' ? 'CAPA review' : 'Vendor CAPA';
+  if (t.kind === 'admin') return 'Awaiting decision';
+  if (t.kind === 'support') return t.priority === 'CRITICAL' || t.priority === 'HIGH' ? `${t.priority === 'CRITICAL' ? 'Critical' : 'High'} priority` : t.status === 'IN_PROGRESS' ? 'In progress' : 'New';
   return t.task;
 }
 

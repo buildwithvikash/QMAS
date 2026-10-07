@@ -1,7 +1,6 @@
 import { PERMISSIONS } from '@qmas/shared';
 import { AlertTriangle, ArrowRight, Building2, CalendarDays, ChevronRight, ClipboardCheck, FileWarning, FileX2, Globe, Package, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { useGetDashboardQuery } from '../api/dnApi.js';
 import { useGetNumberSeriesQuery, useGetSamplingPlansQuery } from '../api/mastersApi.js';
 import { useGetNetworkStatusQuery } from '../api/networkApi.js';
 import { useGetMyTasksQuery } from '../api/workflowApi.js';
@@ -10,6 +9,8 @@ import { PlantIllustration, StatTile } from './home/homeUi.jsx';
 import LotsTabs from './home/LotsTabs.jsx';
 import { PlantGlance, VendorNokRate } from './home/QualityCards.jsx';
 import QualityTrend from './home/QualityTrend.jsx';
+import { HomeSummaryProvider } from './home/summary.jsx';
+import { useHomeSummary } from './home/useHomeSummary.js';
 import { ActiveTasks, RecentlyDone } from './home/TaskCards.jsx';
 
 const P = PERMISSIONS;
@@ -51,13 +52,15 @@ export default function Home() {
       </section>
 
       {can(P.MASTERS_VIEW) && <SetupWarning />}
-      <Figures />
+      <HomeSummaryProvider>
+        <Figures />
 
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
-        <QualityTrend />
-        <VendorNokRate />
-        <PlantGlance />
-      </div>
+        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
+          <QualityTrend />
+          <VendorNokRate />
+          <PlantGlance />
+        </div>
+      </HomeSummaryProvider>
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start">
         <ActiveTasks tasks={tasks} isLoading={tasksQuery.isLoading} error={tasksQuery.error} />
@@ -72,7 +75,7 @@ export default function Home() {
 /** The plant's open work, and where the user is connecting from. */
 function Figures() {
   const { can } = useAccess();
-  const { data: s } = useGetDashboardQuery({}, { pollingInterval: 120_000 });
+  const { s } = useHomeSummary();
   const { data: net } = useGetNetworkStatusQuery(undefined, { pollingInterval: 5 * 60_000 });
   const st = s?.imirByStatus ?? {};
   const n = (...keys) => keys.reduce((a, k) => a + (st[k] ?? 0), 0);

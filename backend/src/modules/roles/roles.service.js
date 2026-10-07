@@ -1,4 +1,4 @@
-import { ROLES } from '@qmas/shared';
+import { ADMIN_REQUIRED_PERMISSIONS, ROLES } from '@qmas/shared';
 import { getPool } from '../../db/pool.js';
 import { withTransaction } from '../../db/tx.js';
 import { AppError } from '../../shared/AppError.js';
@@ -31,10 +31,15 @@ async function knownPermissions(db, keys) {
   if (unknown.length) throw AppError.unprocessable(`Unknown permission: ${unknown.join(', ')}.`);
 }
 
-/** Replaces a role's permission set. System Admin always keeps every permission. */
+/** Replaces a role's permission set. System Admin always keeps ADMIN_REQUIRED_PERMISSIONS. */
 export async function setRolePermissions(ctx, code, permissions) {
-  if (code === ROLES.SYSTEM_ADMIN) throw AppError.unprocessable('System Admin always has every permission and cannot be changed.');
   const keys = [...new Set(permissions)];
+  if (code === ROLES.SYSTEM_ADMIN) {
+    const missing = ADMIN_REQUIRED_PERMISSIONS.filter((k) => !keys.includes(k));
+    if (missing.length) {
+      throw AppError.unprocessable(`System Admin must keep ${missing.join(', ')}: without them nobody could manage users and roles.`);
+    }
+  }
 
   const result = await withTransaction(ctx, async (db) => {
     const { rows: role } = await db.query('SELECT code FROM core.role WHERE code = $1 FOR UPDATE', [code]);

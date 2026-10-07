@@ -1,4 +1,4 @@
-import { ClipboardCheck, FileSpreadsheet, FileWarning, FileX2, ScanSearch } from 'lucide-react';
+import { ClipboardCheck, FileSpreadsheet, FileWarning, FileX2, LifeBuoy, RotateCcw, ScanSearch } from 'lucide-react';
 
 /** The kinds of work on the dashboard, in the order a lot moves through them. */
 export const KINDS = [
@@ -7,6 +7,9 @@ export const KINDS = [
   { key: 'deviation', label: 'Deviations', long: 'Deviations at your step', icon: FileWarning, verb: 'Open' },
   { key: 'capa', label: 'DN / CAPA', long: 'Defect notifications', icon: FileX2, verb: 'Open' },
   { key: 'format', label: 'Formats', long: 'Inspection formats', icon: FileSpreadsheet, verb: 'Open' },
+  // Administration
+  { key: 'admin', label: 'Reversals', long: 'Reversal requests to decide', icon: RotateCcw, verb: 'Review' },
+  { key: 'support', label: 'Support', long: 'Help-desk tickets', icon: LifeBuoy, verb: 'Open' },
 ];
 export const KIND = Object.fromEntries(KINDS.map((k) => [k.key, k]));
 
@@ -23,7 +26,7 @@ export function urgencyOf(t, now = Date.now()) {
     if (left < 0) return { level: 'overdue', rank: 0 };
     if (left < DAY) return { level: 'due', rank: 1 };
   }
-  if (t.sentBack) return { level: 'due', rank: 1 };
+  if (t.sentBack || t.urgent) return { level: 'due', rank: 1 }; // urgent: a high-priority ticket
   const waited = now - new Date(t.since).getTime();
   if (waited > 3 * DAY) return { level: 'stale', rank: 2 };
   if (waited > DAY) return { level: 'waiting', rank: 3 };

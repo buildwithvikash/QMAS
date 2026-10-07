@@ -43,10 +43,21 @@ async function reversalReviewers(db) {
   return rows;
 }
 
-async function usersById(db, ids) {
+/**
+ * Users by id, e.g. the inspector or initiator of a record. A user whose only role is System Admin is
+ * left out unless `admins`: the admin stands in for a role now and then, and the record's follow-ups
+ * belong to the people who work it, not to the admin's inbox.
+ */
+async function usersById(db, ids, { admins = false } = {}) {
   const list = [...new Set(ids.filter(Boolean))];
   if (!list.length) return [];
-  const { rows } = await db.query('SELECT id, email, full_name FROM core.app_user WHERE id = ANY($1) AND is_active', [list]);
+  const { rows } = await db.query(
+    `SELECT u.id, u.email, u.full_name FROM core.app_user u
+      WHERE u.id = ANY($1) AND u.is_active
+        AND ($2 OR NOT EXISTS (SELECT 1 FROM core.user_role r WHERE r.user_id = u.id AND r.role_code = $3)
+                OR EXISTS (SELECT 1 FROM core.user_role r WHERE r.user_id = u.id AND r.role_code <> $3))`,
+    [list, admins, ROLES.SYSTEM_ADMIN],
+  );
   return rows;
 }
 
@@ -353,12 +364,12 @@ export async function notifyForAction(db, entry) {
         button: 'Review the request', reason: 'You get this because you can reverse workflow steps.',
       });
     case 'REVERSED':
-      return send(usersById(db, [payload?.requestedBy, imir.inspected_by, dev?.initiator_id]), 'REVERSED', `${record} set back to ${payload?.toLabel ?? 'an earlier step'}`, `${remark ?? ''}\n\n${lot}`, recordLink, {
+      return send([...(await usersById(db, [payload?.requestedBy], { admins: true })), ...(await usersById(db, [imir.inspected_by, dev?.initiator_id]))], 'REVERSED', `${record} set back to ${payload?.toLabel ?? 'an earlier step'}`, `${remark ?? ''}\n\n${lot}`, recordLink, {
         tone: 'sendback', pill: 'Reversed', todo: `${by} reversed ${record} from "${payload?.fromLabel ?? '—'}" to "${payload?.toLabel ?? '—'}". Continue from there.`,
         button: 'Open the record', reason: 'You get this because you asked for the reversal or worked on this lot.',
       });
     case 'REVERSAL_REJECTED':
-      return send(usersById(db, [payload?.requestedBy]), 'REVERSAL', `${record}: reversal request not accepted`, `${remark ?? ''}\n\n${lot}`, recordLink, {
+      return send(usersById(db, [payload?.requestedBy], { admins: true }), 'REVERSAL', `${record}: reversal request not accepted`, `${remark ?? ''}\n\n${lot}`, recordLink, {
         tone: 'bad', todo: `${by} did not reverse the step. The reason is below.`, button: 'Open the record', reason: 'You get this because you asked for the reversal.',
       });
     default:
