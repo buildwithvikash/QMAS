@@ -87,6 +87,7 @@ export async function runSapSync({ userId = null, log } = {}) {
         previousPosition = lot.position ?? previousPosition;
         try {
           const outcome = await withTransaction({ userId }, async (db) => {
+            if (lot.error) throw AppError.unprocessable(lot.error);
             const { rows: existing } = await db.query('SELECT id FROM intg.sap_inspection_lot WHERE sap_lot_no = $1', [lot.sapLotNo]);
             if (existing[0]) {
               await db.query('UPDATE intg.sap_inspection_lot SET last_seen_at = now() WHERE id = $1', [existing[0].id]);
@@ -94,11 +95,11 @@ export async function runSapSync({ userId = null, log } = {}) {
             }
             const { plantId, vendorId, itemId } = await upsertMasters(db, lot);
             const { rows: l } = await db.query(
-              `INSERT INTO intg.sap_inspection_lot (sap_lot_no, plant_sap_code, grn_no, grn_date, invoice_no, vendor_code, vendor_name, item_code,
+              `INSERT INTO intg.sap_inspection_lot (sap_lot_no, plant_sap_code, grn_no, grn_date, inspection_start, invoice_no, vendor_code, vendor_name, item_code,
                  item_description, item_category, uom, inward_qty, payload, sync_run_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING id`,
-              [lot.sapLotNo, lot.plantSapCode, lot.grnNo, lot.grnDate, lot.invoiceNo ?? null, lot.vendorCode, lot.vendorName ?? null, lot.itemCode,
-                lot.itemDescription ?? null, lot.itemCategory ?? null, lot.uom ?? null, lot.inwardQty, lot, runId],
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING id`,
+              [lot.sapLotNo, lot.plantSapCode, lot.grnNo, lot.grnDate, lot.inspectionStart ?? null, lot.invoiceNo ?? null, lot.vendorCode, lot.vendorName ?? null, lot.itemCode,
+                lot.itemDescription ?? null, lot.itemCategory ?? null, lot.uom ?? null, lot.inwardQty, lot.raw ?? lot, runId],
             );
             const { rows: m } = await db.query(
               `INSERT INTO qms.imir (sap_lot_id, plant_id, item_id, vendor_id, grn_no, grn_date, invoice_no, inward_qty, uom, status, created_by, updated_by)
@@ -110,7 +111,9 @@ export async function runSapSync({ userId = null, log } = {}) {
           if (outcome !== 'SEEN') summary.createdLots += 1;
           if (outcome === 'OPENED') summary.openedImirs += 1;
         } catch (err) {
-          if (!failed) {
+          // A record SAP sent unreadable is reported, not retried: QMAS cannot fix it, and holding
+          // the position would make every pull read it again. Other failures (e.g. an unknown plant) are retried.
+          if (!failed && !lot.error) {
             failed = true;
             retryFrom = before;
           }

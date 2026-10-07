@@ -14,7 +14,7 @@ The design (requirements, decisions, workflow, database, API) is in [docs/design
 |---|---|---|
 | **A — Foundation** | Auth (own accounts, lockout, rotating refresh tokens), roles & plant-scoped permissions, users, masters (plants, vendors, items, categories, UOM, instruments), sampling table, configurable numbering, audit trail, logging, migrations, web app shell | **Done** |
 | **B — Inspection formats** | One format per item; drafts from current version / SAN-SIR (mock) / copy / blank; Git-style versioning (fast-forward, three-way merge, conflict resolution, replace for unrelated first drafts); approval queue by submission time; version history and compare; Excel bulk import with template | **Done** |
-| **C — IMIR & inspection** | SAP QA32 adapter (mock) with scheduled pull and retry; IMIR opening (number, pinned format, sampling, reliability due per item + vendor); inspection sheet with server-side OK/NOK, photos/PDFs per visual sample; tablets: registration, checkout locks, replay-safe offline sync, installable offline web app (the same app on desktops and tablets; no separate native app) | **Done** |
+| **C — IMIR & inspection** | SAP QA32 adapter (demo queue, or the SAP API) mapped to the "SAP Data v1" record, with scheduled pull and retry; IMIR opening (number, pinned format, sampling, reliability due per item + vendor); inspection sheet with server-side OK/NOK, photos/PDFs per visual sample; tablets: registration, checkout locks, replay-safe offline sync, installable offline web app (the same app on desktops and tablets; no separate native app) | **Done** |
 | **D — Review & deviation** | Incharge review (approve — a failed lot with a final approval remark — / send back / escalate; no direct rejection); IQC Head approve (final approval remark) or hold → deviation offered to SCM and VD, the first to accept owns it; IQC In-Charge remark on the Deviation Form; recommendation to reject → own department Head (approve / send back) → IQC Head rejects; once the department approved the deviation the lot can no longer be rejected; OK / Not-OK quantities verified by the IQC In-Charge; reversal of a user's own decision (Help & Support → Reversal) decided by an admin, with an audit trail; Deviation Form with revisions; configurable department approval chain (Sub-Head, optionally Head); IQC Head final decision bound by the senior outcome; parallel senior escalation (highest rank wins, CQA waits for PDC, 24 h Operations Head timeout adds CQA, CQA / Central Ops / Admin override, append-only decisions); OK / Not-OK quantities with 14-day auto-close; workflow history; My Tasks inbox | **Done** |
 | **E — DN/CAPA, reports, notifications** | Defect Notification (Incoming) raised from an escalated lot: DN number and date stamped once, pre-filled defect table, 4 images, CAPA applicable Y/N; CAPA cycles (submit → approve or resubmit) with vendor documents kept as evidence; 3-day CAPA due with reminders every 2 days; DN and IMIR (JIR layout) PDFs; "mail to myself" with the DN attached; in-app bell and e-mail for every hand-off through a transactional outbox with retries; dashboard tiles; reports (IMIR register, pending ageing, vendor quality with rejected PPM, deviation register, DN/CAPA ageing) on screen or as Excel | **Done** |
 | **After E — enhancements** | Custom format builder (palette, table view, paste from Excel) with change history and an inspector-view preview; format import with on-screen review and correction; redesigned IMIR page; reports with charts; audit trail; SAP sync monitor; System Health, Error Log, crash screen and alerts; help & support desk with reversal requests; incoming lots list with column choice, worker names and a blinking dot on lots waiting for you; guided tours; dark mode; local PostgreSQL setup (see [What is in the app](#what-is-in-the-app)) | **Done** |
@@ -56,6 +56,38 @@ Permissions page. Pages without a permission (Help Center, My Tickets, Reversal)
 | Reports | `reports.view` |
 | Help & Support | `support.manage` (work on everyone's tickets) |
 
+## SAP inspection lots
+
+QMAS reads QA32 inspection lots with these fields ("SAP Data v1"); the mapping is in
+`backend/src/integrations/sap/qa32.js`:
+
+| SAP field | QMAS |
+|---|---|
+| Inspection Lot | SAP lot no. (a lot is pulled once) |
+| Item Code / Item Description | item master |
+| Material Group | item category ("Material group" on the IMIR) |
+| Plant | plant (must exist under Master Config → Plants) |
+| Lot Qty / Base Unit of Measure | inward quantity and UOM (decides the sample size) |
+| Start of Inspection | GRN date (SAP sends no separate GRN date) and "Start of inspection" |
+| Vendor Code / Vendor Description | vendor master |
+| GRN | GRN no. |
+
+SAP sends no invoice number. `SAP_MODE=mock` (default) pulls from a demo queue; `SAP_MODE=api` reads
+`SAP_API_URL` (a JSON list of records with the same fields; see `backend/.env.example`).
+
+**Demo data:** queue an SAP export, then use **Administration → SAP Sync → Pull now** (5 lots per
+pull, `SAP_BATCH_SIZE`; the worker also pulls every `SAP_SYNC_INTERVAL_MIN` minutes):
+
+```
+npm -w backend run sap:demo -- "C:\path\SAP Data v1.xlsx"
+```
+
+Options: `--from 2026-09-25 --to 2026-10-01` (Start of Inspection), `--limit 200`, `--plant 1125`,
+`--spread-plants` (each lot to a random active plant), and `--reset` (removes the demo queue and the
+pulled demo lots nobody has worked on).
+Records already queued or pulled are skipped. Lots open for inspection once their item has an
+approved format; until then they wait as "Waiting for format".
+
 ## Tablets
 
 Tablets use this same web app; there is no separate Android app. On each tablet:
@@ -74,7 +106,7 @@ which can be restored on the same tablet if its storage is ever lost.
 ```
 packages/shared   constants, permissions, zod schemas, pure rules (numbering, sampling, inspection,
                   readings) — used by the API and the web app
-backend           Express 5 API · modules (routes → services → SQL) · migrations 0001–0021 · worker · tests
+backend           Express 5 API · modules (routes → services → SQL) · migrations 0001–0022 · worker · tests
   logs/            daily log files (not in git)
 frontend          React 19 + Vite + Tailwind 4 + RTK Query, WRL Tool Report look and feel
   src/styles/dark.css   dark theme, generated by frontend/scripts/build-dark-theme.py
