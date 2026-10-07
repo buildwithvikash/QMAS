@@ -40,9 +40,11 @@ The design (requirements, decisions, workflow, database, API) is in [docs/design
 ## Permissions
 
 Menus and actions follow the permissions of a user's roles (the API checks them again on every
-request). System Admin holds all of them; the other built-in roles get the defaults in
-`packages/shared/src/constants/permissions.js`, and any role can be changed on the Roles &
-Permissions page. Pages without a permission (Help Center, My Tickets, Reversal) are open to everyone signed in.
+request). System Admin starts with all of them; the other built-in roles get the defaults in
+`packages/shared/src/constants/permissions.js`. Any role, System Admin included, can be changed on
+the Roles & Permissions page; System Admin always keeps viewing and managing users and roles, so the
+system can always be put right. Changes survive releases: a new permission is given to System Admin
+once, when it first appears. Pages without a permission (Help Center, My Tickets, Reversal) are open to everyone signed in.
 
 | Area | Permissions |
 |---|---|

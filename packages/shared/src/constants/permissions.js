@@ -80,6 +80,12 @@ const P = PERMISSIONS;
 const VIEW_ALL = [P.DASHBOARD_VIEW, P.MASTERS_VIEW, P.FORMATS_VIEW, P.IMIR_VIEW, P.DEVIATION_VIEW, P.DN_VIEW, P.REPORTS_VIEW];
 const SENIOR = [...VIEW_ALL, P.ESCALATION_DECIDE];
 
+/**
+ * System Admin's permissions can be edited, except these: without them nobody could manage users and
+ * roles any more, and the system could not be put right from the app.
+ */
+export const ADMIN_REQUIRED_PERMISSIONS = Object.freeze([P.USERS_VIEW, P.USERS_MANAGE, P.ROLES_MANAGE]);
+
 /** Default grants seeded into core.role_permission. Admins can change them later. */
 export const DEFAULT_ROLE_PERMISSIONS = Object.freeze({
   [ROLES.SYSTEM_ADMIN]: Object.values(P),

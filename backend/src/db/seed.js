@@ -1,4 +1,5 @@
 import {
+  ADMIN_REQUIRED_PERMISSIONS,
   DEFAULT_ROLE_PERMISSIONS,
   DEVIATION_ACTIONS,
   DEVIATION_SEVERITIES,
@@ -52,22 +53,28 @@ export async function seedReferenceData(pool) {
       );
     }
 
+    const added = []; // permissions new in this release
     for (const [i, p] of PERMISSION_DEFINITIONS.entries()) {
-      await client.query(
+      const { rows } = await client.query(
         `INSERT INTO core.permission (key, module, description, sort_order) VALUES ($1, $2, $3, $4)
-         ON CONFLICT (key) DO UPDATE SET module = EXCLUDED.module, description = EXCLUDED.description, sort_order = EXCLUDED.sort_order`,
+         ON CONFLICT (key) DO UPDATE SET module = EXCLUDED.module, description = EXCLUDED.description, sort_order = EXCLUDED.sort_order
+         RETURNING (xmax = 0) AS inserted`,
         [p.key, p.module, p.description, i],
       );
+      if (rows[0].inserted) added.push(p.key);
     }
 
-    // Default grants only for roles that have none yet; System Admin always holds every permission.
+    // Default grants only for roles that have none yet, so an admin's changes are kept. System Admin
+    // also gets each permission new in this release (it can be taken away afterwards) and always
+    // keeps the ones needed to manage users and roles.
     for (const [role, keys] of Object.entries(DEFAULT_ROLE_PERMISSIONS)) {
       const { rows } = await client.query('SELECT 1 FROM core.role_permission WHERE role_code = $1 LIMIT 1', [role]);
-      if (rows.length === 0 || role === ROLES.SYSTEM_ADMIN) {
+      const grant = rows.length === 0 ? keys : role === ROLES.SYSTEM_ADMIN ? [...added, ...ADMIN_REQUIRED_PERMISSIONS] : [];
+      if (grant.length) {
         await client.query(
           `INSERT INTO core.role_permission (role_code, permission_key)
            SELECT $1, unnest($2::text[]) ON CONFLICT DO NOTHING`,
-          [role, keys],
+          [role, grant],
         );
       }
     }

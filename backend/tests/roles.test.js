@@ -65,3 +65,45 @@ describe('custom roles', () => {
     expect((await agent.post('/api/v1/roles').send(details(`Nope ${letters()}`))).status).toBe(403);
   });
 });
+
+describe('System Admin permissions', () => {
+  it('can be edited like any role, but keeps what is needed to manage users and roles', async () => {
+    const before = (await admin.get('/api/v1/roles')).body.data.find((r) => r.code === 'SYSTEM_ADMIN').permissions;
+    try {
+      // Take Reports away from System Admin: an admin user loses the reports.
+      const without = before.filter((k) => k !== 'reports.view');
+      const res = await admin.put('/api/v1/roles/SYSTEM_ADMIN/permissions').send({ permissions: without });
+      expect(res.status).toBe(200);
+      expect(res.body.data.permissions).not.toContain('reports.view');
+      const fresh = (await adminAgent()).agent;
+      expect((await fresh.get('/api/v1/reports/imir-register')).status).toBe(403);
+      expect((await fresh.get('/api/v1/users')).status).toBe(200);
+
+      // Removing user or role management is refused, whichever one is missing.
+      for (const key of ['users.view', 'users.manage', 'roles.manage']) {
+        const bad = await admin.put('/api/v1/roles/SYSTEM_ADMIN/permissions').send({ permissions: before.filter((k) => k !== key) });
+        expect(bad.status).toBe(422);
+        expect(bad.body.message).toContain(key);
+      }
+    } finally {
+      await admin.put('/api/v1/roles/SYSTEM_ADMIN/permissions').send({ permissions: before });
+    }
+  });
+});
+
+describe('System Admin permissions after a release', () => {
+  it('keeps the admin\'s changes when reference data is seeded again', async () => {
+    const { seedReferenceData } = await import('../src/db/seed.js');
+    const { getPool } = await import('../src/db/pool.js');
+    const before = (await admin.get('/api/v1/roles')).body.data.find((r) => r.code === 'SYSTEM_ADMIN').permissions;
+    try {
+      await admin.put('/api/v1/roles/SYSTEM_ADMIN/permissions').send({ permissions: before.filter((k) => k !== 'reports.view') });
+      await seedReferenceData(getPool());
+      const after = (await admin.get('/api/v1/roles')).body.data.find((r) => r.code === 'SYSTEM_ADMIN').permissions;
+      expect(after).not.toContain('reports.view');
+      expect(after).toEqual(expect.arrayContaining(['users.view', 'users.manage', 'roles.manage']));
+    } finally {
+      await admin.put('/api/v1/roles/SYSTEM_ADMIN/permissions').send({ permissions: before });
+    }
+  });
+});
