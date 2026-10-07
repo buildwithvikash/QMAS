@@ -7,7 +7,7 @@ const num = (v) => (v === null || v === undefined ? null : Number(v));
 export const IMIR_SELECT = `SELECT m.id, m.imir_no, m.status, m.awaiting_reason, m.plant_id, p.sap_code AS plant_sap_code, p.name AS plant_name,
        m.item_id, i.item_code, i.description AS item_description, i.drawing_no, i.drawing_rev, c.name AS item_category,
        m.vendor_id, v.vendor_code, v.name AS vendor_name, m.grn_no, m.grn_date, m.invoice_no, m.inward_qty, m.uom,
-       l.sap_lot_no, m.format_version_id, fv.version_no AS format_version_no, fv.format_no, fv.common_format_no, fv.ref_standard,
+       l.sap_lot_no, l.inspection_start AS sap_inspection_start, m.format_version_id, fv.version_no AS format_version_no, fv.format_no, fv.common_format_no, fv.ref_standard,
        m.sampling_plan_id, m.lot_size, m.sample_size, m.accept_no, m.reject_no, m.sampling_basis,
        m.model, m.inspector_remark, m.result, m.defective_samples, m.opened_at, m.inspection_started_at,
        m.inspected_by, iu.full_name AS inspected_by_name, m.submitted_at, m.submitted_by, su.full_name AS submitted_by_name, m.closed_at,

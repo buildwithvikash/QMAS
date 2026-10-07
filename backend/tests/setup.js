@@ -19,6 +19,8 @@ setEnv(env);
 // Uploaded test files go to a throwaway folder, not backend/uploads.
 const uploadDir = mkdtempSync(path.join(tmpdir(), 'qmas-uploads-'));
 process.env.UPLOAD_DIR = uploadDir;
+// Tests queue several lots at once and expect one pull to take them all.
+process.env.SAP_BATCH_SIZE = '500';
 initPool({ connectionString: env.DATABASE_URL, max: 20 });
 
 afterAll(async () => {

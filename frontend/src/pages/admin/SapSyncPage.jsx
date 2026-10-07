@@ -324,7 +324,7 @@ function SimulateLot({ onClose }) {
         {f('invoiceNo', 'Invoice no.')}
         {f('itemCode', 'Item code')}
         {f('itemDescription', 'Item description')}
-        {f('itemCategory', 'Item category')}
+        {f('itemCategory', 'Material group')}
         {f('uom', 'UOM')}
         {f('vendorCode', 'Vendor code')}
         {f('vendorName', 'Vendor name')}

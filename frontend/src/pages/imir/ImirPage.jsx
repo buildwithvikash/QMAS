@@ -314,7 +314,7 @@ function GeneralInfo({ sheet }) {
         <Field label="GRN date" icon={Calendar}>{formatDate(sheet.grnDate)}</Field>
         <Field label="Vendor" icon={Building2}>{sheet.vendorName}</Field>
         <Field label="Item description" icon={Package}>{sheet.itemDescription}</Field>
-        <Field label="Item category" icon={Layers}>{sheet.itemCategory}</Field>
+        <Field label="Material group" icon={Layers}>{sheet.itemCategory}</Field>
         <Field label="Plant" icon={Factory}>{sheet.plantName}</Field>
         <Field label="Item code" icon={Tag}>{sheet.itemCode}</Field>
         <Field label="Inward qty" icon={Boxes}>{formatQty(sheet.inwardQty, sheet.uom)}</Field>
@@ -400,12 +400,14 @@ function ModelDetails({ sheet, readOnly, onPatch, opened }) {
   );
 }
 
-/** The rest of the lot: vendor code, invoice, sampling. */
+/** The rest of the lot: SAP inspection lot, vendor code, invoice, sampling. */
 function AdditionalInfo({ sheet }) {
   return (
     <section className="card">
       <CardHead icon={FileText} tone="bg-slate-100 text-slate-600" title="Additional information" />
       <dl className="grid grid-cols-2 gap-x-3 gap-y-3 px-4 pb-4 md:grid-cols-4">
+        <Field label="SAP inspection lot">{sheet.sapLotNo}</Field>
+        <Field label="Start of inspection (SAP)">{sheet.sapInspectionStart ? formatDate(sheet.sapInspectionStart) : null}</Field>
         <Field label="Vendor code">{sheet.vendorCode}</Field>
         <Field label="Invoice no.">{sheet.invoiceNo}</Field>
         <Field label="Sample">{sheet.sampleSize ? `${sheet.sampleSize} of ${sheet.lotSize}${sheet.samplingBasis === 'FULL_LOT' ? ' (whole lot)' : ''}` : null}</Field>
