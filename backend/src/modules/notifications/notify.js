@@ -124,7 +124,7 @@ const STAGE = {
 };
 // Workflow steps in the "Recent activity" table: label and colour.
 const STEP = {
-  SUBMIT: ['Inspection submitted', 'info'], APPROVE: ['Approved by Incharge', 'good'], REVERT: ['Sent back to inspector', 'warn'],
+  SUBMIT: ['Inspection submitted', 'info'], TAKE_OVER: ['Inspection taken over', 'warn'], APPROVE: ['Approved by Incharge', 'good'], REVERT: ['Sent back to inspector', 'warn'],
   REJECT: ['Rejected by Incharge', 'bad'], ESCALATE: ['Escalated', 'esc'], HEAD_APPROVE: ['Approved by IQC Head', 'good'], HOLD: ['Put on hold', 'esc'],
   ACCEPT: ['Accepted by department', 'info'], REVERSAL_REQUEST: ['Reversal requested', 'warn'], REVERSED: ['Reversed by admin', 'esc'],
   REVERSAL_REJECTED: ['Reversal request rejected', 'warn'],
@@ -206,6 +206,12 @@ export async function notifyForAction(db, entry) {
       return send(usersWith(db, { permission: P.IMIR_REVIEW, plantId }), 'REVIEW', `IMIR ${imir.imir_no} submitted (${imir.result}) — review needed`, lot, imirLink, {
         tone: 'action', todo: `Review the inspection by ${by}: approve it, send it back, or escalate it to the IQC Head.`, button: 'Review the IMIR',
         reason: 'You get this as IQC Incharge of this plant.',
+      });
+    case 'TAKE_OVER':
+      return send(usersById(db, [payload?.fromUserId]), 'TAKEN_OVER', `IMIR ${imir.imir_no}: ${actor?.full_name ?? 'another inspector'} took over the inspection`, lot, imirLink, {
+        tone: 'sendback', pill: 'Taken over',
+        todo: `${by} is now inspecting this lot${payload?.lapsed ? ' (you had saved nothing for a while)' : ''}. The readings you entered stay on the report.`,
+        button: openImir, reason: 'You get this because you were inspecting this lot.',
       });
     case 'REVERT':
       return send(usersById(db, [imir.inspected_by]), 'REVERTED', `IMIR ${imir.imir_no} sent back to you`, `${remark ?? ''}\n\n${lot}`, imirLink, {

@@ -17,6 +17,12 @@ export const imirApi = baseApi
         // The screen keeps its own copy while typing; only lists are refreshed.
         invalidatesTags: ['Imir'],
       }),
+      // Another inspector holds the lot: continue it yourself.
+      takeOverImir: b.mutation({
+        query: (id) => ({ url: `/imirs/${id}/take-over`, method: 'POST' }),
+        transformResponse: envelope,
+        invalidatesTags: (_r, _e, id) => ['Imir', imirTag(id), 'Tasks'],
+      }),
       submitImir: b.mutation({
         query: ({ id, ...body }) => ({ url: `/imirs/${id}/actions`, method: 'POST', body: { action: 'submit', ...body } }),
         transformResponse: envelope,
@@ -55,6 +61,7 @@ export const {
   useGetImirChangesQuery,
   useSaveInspectionMutation,
   useSubmitImirMutation,
+  useTakeOverImirMutation,
   useUploadAttachmentMutation,
   useDeleteAttachmentMutation,
   useGetDevicesQuery,

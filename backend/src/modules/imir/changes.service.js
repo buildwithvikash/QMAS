@@ -15,7 +15,7 @@ const NOISE = new Set([
   'format_version_id', 'sampling_plan_id', 'dn_id', 'deviation_id', 'submitted_by', 'inspected_by', 'closed_by', 'initiator_id',
   'qty_entered_by', 'qty_verified_by', 'reviewed_by', 'entity_type', 'entity_id', 'ref', 'storage_key', 'sha256', 'uploaded_by',
   'uploaded_at', 'deleted_by', 'mime_type', 'size_bytes', 'section', 'last_tested_at', 'approval_levels', 'current_level',
-  'inspection_started_at', 'opened_at', 'awaiting_reason',
+  'inspection_started_at', 'opened_at', 'awaiting_reason', 'claimed_by', 'claimed_at',
 ]);
 
 const TABLES = {

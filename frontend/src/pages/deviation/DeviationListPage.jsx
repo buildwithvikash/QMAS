@@ -104,6 +104,10 @@ export default function DeviationListPage() {
     { key: 'action', header: 'Disposition', text: (r) => (r.action ? ACTION_NAMES[r.action] : ''), render: (r) => (r.action ? <span className="text-sm">{ACTION_NAMES[r.action]}</span> : <span className="text-xs text-slate-400">suggested<br />{r.suggestedActions.map((a) => ACTION_NAMES[a]).join(' / ')}</span>) },
     { key: 'qty', header: 'Qty', align: 'right', text: (r) => formatQty(r.deviationQty ?? r.inwardQty, r.uom), render: (r) => <span className="whitespace-nowrap tabular">{formatQty(r.deviationQty ?? r.inwardQty, r.uom)}</span> },
     { key: 'plant', header: 'Plant', text: (r) => r.plantName ?? r.plantSapCode, render: (r) => <span className="text-sm">{r.plantName ?? r.plantSapCode}</span> },
+    // The SCM / VD initiator who took the deviation (and fills its form); none until a department accepts it.
+    { key: 'initiator', header: 'Raised by', text: (r) => r.initiatorName ?? '', render: (r) => (r.initiatorName
+      ? <div className="max-w-36"><div className="text-sm text-slate-800 truncate" title={r.initiatorName}>{r.initiatorName}</div><div className="text-[11px] text-slate-400 whitespace-nowrap">{r.department}{r.acceptedAt ? ` · ${formatDate(r.acceptedAt)}` : ''}</div></div>
+      : <span className="text-xs text-slate-400">Not taken yet</span>) },
     { key: 'stage', header: 'Stage', sortable: true, text: (r) => STAGES[r.stage]?.[0] ?? r.stage, render: (r) => <div className="space-y-1"><DeviationStage stage={r.stage} outcome={r.outcome} />{r.stage === 'UNDER_DEVIATION' && <div className="text-[11px] text-amber-700">due {formatDate(r.qtyDueAt)}</div>}</div> },
     { key: 'status', header: 'Status', text: (r) => statusOf(r)[0], render: (r) => <StatusPill r={r} /> },
     { key: 'updatedAt', header: 'Updated', sortable: true, text: (r) => formatDate(r.updatedAt), render: (r) => <span className="text-xs text-slate-500 whitespace-nowrap">{formatRelative(r.updatedAt)}</span> },

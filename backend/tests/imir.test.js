@@ -57,7 +57,7 @@ describe('SAP inward lots → IMIR', () => {
 });
 
 describe('inspection', () => {
-  it('computes decisions on the server, needs every required cell and the model, then locks', async () => {
+  it('computes decisions on the server, needs every required cell (the model is optional), then locks', async () => {
     const itemCode = uid('INS');
     await approveFormat(itemCode);
     const { imirId } = await inwardLot({ itemCode, qty: 10 }); // sample 3
@@ -73,7 +73,7 @@ describe('inspection', () => {
     expect(early.status).toBe(422);
 
     m = (await agent.put(`/api/v1/imirs/${imirId}/inspection`).send({ cells: cellsFor(m, 'DIMENSIONAL', [10, 10.1, 9.95]) })).body.data;
-    expect(m.allowedActions).toEqual(['inspect']); // model still missing
+    expect(m.allowedActions).toEqual(['inspect', 'submit']); // every cell filled: the model is optional
     m = (await agent.put(`/api/v1/imirs/${imirId}/inspection`).send({ model: 'FR-250', inspectorRemark: 'All good' })).body.data;
     expect(m.allowedActions).toEqual(['inspect', 'submit']);
 

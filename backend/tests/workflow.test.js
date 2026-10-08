@@ -496,3 +496,17 @@ describe('System Admin', () => {
     expect(steps.find((h) => h.action === 'SENIOR_DECISION').payload.forRole).toBe('PLANT_HEAD');
   });
 });
+
+describe('who raised a deviation', () => {
+  it('is the SCM / VD initiator who took it, and can be filtered on', async () => {
+    const { devId } = await heldLot('SCM');
+    const me = ok(await A.scm.get('/api/v1/auth/me')).user;
+    const d = ok(await A.admin.get(`/api/v1/deviations/${devId}`));
+    expect(d.initiatorName).toBe(me.fullName);
+    const f = encodeURIComponent(JSON.stringify({ mode: 'all', rules: [{ field: 'initiator', op: 'equals', value: me.fullName }] }));
+    const list = await A.admin.get(`/api/v1/deviations?page=1&pageSize=100&filter=${f}`);
+    expect(list.status).toBe(200);
+    expect(list.body.data.map((r) => r.id)).toContain(devId);
+    expect(list.body.data.every((r) => r.initiatorName === me.fullName)).toBe(true);
+  });
+});

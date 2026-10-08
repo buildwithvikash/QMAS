@@ -37,6 +37,7 @@ export function formatValue(key, v, unit) {
 /** Names of workflow steps in the History panel. */
 export const HISTORY_LABELS = {
   SUBMIT: 'Inspection submitted',
+  TAKE_OVER: 'Inspection taken over',
   APPROVE: 'Approved by Incharge',
   REJECT: 'Rejected by Incharge',
   REVERT: 'Sent back to inspector',

@@ -78,6 +78,7 @@ export async function checkout(ctx, user, { deviceId, imirIds }) {
     for (const id of imirIds) {
       try {
         const m = await imir.detail(id, user, db);
+        if (m.allowedActions.includes('take_over')) throw AppError.conflict(`${m.claim.name} is inspecting this lot on the web; take it over there first.`);
         if (!m.allowedActions.includes('inspect')) throw AppError.conflict(m.status === 'AWAITING_FORMAT' ? 'Not open yet (no approved format).' : 'Not open for inspection.');
         if (m.plantId !== device.plant_id) throw AppError.conflict(`Lot belongs to plant ${m.plantSapCode}; this tablet is registered for another plant.`);
         if (m.checkoutDeviceId && m.checkoutDeviceId !== deviceId) throw AppError.conflict(`Already on tablet ${m.checkoutDeviceCode} (${m.checkoutUserName}).`);

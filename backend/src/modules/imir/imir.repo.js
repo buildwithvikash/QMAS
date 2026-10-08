@@ -13,7 +13,8 @@ export const IMIR_SELECT = `SELECT m.id, m.imir_no, m.status, m.awaiting_reason,
        m.inspected_by, iu.full_name AS inspected_by_name, m.submitted_at, m.submitted_by, su.full_name AS submitted_by_name, m.closed_at,
        m.created_at, m.updated_at, m.row_version,
        co.device_id AS checkout_device_id, d.device_code AS checkout_device_code, d.name AS checkout_device_name,
-       co.user_id AS checkout_user_id, cu.full_name AS checkout_user_name, co.checked_out_at
+       co.user_id AS checkout_user_id, cu.full_name AS checkout_user_name, co.checked_out_at,
+       m.claimed_by, cl.full_name AS claimed_by_name, m.claimed_at
   FROM qms.imir m
   JOIN core.plant p ON p.id = m.plant_id
   JOIN mst.item i ON i.id = m.item_id
@@ -25,7 +26,8 @@ export const IMIR_SELECT = `SELECT m.id, m.imir_no, m.status, m.awaiting_reason,
   LEFT JOIN core.app_user su ON su.id = m.submitted_by
   LEFT JOIN qms.imir_checkout co ON co.imir_id = m.id
   LEFT JOIN core.device d ON d.id = co.device_id
-  LEFT JOIN core.app_user cu ON cu.id = co.user_id`;
+  LEFT JOIN core.app_user cu ON cu.id = co.user_id
+  LEFT JOIN core.app_user cl ON cl.id = m.claimed_by`;
 
 const fix = (r) => r && { ...r, inwardQty: num(r.inwardQty) };
 

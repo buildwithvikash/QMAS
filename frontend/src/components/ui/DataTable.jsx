@@ -103,7 +103,7 @@ export default function DataTable({
         <div className="px-3 py-3 border-b border-slate-100 space-y-2">
           <div className="flex flex-wrap items-end gap-2">
             {leading}
-            <div className="ml-auto flex items-center gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-2">
               {filter && <FilterBuilder {...filter} />}
               {tableId && <ColumnPicker columns={columns} hidden={hidden} onToggle={toggle} />}
               {tableId && <ViewSwitch view={view} onChange={setView} />}

@@ -38,7 +38,7 @@ export async function listOpen(db, stages) {
 const FILTER_FIELDS = listFieldMap(LIST_FIELDS.deviations, {
   deviationNo: 'd.deviation_no', imirNo: 'm.imir_no', itemCode: 'i.item_code', itemDescription: 'i.description', vendorName: 'v.name', vendorCode: 'v.vendor_code',
   plant: 'p.name', department: 'd.department', stage: 'd.stage', severity: 'd.severity', action: 'd.action', seniorEffective: 'd.senior_effective',
-  outcome: 'd.outcome', deviationQty: 'd.deviation_qty', createdAt: { sql: 'd.created_at', tz: true }, closedAt: { sql: 'd.closed_at', tz: true },
+  outcome: 'd.outcome', deviationQty: 'd.deviation_qty', initiator: 'iu.full_name', createdAt: { sql: 'd.created_at', tz: true }, closedAt: { sql: 'd.closed_at', tz: true },
 });
 
 const SORTABLE = { createdAt: 'd.created_at', updatedAt: 'd.updated_at', deviationNo: 'd.deviation_no', stage: 'd.stage', itemCode: 'i.item_code' };

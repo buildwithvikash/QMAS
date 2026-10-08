@@ -27,6 +27,8 @@ const schema = z.object({
   SINGLE_SESSION: bool.default(true),
   // Sign out after this many minutes without user activity (0 = never). Tablets are exempt.
   IDLE_TIMEOUT_MIN: z.coerce.number().int().min(0).max(24 * 60).default(30),
+  // An inspector's hold on a lot lapses after this many minutes without a save (others may then continue).
+  INSPECTION_CLAIM_MINUTES: z.coerce.number().int().min(5).max(8 * 60).default(30),
   SERVE_WEB_DIST: z.string().optional(),
   // Mail: 'log' keeps mail on this machine (logged, marked sent); 'smtp' sends through SES SMTP or any relay.
   MAIL_TRANSPORT: z.enum(['log', 'smtp']).default('log'),
