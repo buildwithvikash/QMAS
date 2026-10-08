@@ -73,8 +73,10 @@ QMAS reads QA32 inspection lots with these fields ("SAP Data v1"); the mapping i
 | Start of Inspection | GRN date (SAP sends no separate GRN date) and "Start of inspection" |
 | Vendor Code / Vendor Description | vendor master |
 | GRN | GRN no. |
+| Invoice No (optional) | invoice no.; also read as "Invoice No.", "Invoice Number", "Invoice" or "Vendor Invoice No" |
 
-SAP sends no invoice number. `SAP_MODE=mock` (default) pulls from a demo queue; `SAP_MODE=api` reads
+"SAP Data v1" has no invoice column; the exact SAP field name is to be confirmed with the SAP team,
+and the lot is read without it. `SAP_MODE=mock` (default) pulls from a demo queue; `SAP_MODE=api` reads
 `SAP_API_URL` (a JSON list of records with the same fields; see `backend/.env.example`).
 
 **Demo data:** queue an SAP export, then use **Administration → SAP Sync → Pull now** (5 lots per
@@ -85,8 +87,10 @@ npm -w backend run sap:demo -- "C:\path\SAP Data v1.xlsx"
 ```
 
 Options: `--from 2026-09-25 --to 2026-10-01` (Start of Inspection), `--limit 200`, `--plant 1125`,
-`--spread-plants` (each lot to a random active plant), and `--reset` (removes the demo queue and the
-pulled demo lots nobody has worked on).
+`--spread-plants` (each lot to a random active plant), `--reset` (removes the demo queue and the
+pulled demo lots nobody has worked on) and `--fill-invoices` (gives demo lots already queued or
+pulled a demo invoice number where they have none). Records without an invoice number get a demo one
+from their GRN (`INV/2026/471578`).
 Records already queued or pulled are skipped. Lots open for inspection once their item has an
 approved format; until then they wait as "Waiting for format".
 

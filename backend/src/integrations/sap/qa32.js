@@ -15,7 +15,7 @@
  *   GRN                    grnNo
  *   Vendor Description     vendorName
  *   Material Group         itemCategory → item category master
- *   (not sent)             invoiceNo = null
+ *   Invoice No             invoiceNo                              optional: not in "SAP Data v1"; used when SAP sends it
  */
 
 export const SAP_FIELDS = Object.freeze({
@@ -30,6 +30,14 @@ export const SAP_FIELDS = Object.freeze({
   grnNo: 'GRN',
   vendorName: 'Vendor Description',
   itemCategory: 'Material Group',
+});
+
+/**
+ * Optional fields, with the header spellings accepted (the exact SAP name is to be confirmed with
+ * the SAP team; any of these works). A record without one is still read.
+ */
+export const SAP_OPTIONAL_FIELDS = Object.freeze({
+  invoiceNo: ['Invoice No', 'Invoice No.', 'Invoice Number', 'Invoice', 'Vendor Invoice No'],
 });
 
 const REQUIRED = ['sapLotNo', 'itemCode', 'plantSapCode', 'inwardQty', 'inspectionStart', 'vendorCode', 'grnNo'];
@@ -81,12 +89,13 @@ export function sapDate(v) {
  */
 export function fromSapRecord(rec) {
   const get = (key) => rec[SAP_FIELDS[key]];
+  const optional = (key) => SAP_OPTIONAL_FIELDS[key].map((name) => rec[name]).find((v) => v !== null && v !== undefined && v !== '');
   const lot = {
     sapLotNo: text(get('sapLotNo')),
     plantSapCode: text(get('plantSapCode')),
     grnNo: text(get('grnNo')),
     inspectionStart: sapDate(get('inspectionStart')),
-    invoiceNo: null,
+    invoiceNo: text(optional('invoiceNo')),
     vendorCode: text(get('vendorCode'))?.toUpperCase() ?? null,
     vendorName: text(get('vendorName')),
     itemCode: text(get('itemCode'))?.toUpperCase() ?? null,

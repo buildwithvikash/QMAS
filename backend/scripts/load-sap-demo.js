@@ -8,16 +8,24 @@
 //   npm run sap:demo -- file.xlsx --spread-plants                  each lot to a random active plant
 //   npm run sap:demo -- --reset                                    remove the demo data again: the queue,
 //                                                                  and pulled demo lots nobody has worked on
+//   npm run sap:demo -- --fill-invoices                            give demo lots already queued or pulled a
+//                                                                  demo invoice number where they have none
+// "SAP Data v1" has no invoice number: each demo record gets a demo one (from its GRN) unless the
+// file has an "Invoice No" column.
 // Needs SAP_MODE=mock (the default). Records already queued or pulled are skipped.
 import ExcelJS from 'exceljs';
 import pg from 'pg';
-import { fromSapRecord, SAP_FIELDS } from '../src/integrations/sap/qa32.js';
+import { fromSapRecord, SAP_FIELDS, SAP_OPTIONAL_FIELDS } from '../src/integrations/sap/qa32.js';
+
+/** A demo vendor invoice number for a record without one, the same on every run (from the GRN). */
+const demoInvoice = (grnNo, inspectionStart) => `INV/${String(inspectionStart ?? '').slice(0, 4) || 'DEMO'}/${String(grnNo).slice(-6)}`;
+const hasInvoice = (rec) => SAP_OPTIONAL_FIELDS.invoiceNo.some((name) => rec[name] !== null && rec[name] !== undefined && rec[name] !== '');
 
 // Arguments: the file, and --name value options.
 const args = process.argv.slice(2);
 const options = {};
 let file;
-const FLAGS = new Set(['reset', 'spread-plants']);
+const FLAGS = new Set(['reset', 'spread-plants', 'fill-invoices']);
 for (let i = 0; i < args.length; i += 1) {
   if (FLAGS.has(args[i].slice(2))) options[args[i].slice(2)] = true;
   else if (args[i].startsWith('--')) options[args[i].slice(2)] = args[(i += 1)];
@@ -26,6 +34,10 @@ for (let i = 0; i < args.length; i += 1) {
 const opt = (name) => options[name];
 if (opt('reset')) {
   await reset();
+  if (!file) process.exit(0);
+}
+if (opt('fill-invoices')) {
+  await fillInvoices();
   if (!file) process.exit(0);
 }
 if (!file) {
@@ -59,6 +71,7 @@ ws.eachRow((row, i) => {
     if (h) rec[h] = v;
   });
   if (Object.values(rec).every((v) => v === null || v === undefined || v === '')) return;
+  if (!hasInvoice(rec) && rec[SAP_FIELDS.grnNo]) rec['Invoice No'] = demoInvoice(rec[SAP_FIELDS.grnNo], rec[SAP_FIELDS.inspectionStart]);
   const { lot, error } = fromSapRecord(rec);
   if (error) problems.push(`row ${i}: ${error}`);
   else records.push({ rec, lot });
@@ -105,6 +118,43 @@ console.log(`Read ${records.length + problems.length} records; ${chosen.length} 
 console.log(`Waiting to be pulled: ${waiting[0].n}. Pull them with SAP Sync → Pull now (${process.env.SAP_BATCH_SIZE || 5} per pull) or let the worker do it.`);
 if (unknownPlants.length) console.log(`Note: plant(s) ${unknownPlants.join(', ')} are not in Master Config → Plants; their lots will fail until the plant is added.`);
 if (problems.length) console.log(`Skipped ${problems.length} unreadable record(s):\n  ${problems.slice(0, 10).join('\n  ')}${problems.length > 10 ? '\n  …' : ''}`);
+
+/**
+ * Gives demo lots that have no invoice number a demo one: records still in the queue, pulled SAP
+ * lots and their IMIRs. Only empty invoice numbers are filled; nothing else changes.
+ */
+async function fillInvoices() {
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+  const db = await pool.connect();
+  const inv = `'INV/' || coalesce(left(p->>'Start of Inspection', 4), 'DEMO') || '/' || right(p->>'GRN', 6)`;
+  try {
+    await db.query('BEGIN');
+    const { rowCount: queued } = await db.query(
+      `UPDATE intg.sap_mock_lot q SET payload = p || jsonb_build_object('Invoice No', ${inv})
+         FROM (SELECT seq, payload AS p FROM intg.sap_mock_lot) x
+        WHERE q.seq = x.seq AND p ? 'Inspection Lot' AND coalesce(p->>'Invoice No', '') = ''`,
+    );
+    const { rows: lots } = await db.query(
+      `UPDATE intg.sap_inspection_lot l SET payload = p || jsonb_build_object('Invoice No', ${inv}), invoice_no = ${inv}
+         FROM (SELECT id, payload AS p FROM intg.sap_inspection_lot) x
+        WHERE l.id = x.id AND p ? 'Inspection Lot' AND l.invoice_no IS NULL
+        RETURNING l.id, l.invoice_no`,
+    );
+    const { rowCount: imirs } = await db.query(
+      `UPDATE qms.imir m SET invoice_no = l.invoice_no FROM intg.sap_inspection_lot l
+        WHERE l.id = m.sap_lot_id AND m.invoice_no IS NULL AND l.id = ANY($1)`,
+      [lots.map((r) => r.id)],
+    );
+    await db.query('COMMIT');
+    console.log(`Invoice numbers filled: ${queued} queued record(s), ${lots.length} pulled lot(s), ${imirs} IMIR(s).`);
+  } catch (err) {
+    await db.query('ROLLBACK');
+    throw err;
+  } finally {
+    db.release();
+    await pool.end();
+  }
+}
 
 /**
  * Removes demo data: queued SAP records not yet pulled, and pulled demo lots (records in the SAP

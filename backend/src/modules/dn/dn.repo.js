@@ -35,7 +35,7 @@ export async function summaryForImir(db, imirId) {
 
 const FILTER_FIELDS = listFieldMap(LIST_FIELDS.dns, {
   dnNo: 'n.dn_no', imirNo: 'm.imir_no', itemCode: 'i.item_code', itemDescription: 'i.description', vendorName: 'v.name', vendorCode: 'v.vendor_code',
-  plant: 'p.name', status: 'n.status', capaApplicable: 'n.capa_applicable', defectiveQty: 'n.defective_qty',
+  plant: 'p.name', status: 'n.status', capaApplicable: 'n.capa_applicable', defectiveQty: 'n.defective_qty', createdBy: 'bu.full_name',
   dnDate: { sql: 'n.dn_date', tz: true }, capaDueAt: { sql: 'n.capa_due_at', tz: true }, closedAt: { sql: 'n.closed_at', tz: true },
 });
 

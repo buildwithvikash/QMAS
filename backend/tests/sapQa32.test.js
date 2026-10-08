@@ -31,6 +31,13 @@ describe('SAP QA32 record mapping', () => {
     });
   });
 
+  it('reads the invoice number when SAP sends one (any usual header spelling), and leaves it empty otherwise', () => {
+    expect(fromSapRecord(record({ 'Invoice No': ' TI/2026-27/0451 ' })).lot.invoiceNo).toBe('TI/2026-27/0451');
+    expect(fromSapRecord(record({ 'Invoice Number': 4512 })).lot.invoiceNo).toBe('4512');
+    expect(fromSapRecord(record({ 'Invoice No.': '' })).lot.invoiceNo).toBeNull();
+    expect(fromSapRecord(record()).error).toBeUndefined(); // still optional
+  });
+
   it('reads the date and quantity formats SAP may use', () => {
     expect(sapDate('08.09.2026')).toBe('2026-09-08');
     expect(sapDate('20260908')).toBe('2026-09-08');

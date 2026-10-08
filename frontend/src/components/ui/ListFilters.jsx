@@ -45,14 +45,16 @@ export function SearchBox({ value, onChange, placeholder = 'Search…' }) {
     setText(value ?? '');
   }
   return (
-    <form className="flex flex-col gap-1" onSubmit={(e) => { e.preventDefault(); onChange(text); }}>
+    // Takes the room left on the filter row (and gives it up first), so the filters, search and the
+    // Filter / Columns / List-Cards buttons share one line on laptop and desktop screens.
+    <form className="flex flex-1 flex-col gap-1 min-w-[13rem] max-w-md" onSubmit={(e) => { e.preventDefault(); onChange(text); }}>
       <span className="text-[11px] font-medium text-transparent select-none" aria-hidden="true">Search</span>
       <div className={`${box} flex items-center overflow-hidden`}>
         <Search className="w-4 h-4 text-slate-400 ml-2.5 shrink-0" />
         <input value={text} onChange={(e) => { setText(e.target.value); onChange(e.target.value); }} placeholder={placeholder} aria-label="Search"
-          className="w-56 lg:w-64 h-full px-2 bg-transparent text-sm focus:outline-none" />
-        <button type="submit" className="h-full px-3.5 inline-flex items-center gap-1.5 bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 cursor-pointer">
-          <Search className="w-4 h-4" />Search
+          className="min-w-0 flex-1 h-full px-2 bg-transparent text-sm focus:outline-none" />
+        <button type="submit" aria-label="Search" className="h-full px-3 inline-flex shrink-0 items-center gap-1.5 bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 cursor-pointer">
+          <Search className="w-4 h-4" /><span className="hidden 2xl:inline">Search</span>
         </button>
       </div>
     </form>

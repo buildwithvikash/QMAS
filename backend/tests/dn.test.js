@@ -415,3 +415,14 @@ describe('change history', () => {
     expect((await other.get(`/api/v1/imirs/${m.id}/changes`)).status).toBe(404);
   });
 });
+
+describe('who raised a DN', () => {
+  it('lists the DN with the name of the user who raised it, and filters on it', async () => {
+    const f = encodeURIComponent(JSON.stringify({ mode: 'all', rules: [{ field: 'createdBy', op: 'contains', value: 'Test' }] }));
+    const admin = (await (await import('./helpers.js')).adminAgent()).agent;
+    const res = await admin.get(`/api/v1/dns?page=1&pageSize=100&filter=${f}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    expect(res.body.data.every((r) => /Test/.test(r.createdByName))).toBe(true);
+  });
+});
