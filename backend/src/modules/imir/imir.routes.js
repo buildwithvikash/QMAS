@@ -60,6 +60,11 @@ function sendFile(res, buffer, name, kind) {
 }
 
 
+// Another inspector holds the lot: continue it yourself (recorded in the history; they are told).
+router.post('/:id/take-over', canInspect, validate({ params: uuidParam }), async (req, res) => {
+  ok(res, await imir.takeOver(txContext(req), req.user, params(req).id));
+});
+
 router.put('/:id/inspection', canInspect, validate({ params: uuidParam, body: inspectionSaveSchema }), async (req, res) => {
   ok(res, await imir.saveProgress(txContext(req), req.user, params(req).id, body(req)));
 });

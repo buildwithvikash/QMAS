@@ -1,4 +1,5 @@
 import { PERMISSIONS, ROLES } from '@qmas/shared';
+import { getEnv } from '../../config/env.js';
 import { getPool } from '../../db/pool.js';
 import { camelRows } from '../../shared/sql.js';
 import * as devRepo from '../deviation/deviation.repo.js';
@@ -55,8 +56,10 @@ export async function myTasks(user) {
          LEFT JOIN qms.imir_checkout c ON c.imir_id = m.id LEFT JOIN core.device d ON d.id = c.device_id
          LEFT JOIN LATERAL (SELECT a.action, a.remark FROM qms.imir_action a WHERE a.imir_id = m.id ORDER BY a.at DESC, a.id DESC LIMIT 1) la ON true
         WHERE m.status IN ('OPEN', 'IN_INSPECTION') AND ($1::smallint[] IS NULL OR m.plant_id = ANY($1))
+          -- not a lot another inspector is working on right now
+          AND (m.claimed_by IS NULL OR m.claimed_by = $2 OR m.claimed_at < now() - make_interval(mins => $3))
         ORDER BY m.created_at LIMIT 1000`,
-      [actPlants(me, [P.IMIR_INSPECT])],
+      [actPlants(me, [P.IMIR_INSPECT]), me.id, getEnv().INSPECTION_CLAIM_MINUTES],
     );
     for (const m of camelRows(rows)) {
       if (!actingRole(me, { permission: P.IMIR_INSPECT, plantId: m.plantId })) continue;

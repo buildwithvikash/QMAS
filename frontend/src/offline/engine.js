@@ -119,7 +119,6 @@ export async function recordSubmit(imirId) {
   const b = await store.getBundle(imirId);
   const evaluation = evaluateSheet(b);
   if (evaluation.missing.length) throw new Error(`${evaluation.missing.length} required observation(s) are still empty.`);
-  if (!b.model) throw new Error('Enter the model before submitting.');
   await store.putBundle({ ...b, pendingSubmit: true });
   await store.addOp({ opId: crypto.randomUUID(), type: 'SUBMIT', imirId, clientTime: new Date().toISOString(), recordedBy: currentUserId, payload: {} });
   notify();

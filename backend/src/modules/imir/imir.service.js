@@ -1,6 +1,7 @@
 import { cellDecision, determineSample, evaluateInspection, PERMISSIONS, reliabilityDue } from '@qmas/shared';
 import { getPool } from '../../db/pool.js';
 import { withTransaction } from '../../db/tx.js';
+import { getEnv } from '../../config/env.js';
 import { AppError } from '../../shared/AppError.js';
 import { pageMeta } from '../../shared/sql.js';
 import { plantScope } from '../auth/access.service.js';
@@ -135,16 +136,20 @@ export async function detail(id, user, db = getPool()) {
   const evaluation = evaluate(imir, merged, cells);
 
   const allowedActions = [];
+  const claim = claimOf(imir, user);
   if (user && EDITABLE.includes(imir.status) && canInspect(user, imir)) {
-    allowedActions.push('inspect');
-    if (!evaluation.missing.length && imir.model) allowedActions.push('submit');
+    if (claim?.active && !claim.mine && !imir.checkoutDeviceId) allowedActions.push('take_over'); // someone else is on it
+    else {
+      allowedActions.push('inspect');
+      if (!evaluation.missing.length) allowedActions.push('submit');
+    }
   }
   if (user) allowedActions.push(...imirReviewActions(user, imir));
   // DN: once the lot was escalated to the IQC Head or rejected by the Incharge, one per lot (slide 7).
   if (user && !dn && steps.some((h) => (h.action === 'ESCALATE' || (h.action === 'REJECT' && imir.status === 'CLOSED_REJECTED')) && !h.deviationId) && actingRole(user, { permission: PERMISSIONS.DN_MANAGE, plantId: imir.plantId })) {
     allowedActions.push('raise_dn');
   }
-  return { ...imir, checkpoints: merged, cells, attachments, evaluation, history: steps, deviation, dn, allowedActions };
+  return { ...imir, checkpoints: merged, cells, attachments, evaluation, history: steps, deviation, dn, allowedActions, claim };
 }
 
 function evaluate(imir, checkpoints, cells) {
@@ -157,6 +162,52 @@ function evaluate(imir, checkpoints, cells) {
   });
 }
 
+// ── Who is inspecting (one inspector at a time) ───────────────────────────────
+
+const IST_TIME = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false });
+
+/**
+ * The inspector holding the lot: { userId, name, at (last save), active, mine }, or null. The hold
+ * lapses after INSPECTION_CLAIM_MINUTES without a save; a lapsed hold no longer stops anyone.
+ */
+export function claimOf(imir, user) {
+  if (!imir.claimedBy || imir.status !== 'IN_INSPECTION') return null;
+  const active = Date.now() - new Date(imir.claimedAt).getTime() < getEnv().INSPECTION_CLAIM_MINUTES * 60_000;
+  return { userId: imir.claimedBy, name: imir.claimedByName, at: imir.claimedAt, active, mine: !!user && imir.claimedBy === user.id };
+}
+
+/** Moves the lot to `user`: the report's inspector becomes them, and the step is in the history. */
+async function takeClaim(db, user, imir, { lapsed }) {
+  const before = claimOf(imir, user);
+  await db.query('UPDATE qms.imir SET claimed_by = $2, claimed_at = now(), inspected_by = $2 WHERE id = $1', [imir.id, user.id]);
+  if (before && !before.mine) {
+    await logAction(db, {
+      imirId: imir.id, action: 'TAKE_OVER', fromStatus: imir.status, toStatus: imir.status, actorId: user.id, actingRole: inspectingRole(user, imir),
+      remark: lapsed ? `Continued after ${before.name} saved nothing for ${getEnv().INSPECTION_CLAIM_MINUTES} minutes` : null,
+      payload: { fromUserId: before.userId, fromName: before.name, lapsed },
+    });
+  }
+}
+
+/** Another inspector is working on the lot right now: refuse with who and since when. */
+function assertNotClaimedByOther(imir, user) {
+  const c = claimOf(imir, user);
+  if (c?.active && !c.mine) {
+    throw AppError.conflict(`${c.name} is inspecting this lot (last saved ${IST_TIME.format(new Date(c.at))}). Take the lot over to continue.`, { code: 'CLAIMED' });
+  }
+}
+
+/** Takes the lot over from the inspector holding it (the Take over button). */
+export async function takeOver(ctx, user, id) {
+  await withTransaction(ctx, async (db) => {
+    const imir = await lockForInspection(db, user, id, null, { allowClaimed: true });
+    const c = claimOf(imir, user);
+    if (!c || c.mine) return; // nothing to take over: the lot is free or already the user's
+    await takeClaim(db, user, imir, { lapsed: !c.active });
+  });
+  return detail(id, user);
+}
+
 function inspectingRole(user, imir) {
   const a = user.assignments.find((x) => x.permissions.includes(PERMISSIONS.IMIR_INSPECT) && (x.actionScope === 'ALL' || x.plantId === null || x.plantId === imir.plantId));
   return a?.roleCode ?? null;
@@ -164,7 +215,7 @@ function inspectingRole(user, imir) {
 
 // ── Inspection ────────────────────────────────────────────────────────────────
 
-async function lockForInspection(db, user, id, deviceId) {
+async function lockForInspection(db, user, id, deviceId, { allowClaimed = false } = {}) {
   const imir = await repo.get(db, id, { forUpdate: true });
   if (!imir) throw AppError.notFound('IMIR');
   assertCanView(user, imir);
@@ -178,6 +229,8 @@ async function lockForInspection(db, user, id, deviceId) {
   if (imir.checkoutDeviceId && imir.checkoutDeviceId !== deviceId) {
     throw AppError.conflict(`This lot is checked out to tablet ${imir.checkoutDeviceCode} (${imir.checkoutUserName}). Record it there, or ask the Incharge to release it.`, { code: 'CHECKED_OUT' });
   }
+  // A tablet checkout already gives the lot to one inspector; otherwise the active hold decides.
+  if (!allowClaimed && !(imir.checkoutDeviceId && imir.checkoutDeviceId === deviceId)) assertNotClaimedByOther(imir, user);
   return imir;
 }
 
@@ -257,8 +310,11 @@ export async function saveProgress(ctx, user, id, body, { clientTime = null } = 
       if (sets.length) await db.query(`UPDATE qms.imir_checkpoint SET ${sets.join(', ')}, updated_at = now(), updated_by = $3 WHERE imir_id = $1 AND checkpoint_uid = $2`, args);
     }
 
+    // The saving inspector holds the lot (taking over a lapsed hold is recorded).
+    const held = claimOf(imir, user);
+    if (held && !held.mine) await takeClaim(db, user, imir, { lapsed: true });
     await db.query(
-      `UPDATE qms.imir SET status = 'IN_INSPECTION',
+      `UPDATE qms.imir SET status = 'IN_INSPECTION', claimed_by = $2, claimed_at = now(),
               model = CASE WHEN $3::boolean THEN $4 ELSE model END,
               inspector_remark = CASE WHEN $5::boolean THEN $6 ELSE inspector_remark END,
               inspection_started_at = COALESCE(inspection_started_at, now()), inspected_by = COALESCE(inspected_by, $2)
@@ -270,7 +326,7 @@ export async function saveProgress(ctx, user, id, body, { clientTime = null } = 
 }
 
 /**
- * Submits the inspection: every required cell must be filled and the model recorded. The server
+ * Submits the inspection: every required cell must be filled (the model is optional). The server
  * computes the result, records reliability tests for the due-date check, locks the observations
  * and releases any tablet checkout.
  */
@@ -279,7 +335,6 @@ export async function submit(ctx, user, id, { rowVersion, deviceId }) {
     const imir = await lockForInspection(db, user, id, deviceId);
     if (rowVersion !== null && rowVersion !== undefined && imir.rowVersion !== rowVersion) throw AppError.staleVersion('This IMIR');
     const full = await detail(id, null, db);
-    if (!full.model) throw AppError.unprocessable('Enter the model before submitting.', [{ path: 'model', message: 'Enter the model.' }]);
     const { missing, result, defectiveSamples, checkpointResults } = full.evaluation;
     if (missing.length) {
       throw AppError.unprocessable(`${missing.length} required observation${missing.length > 1 ? 's are' : ' is'} still empty.`, missing.map((m) => ({ path: `${m.checkpointUid}${m.sampleNo ? `:${m.sampleNo}` : ''}`, message: m.field })));
@@ -296,7 +351,7 @@ export async function submit(ctx, user, id, { rowVersion, deviceId }) {
       }
     }
     await db.query(
-      `UPDATE qms.imir SET status = 'SUBMITTED', result = $2, defective_samples = $3, submitted_at = now(), submitted_by = $4 WHERE id = $1`,
+      `UPDATE qms.imir SET status = 'SUBMITTED', result = $2, defective_samples = $3, submitted_at = now(), submitted_by = $4, claimed_by = NULL, claimed_at = NULL WHERE id = $1`,
       [id, result, defectiveSamples, user.id],
     );
     await db.query('DELETE FROM qms.imir_checkout WHERE imir_id = $1', [id]);

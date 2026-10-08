@@ -94,9 +94,12 @@ describe('Home, Incoming Lots and the database agree', () => {
     expect(s.imirByStatus).toEqual(truth);
     const c = ok(await insp.get('/api/v1/imirs/counts'));
     expect(c.toInspect).toBe(truth.OPEN ?? 0);
-    // Their inspection tasks: every open lot of their plant (none of another plant).
+    // Their inspection tasks: every open lot of their plant (none of another plant), except lots
+    // another inspector is working on right now.
     const tasks = ok(await insp.get('/api/v1/tasks/me')).filter((x) => x.kind === 'inspect');
-    const [o] = await q("SELECT count(*)::int AS n FROM qms.imir WHERE plant_id = $1 AND status IN ('OPEN', 'IN_INSPECTION')", [p]);
+    const me = ok(await insp.get('/api/v1/auth/me')).user;
+    const [o] = await q(`SELECT count(*)::int AS n FROM qms.imir WHERE plant_id = $1 AND status IN ('OPEN', 'IN_INSPECTION')
+                           AND (claimed_by IS NULL OR claimed_by = $2 OR claimed_at < now() - interval '30 minutes')`, [p, me.id]);
     expect(tasks.length).toBe(Math.min(o.n, 1000));
     expect(tasks.every((x) => x.plantSapCode === '1115')).toBe(true);
   });

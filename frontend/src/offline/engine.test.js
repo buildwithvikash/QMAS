@@ -95,8 +95,7 @@ describe('offline inspection engine', () => {
     net.online = false;
     await expect(engine.recordSubmit(IMIR)).rejects.toThrow('2 required observation(s) are still empty.');
     await engine.recordSave(IMIR, { cells: [cell(1, 10), cell(2, 10)] });
-    await expect(engine.recordSubmit(IMIR)).rejects.toThrow('Enter the model before submitting.');
-    await engine.recordSave(IMIR, { model: 'M1' });
+    await engine.recordSave(IMIR, { model: 'M1' }); // optional: submitting works without it too
     await engine.recordSubmit(IMIR);
     expect((await store.getBundle(IMIR)).pendingSubmit).toBe(true);
     await expect(engine.recordSave(IMIR, { model: 'M2' })).rejects.toThrow('waiting to be submitted');

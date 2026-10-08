@@ -1,12 +1,12 @@
 import { MAX_SAMPLES } from '@qmas/shared';
 import {
   AlertTriangle, ArrowLeft, Boxes, Building2, Calendar, CheckCircle2, ChevronDown, ChevronsDownUp, ChevronsUpDown, ClipboardCheck, CloudOff, Factory, FileText, FlaskConical, Hash, Info, Layers, ListChecks, Loader2,
-  Package, Printer, Ruler, Save, Search, Send, Tablet, Tag, Trash2, UserRound, X,
+  Package, Printer, Ruler, Save, Search, Send, Tablet, Tag, Trash2, UserCheck, UserRound, X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useDeleteAttachmentMutation, useGetImirQuery, useSaveInspectionMutation, useSubmitImirMutation, useUploadAttachmentMutation } from '../../api/imirApi.js';
+import { useDeleteAttachmentMutation, useGetImirQuery, useSaveInspectionMutation, useSubmitImirMutation, useTakeOverImirMutation, useUploadAttachmentMutation } from '../../api/imirApi.js';
 import Button from '../../components/ui/Button.jsx';
 import ExportLinks from '../../components/ui/ExportLinks.jsx';
 import { Select, TextInput } from '../../components/ui/fields.jsx';
@@ -46,7 +46,10 @@ function mergePatch(a, b) {
  */
 export default function ImirPage() {
   const { id } = useParams();
-  const { data: server, isLoading, error, refetch } = useGetImirQuery(id);
+  const [watching, setWatching] = useState(false); // another inspector holds the lot: show their readings as they save
+  const { data: server, isLoading, error, refetch } = useGetImirQuery(id, { pollingInterval: watching ? 15_000 : 0 });
+  const heldByOther = !!(server?.claim?.active && !server.claim.mine);
+  useEffect(() => setWatching(heldByOther), [heldByOther]);
   const [bundle, setBundle] = useState(undefined); // undefined = not checked yet, null = not on this tablet
   const [pendingFiles, setPendingFiles] = useState([]);
 
@@ -72,13 +75,17 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
   const [dialog, setDialog] = useState(null);
   const pending = useRef(null);
   const timer = useRef(null);
+  const latestVersion = useRef(initial.rowVersion); // the server's version after our last save
   const [save] = useSaveInspectionMutation();
   const navigate = useNavigate();
   const readOnly = mode === 'view' || !!sheet.pendingSubmit;
 
   // Keep in step with the server copy when nothing is waiting to be saved.
   useEffect(() => {
-    if (!pending.current) setSheet(initial);
+    if (!pending.current) {
+      setSheet(initial);
+      latestVersion.current = initial.rowVersion;
+    }
   }, [initial]);
 
   const flush = useCallback(async () => {
@@ -88,6 +95,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
     setSaving(true);
     try {
       const res = await save({ id: sheet.id, ...patch }).unwrap();
+      latestVersion.current = res.rowVersion;
       // Keep what the user typed since; take status, version and the server's evaluation.
       setSheet((s) => ({ ...s, status: res.status, rowVersion: res.rowVersion, allowedActions: res.allowedActions, cells: pending.current ? s.cells : res.cells, evaluation: pending.current ? s.evaluation : res.evaluation }));
     } catch (err) {
@@ -96,6 +104,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
     } finally {
       setSaving(false);
     }
+    return latestVersion.current;
   }, [save, sheet.id, onRefresh]);
 
   useEffect(() => () => { clearTimeout(timer.current); flush(); }, [flush]);
@@ -122,7 +131,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
   for (const f of pendingFiles) photosByCell[`${f.checkpointUid}:${f.sampleNo}`] = (photosByCell[`${f.checkpointUid}:${f.sampleNo}`] ?? 0) + 1;
 
   const ev = sheet.evaluation;
-  const canSubmit = !readOnly && ev && ev.missing.length === 0 && !!sheet.model;
+  const canSubmit = !readOnly && ev && ev.missing.length === 0;
 
   const progress = sheetProgress(sheet);
   const [find, setFind] = useState('');
@@ -170,6 +179,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
         <Link to={mode === 'tablet' ? '/tablet' : '/imirs'} className="text-xs font-semibold text-slate-500 hover:text-slate-800 flex items-center gap-1"><ArrowLeft className="w-3.5 h-3.5" />{mode === 'tablet' ? 'This tablet' : 'Incoming lots'}</Link>
         <ImirStatus status={sheet.status} />
         {mode === 'tablet' && <span className="inline-flex items-center gap-1 text-xs font-semibold text-violet-700"><Tablet className="w-3.5 h-3.5" />On this tablet</span>}
+        {sheet.claim?.active && !sheet.claim.mine && mode !== 'tablet' && <HeldNotice key={sheet.claim.userId} sheet={sheet} onRefresh={onRefresh} />}
         {mode !== 'tablet' && sheet.imirNo && <ExportLinks href={`/api/v1/imirs/${sheet.id}`} />}
       </PageHeader>
 
@@ -263,7 +273,7 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
             <button type="button" onClick={goToMissing} className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-900 hover:bg-amber-100 cursor-pointer">
               {ev.missing.length} empty: go to next
             </button>
-          ) : !sheet.model && <span className="text-xs text-amber-700">Enter the model</span>}
+          ) : null}
           <div className="ml-auto flex items-center gap-2">
             {mode === 'online' && <span className="text-xs text-slate-400">{saving ? 'Saving…' : 'All changes saved'}</span>}
             <Button variant="secondary" icon={Save} loading={saving} onClick={saveDraft}>Save draft</Button>
@@ -276,6 +286,59 @@ function InspectScreen({ mode, initial, pendingFiles, onRefresh }) {
       {dialog?.type === 'photo' && <PhotoDialog sheet={sheet} cp={dialog.cp} mode={mode} onClose={() => setDialog(null)} onRefresh={onRefresh} />}
       {dialog?.type === 'photos' && <PhotosViewer sheet={sheet} cp={dialog.cp} sampleNo={dialog.sampleNo} pendingFiles={pendingFiles} readOnly={readOnly || mode === 'tablet'} onClose={() => setDialog(null)} />}
     </div>
+  );
+}
+
+/**
+ * Another inspector is entering this lot's readings: a dialog on opening the lot (view along, or
+ * take it over), then a chip in the header that opens it again.
+ */
+function HeldNotice({ sheet, onRefresh }) {
+  const [takeOver, { isLoading }] = useTakeOverImirMutation();
+  const [open, setOpen] = useState(true);
+  const { name, at } = sheet.claim;
+  const canTake = sheet.allowedActions.includes('take_over');
+  const go = async () => {
+    try {
+      await takeOver(sheet.id).unwrap();
+      toast.success(`You are now inspecting ${sheet.imirNo}. ${name} has been told.`);
+      setOpen(false);
+      onRefresh();
+    } catch (err) {
+      toast.error(apiError(err).message);
+    }
+  };
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} title="Who is inspecting this lot"
+        className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 hover:bg-amber-100 cursor-pointer">
+        <UserCheck className="h-3.5 w-3.5" />In use by {name}
+      </button>
+      {open && (
+        <Modal title="This lot is being inspected" onClose={() => setOpen(false)} size="sm"
+          footer={(
+            <>
+              <Button variant="secondary" onClick={() => setOpen(false)}>Just view</Button>
+              {canTake && <Button icon={UserCheck} loading={isLoading} onClick={go}>Take over</Button>}
+            </>
+          )}>
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-amber-100 text-amber-700"><UserCheck className="h-5 w-5" /></span>
+            <div className="min-w-0 text-sm text-slate-600">
+              <p className="text-slate-900"><b>{name}</b> is entering the readings of {sheet.imirNo}.</p>
+              <p className="mt-0.5 text-xs text-slate-500">Last saved {formatDateTime(at)}</p>
+              <p className="mt-3">You can view the lot; their readings appear here as they save.</p>
+              {canTake && (
+                <p className="mt-2">
+                  Take it over only if {name} is not continuing (for example, at a shift change). They will be told, their readings stay on the report,
+                  and you become the inspector named on it.
+                </p>
+              )}
+            </div>
+          </div>
+        </Modal>
+      )}
+    </>
   );
 }
 
@@ -372,11 +435,10 @@ function InspectionStatus({ sheet, stage, since, progress }) {
   );
 }
 
-/** The model the lot is for (entered by the inspector, required to submit) and the drawing. */
+/** The model the lot is for (entered by the inspector, optional) and the drawing. */
 function ModelDetails({ sheet, readOnly, onPatch, opened }) {
   const [model, setModel] = useState(sheet.model ?? '');
   useEffect(() => setModel(sheet.model ?? ''), [sheet.model]);
-  const missing = opened && !readOnly && !model.trim();
   return (
     <section className="card">
       <CardHead icon={Package} tone="bg-sky-100 text-sky-700" title="Model details">
@@ -385,14 +447,13 @@ function ModelDetails({ sheet, readOnly, onPatch, opened }) {
       <div className="px-4 pb-4">
         {opened ? (
           <>
-            <label htmlFor="imir-model" className="mb-1 block text-[11px] font-medium text-slate-500">Model <span className="text-rose-600">*</span></label>
+            <label htmlFor="imir-model" className="mb-1 block text-[11px] font-medium text-slate-500">Model <span className="font-normal text-slate-400">(optional)</span></label>
             <input id="imir-model" disabled={readOnly} value={model} placeholder="Model the lot is for" onChange={(e) => setModel(e.target.value)}
               onBlur={() => (model.trim() || null) !== (sheet.model ?? null) && onPatch({ model: model.trim() || null })}
               onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
               className={`w-full sm:w-72 min-h-9 rounded-lg border px-2.5 py-1.5 text-sm font-semibold focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:bg-slate-50 disabled:text-slate-900 ${
-                missing ? 'border-rose-300 bg-rose-50/60' : model.trim() ? 'border-emerald-300 bg-emerald-50/50 text-blue-800' : 'border-slate-300 bg-white'
+                model.trim() ? 'border-emerald-300 bg-emerald-50/50 text-blue-800' : 'border-slate-300 bg-white'
               }`} />
-            {missing && <p className="mt-1 text-[11px] text-rose-600">Needed before you can submit the report.</p>}
           </>
         ) : <p className="text-sm text-slate-500">Entered when the lot is inspected.</p>}
       </div>
@@ -495,8 +556,9 @@ function SubmitDialog({ sheet, mode, flush, onClose, onDone }) {
         await engine.recordSubmit(sheet.id);
         toast.success(navigator.onLine ? 'Submitting…' : 'Submitted on this tablet; it will be sent when online.');
       } else {
-        await flush();
-        await submit({ id: sheet.id, rowVersion: sheet.rowVersion }).unwrap();
+        // The version after any save still waiting: the sheet passed in may predate it.
+        const rowVersion = (await flush()) ?? sheet.rowVersion;
+        await submit({ id: sheet.id, rowVersion }).unwrap();
         toast.success(`IMIR ${sheet.imirNo} submitted`);
       }
       onDone();
