@@ -1,102 +1,43 @@
-**To:** IT Infrastructure / Cloud Team
-**Cc:** IQC Head, QMAS Project Lead
-**Subject:** Request for AWS setup for the QMAS application (Incoming Material Inspection & Defect Notification)
-
----
+**Subject:** Request for AWS Setup – QMAS Application
 
 Dear IT Team,
 
-The QMAS application (Incoming Material Inspection, Deviation and Defect Notification / CAPA) has finished development (Sprints A–E). We now need AWS resources to host it, starting with the **Dev / UAT** environment and then **Production**. Please arrange the setup below in our existing **AWS Mumbai (ap-south-1)** account.
+We have finished development of the QMAS application (Incoming Material Inspection, Deviation and Defect Notification / CAPA). We now need AWS resources to host it. Please set up the following in our existing AWS Mumbai (ap-south-1) account, first for Dev/UAT and then for Production.
 
-### 1. Application summary
+**Application details**
+- A Node.js 22 application. One Node.js process serves the web app and the API on port 4000. The health check is at /api/v1/health.
+- A background worker (a second Node.js process from the same code) handles SAP sync, reminders and e-mail. It must run on one server only.
+- About 200 users at the same time across 7 plants, on desktop browsers and Android tablets.
+- No Docker. The application runs directly on the servers, managed by PM2 with Nginx in front.
 
-| Item | Detail |
-|---|---|
-| Application | QMAS – web app plus API in **one Docker image** (Node.js 22, PostgreSQL) |
-| Users | About 200 at the same time, across 7 plants (1111, 1115, 1125, 1120, 1191, 1130, 1179) |
-| Access | Desktop browsers and Android tablets (an installable web app that also works offline) on the company network |
-| Container port | **4000** (HTTP), health check at **`GET /api/v1/health`** |
-| Processes | **API** (`node backend/src/server.js`) and a **background worker** (`node backend/src/worker.js`) for SAP sync, timers, CAPA reminders and mail. Both run from the same image |
-| Database migrations | One-off task before each release: `node backend/scripts/migrate.js` |
+**AWS services required**
+1. **VPC:** 2 Availability Zones, public subnets for the load balancer, private subnets for the application servers and database, and a NAT Gateway.
+2. **EC2 application servers:** 2 instances (m7i.large – 2 vCPU / 8 GB, 50 GB gp3 each), one in each Availability Zone, in the private subnets. Ubuntu 24.04 LTS or Amazon Linux 2023, with Node.js 22, PM2 and Nginx installed. For Dev/UAT, 1 instance (t3.large) is enough.
+3. **Application Load Balancer:** HTTPS (443) to port 4000 on both servers, with an idle timeout of 120 seconds.
+4. **CloudFront and AWS WAF:** in front of the load balancer, with the AWS managed rules and a rate limit.
+5. **RDS PostgreSQL 17:** Multi-AZ, db.m7g.large (db.t4g.medium for Dev), 100 GB gp3 storage with auto-scaling, encryption and SSL. Extensions: pgcrypto, pg_trgm, citext. Automated backups kept for 35 days.
+6. **S3:** a private, encrypted bucket with versioning for inspection photos and PDFs. Both servers must see the same files. If S3 can't be set up in time, please provide an EFS volume mounted on both servers instead.
+7. **Amazon SES:** production access, a verified company domain, and SMTP credentials for no-reply@<company-domain>.
+8. **Secrets Manager:** to store the database URL, the JWT secret, the SMTP credentials and the SAP API credentials.
+9. **Site-to-site VPN:** access from the application servers to the SAP QA32 API over the existing plant–AWS VPN. QMAS only reads from SAP.
+10. **CloudWatch:** the CloudWatch agent on both servers for logs and metrics, and alarms (errors, CPU, memory, disk, database storage), with alerts sent to IT and the QMAS team.
+11. **Domain and SSL:** qmas.<company-domain>, with ACM certificates for CloudFront and the load balancer.
+12. **Server access:** access to the servers through AWS Systems Manager (Session Manager), for deployments and support. An IAM role on the servers to read the secrets, use the S3 bucket and send logs to CloudWatch.
+13. **Backups:** daily AMI or EBS snapshots of the application servers.
 
-### 2. AWS services needed
+**What we need from IT**
+- AWS console access for the QMAS team
+- Server details and Session Manager access
+- RDS endpoint and the Secrets Manager details
+- S3 bucket name (or EFS details)
+- SES SMTP credentials and the verified sender address
+- The final domain name
+- Confirmation that the VPN connection to the SAP API is open
+- The company's public (internet) IP addresses for all plants and offices. QMAS only allows sign-in from the company network, so we need these addresses to allow our users in.
 
-| # | Service | Configuration requested (Prod; Dev/UAT can be smaller) |
-|---|---|---|
-| 1 | **VPC** | 2 Availability Zones; public subnets (ALB only) and private subnets (ECS, RDS); NAT Gateway for outbound traffic |
-| 2 | **ECR** | One private repository `qmas`, with scan on push |
-| 3 | **ECS Fargate** | Cluster `qmas`. **API service:** 2 tasks minimum (auto-scale to 4), 1 vCPU / 2 GB each. **Worker service:** exactly 1 task, 0.5 vCPU / 1 GB |
-| 4 | **Application Load Balancer** | Internet-facing, HTTPS 443 → target group on port 4000, health check `/api/v1/health`, idle timeout **120 s** (Excel reports and PDFs), HTTP → HTTPS redirect |
-| 5 | **CloudFront + AWS WAF** | CloudFront in front of the ALB; origin timeout **60 s**; allow all HTTP methods and forward cookies; WAF with the AWS managed rules (Core, Known Bad Inputs, IP reputation) and a rate limit |
-| 6 | **RDS for PostgreSQL 17** | **Multi-AZ**, `db.m7g.large` (Dev: `db.t4g.medium`, single-AZ is fine), 100 GB gp3 with storage auto-scaling, encrypted (KMS), SSL required. Extensions: `pgcrypto`, `pg_trgm`, `citext`. Automated backups with **PITR for 35 days**, monthly snapshots copied to a second region, Performance Insights on |
-| 7 | **S3** | Bucket for photos and PDFs (inspection photos, DN/CAPA evidence, support screenshots): private, Block Public Access, **versioning**, SSE-KMS, accessed only by the ECS task role. Uploads are up to 25 MB per request |
-| 8 | **Amazon SES** | Production access (out of sandbox), verified domain with DKIM/SPF/DMARC, sender `no-reply@<company-domain>`, **SMTP credentials** (port 587, STARTTLS) |
-| 9 | **Secrets Manager** | Secrets for: `DATABASE_URL`, `JWT_ACCESS_SECRET`, `SMTP_USER`, `SMTP_PASS`, `SAP_API_USER`, `SAP_API_PASSWORD` |
-| 10 | **Site-to-site VPN** | Use the existing plant ↔ AWS VPN so the **worker** can reach the SAP QA32 API (read only, HTTPS). We need the SAP API host/port opened from the private subnets |
-| 11 | **CloudWatch** | Log group `/ecs/qmas` (90-day retention), Container Insights; alarms for ALB 5xx, latency, unhealthy hosts, ECS task stopped, RDS CPU / free storage / connections, with notifications to the IT and QMAS support mailbox (SNS) |
-| 12 | **ACM + DNS** | Domain such as **`qmas.<company-domain>`**; ACM certificate (in **us-east-1** for CloudFront, and in ap-south-1 for the ALB); DNS record pointing to CloudFront |
-| 13 | **IAM** | ECS task execution role (ECR pull, Secrets Manager read, CloudWatch logs); task role (S3 read/write on the QMAS bucket only); a CI/CD deploy role for GitHub Actions (OIDC) to push to ECR and update ECS |
-
-### 3. Security groups and network
-
-- **ALB SG:** inbound 443 from CloudFront only (AWS managed prefix list `com.amazonaws.global.cloudfront.origin-facing`).
-- **ECS SG:** inbound 4000 from the ALB SG only.
-- **RDS SG:** inbound 5432 from the ECS SG only (plus a bastion host or SSM Session Manager for DBA access).
-- **Outbound from ECS:** SES SMTP (587), S3 / Secrets Manager / ECR (VPC endpoints preferred), SAP API over the VPN.
-- **Company public IPs:** please share the company's **public (egress) IP addresses** for all plants and offices. QMAS allows sign-in only from the company network, and these addresses are entered under *Administration → Network Access*. They can also be added as a WAF IP set if IT wants a second layer.
-
-### 4. Environment variables (set in the ECS task definition)
-
-```
-NODE_ENV=production
-PORT=4000
-SERVE_WEB_DIST=/app/frontend/dist
-DB_SSL=true
-DB_POOL_MAX=30
-COOKIE_SECURE=true
-TRUST_PROXY=2                # CloudFront + ALB
-LOG_TO_FILE=false            # CloudWatch collects stdout
-LOG_LEVEL=info
-MAIL_TRANSPORT=smtp
-MAIL_FROM=QMAS <no-reply@<company-domain>>
-SMTP_HOST=email-smtp.ap-south-1.amazonaws.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SAP_MODE=api
-SAP_API_URL=<to be shared by the SAP team>
-SAP_SYNC_INTERVAL_MIN=15
-APP_BASE_URL=https://qmas.<company-domain>
-# Secrets Manager: DATABASE_URL, JWT_ACCESS_SECRET, SMTP_USER, SMTP_PASS, SAP_API_USER, SAP_API_PASSWORD
-```
-
-### 5. Environments
-
-| Environment | Purpose | Notes |
-|---|---|---|
-| Dev / UAT | Testing and UAT at the pilot plant | Smaller sizes, single-AZ RDS allowed |
-| Production | Live use, rolled out plant by plant | Sizes as in section 2, Multi-AZ |
-
-Separate accounts are preferred; if that is not possible, separate VPCs or clear tagging (`Project=QMAS`, `Environment=dev|uat|prod`) is fine.
-
-### 6. What we need back from IT
-
-1. AWS account / environment details and console access (IAM Identity Center) for the QMAS team.
-2. ECR repository URI and the GitHub Actions deploy role ARN.
-3. RDS endpoint and the Secrets Manager ARNs.
-4. S3 bucket name.
-5. SES SMTP credentials (stored in Secrets Manager) and the verified sender address.
-6. Final domain name and certificate status.
-7. Confirmation that the VPN route to the SAP API is open, and the list of company public IPs.
-
-### 7. Notes
-
-- Photos and PDFs are stored on local disk today. The S3 adapter is being added before go-live; until then, Dev can use an EFS volume mounted at `UPLOAD_DIR` if needed.
-- Nothing is written back to SAP; QMAS only reads QA32 inspection lots.
-- The worker must run as **exactly one** task; the API can scale out.
-
-If anything here needs to change to fit our cloud standards, please let us know. We are happy to have a short call to go through it.
+If any of this needs to change to fit our cloud standards, please let us know. We are happy to discuss it on a call.
 
 Thanks and regards,
-**[Your Name]**
-[Designation], QMAS Project
-[Phone] | [Email]
+[Your Name]
+[Designation]
+[Contact Number]
